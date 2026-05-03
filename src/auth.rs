@@ -2,13 +2,11 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct Signer {
     api_key: String,
     secret_key: String,
-    nonce_counter: AtomicU64,
 }
 
 impl Signer {
@@ -16,7 +14,6 @@ impl Signer {
         Self {
             api_key: api_key.to_string(),
             secret_key: secret_key.to_string(),
-            nonce_counter: AtomicU64::new(0),
         }
     }
 
@@ -24,13 +21,15 @@ impl Signer {
         &self.api_key
     }
 
+    pub fn next_nonce_str(&self) -> String {
+        self.next_nonce().to_string()
+    }
+
     fn next_nonce(&self) -> u64 {
-        let timestamp = SystemTime::now()
+        SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos() as u64;
-        let counter = self.nonce_counter.fetch_add(1, Ordering::SeqCst);
-        timestamp ^ counter
+            .as_millis() as u64
     }
 
     pub fn now_millis() -> u64 {
@@ -40,18 +39,11 @@ impl Signer {
             .as_millis() as u64
     }
 
-    pub fn sign_v1(&self, body: &str, use_timestamp: bool) -> (String, String) {
-        let nonce = self.next_nonce();
-        let payload = if use_timestamp {
-            format!("{}&timestamp={}&recvWindow=10000", body, Self::now_millis())
-        } else {
-            format!("{}&nonce={}", body, nonce)
-        };
+    pub fn sign_v1(&self, payload: &str, _use_timestamp: bool) -> (String, String) {
+        let signature = self.hmac_sha512(payload, &self.secret_key);
+        let encoded_sign = hex::encode(signature);
 
-        let signature = self.hmac_sha512(&payload, &self.secret_key);
-        let encoded_sign = BASE64.encode(&signature);
-
-        (payload, encoded_sign)
+        (payload.to_string(), encoded_sign)
     }
 
     pub fn sign_v2(&self, query_string: &str, timestamp: u64) -> String {

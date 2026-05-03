@@ -3,7 +3,7 @@ use crate::errors::{ErrorCategory, IndodaxError};
 use crate::telemetry;
 use reqwest::{Client, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::time::Duration;
 
 const PUBLIC_BASE_URL: &str = "https://indodax.com";
@@ -76,14 +76,19 @@ impl IndodaxClient {
             IndodaxError::Config("API credentials required for private endpoints".into())
         })?;
 
-        let mut full_params = params.clone();
+        let mut full_params: BTreeMap<String, String> = params
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        
         full_params.insert("method".into(), method.to_string());
+        full_params.insert("nonce".into(), signer.next_nonce_str());
 
-        let body = serde_urlencoded(full_params.clone());
-        let (payload, signature) = signer.sign_v1(&body, false);
+        let body = serde_urlencoded_str(&full_params);
+        let (_, signature) = signer.sign_v1(&body, false);
 
         let resp = self
-            .retry_post(PRIVATE_V1_URL, &payload, signer.api_key(), &signature)
+            .retry_post(PRIVATE_V1_URL, &body, signer.api_key(), &signature)
             .await?;
 
         let body_text = resp.text().await?;
@@ -269,17 +274,16 @@ impl IndodaxClient {
     }
 }
 
-fn serde_urlencoded(params: HashMap<String, String>) -> String {
+fn serde_urlencoded_str(params: &BTreeMap<String, String>) -> String {
     params
         .iter()
-        .map(|(k, v)| format!("{}={}", urlencoding(k), urlencoding(v)))
+        .map(|(k, v)| {
+            format!(
+                "{}={}",
+                url::form_urlencoded::byte_serialize(k.as_bytes()).collect::<String>(),
+                url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>()
+            )
+        })
         .collect::<Vec<_>>()
         .join("&")
-}
-
-fn urlencoding(s: &str) -> String {
-    s.replace('%', "%25")
-        .replace('&', "%26")
-        .replace('=', "%3D")
-        .replace('+', "%2B")
 }
