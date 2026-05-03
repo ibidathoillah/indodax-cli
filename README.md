@@ -94,6 +94,7 @@ Options:
 |---------|-------------|
 | `indodax funding withdraw-fee` | Check withdrawal fee |
 | `indodax funding withdraw` | Withdraw cryptocurrency |
+| `indodax funding serve-callback` | Start callback validation server |
 
 ### WebSocket Streaming
 
@@ -174,6 +175,20 @@ Indodax uses HMAC-SHA512 signing for API authentication. Credentials are resolve
 1. CLI flags (`--api-key`, `--api-secret`)
 2. Environment variables (`INDODAX_API_KEY`, `INDODAX_API_SECRET`)
 3. Config file (`~/.config/indodax/config.toml`)
+
+### Callback URL
+
+For withdrawals, Indodax requires a Callback URL to validate the request. You can set this in your config:
+
+```bash
+indodax auth set --callback-url https://indodax.tep2.in/
+```
+
+Then run the server to handle incoming validation requests:
+
+```bash
+indodax funding serve-callback --port 8081
+```
 
 ## License
 

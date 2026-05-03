@@ -95,7 +95,7 @@ pub async fn dispatch(
         Command::Market { cmd } => commands::market::execute(client, &cmd).await?,
         Command::Account { cmd } => commands::account::execute(client, &cmd).await?,
         Command::Trade { cmd } => commands::trade::execute(client, &cmd).await?,
-        Command::Funding { cmd } => commands::funding::execute(client, &cmd).await?,
+        Command::Funding { cmd } => commands::funding::execute(client, config, &cmd).await?,
         Command::Ws { cmd } => commands::websocket::execute(client, &cmd).await?,
         Command::Paper { cmd } => commands::paper::execute(config, &cmd).await?,
         Command::Auth { cmd } => commands::auth::execute(client, config, &cmd).await?,

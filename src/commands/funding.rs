@@ -31,10 +31,19 @@ pub enum FundingCommand {
         #[arg(long, help = "Callback URL for withdrawal confirmation")]
         callback_url: Option<String>,
     },
+
+    #[command(name = "serve-callback", about = "Start a temporary HTTP server to handle Indodax withdrawal callback")]
+    ServeCallback {
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+        #[arg(short, long, help = "Auto-confirm all requests (returns 'ok')", default_value = "true")]
+        auto_ok: bool,
+    },
 }
 
 pub async fn execute(
     client: &IndodaxClient,
+    config: &crate::config::IndodaxConfig,
     cmd: &FundingCommand,
 ) -> Result<CommandOutput> {
     match cmd {
@@ -42,7 +51,11 @@ pub async fn execute(
             withdraw_fee(client, currency, network.as_deref()).await
         }
         FundingCommand::Withdraw { currency, amount, address, username, memo, network, callback_url } => {
-            withdraw(client, currency, *amount, address, *username, memo.as_deref(), network.as_deref(), callback_url.as_deref()).await
+            let cb_url = callback_url.as_deref().or(config.callback_url.as_deref());
+            withdraw(client, currency, *amount, address, *username, memo.as_deref(), network.as_deref(), cb_url).await
+        }
+        FundingCommand::ServeCallback { port, auto_ok } => {
+            serve_callback(*port, *auto_ok).await
         }
     }
 }
@@ -115,4 +128,37 @@ async fn withdraw(
 
     Ok(CommandOutput::new(data, headers, rows)
         .with_addendum(format!("Withdrew {} {} to {}", amount, currency, dest_label)))
+}
+
+async fn serve_callback(port: u16, auto_ok: bool) -> Result<CommandOutput> {
+    use axum::{routing::post, Router};
+    use colored::Colorize;
+    use std::net::SocketAddr;
+
+    let app = Router::new().route(
+        "/",
+        post(move |body: String| async move {
+            println!("\n{} Incoming Callback Request", ">>>".green());
+            println!("{}: {}", "Body".bold(), body);
+
+            if auto_ok {
+                println!("{} Sent response: {}", "<<<".blue(), "ok".bold());
+                "ok"
+            } else {
+                println!("{} Waiting for manual confirmation...", "???".yellow());
+                "cancel" // Default if not auto
+            }
+        }),
+    );
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    println!("\n{}", "Indodax Callback Server".bold().underline());
+    println!("{}: {}", "Listening on".cyan(), addr);
+    println!("{}: {}", "Auto-confirm".cyan(), if auto_ok { "ENABLED (returns 'ok')" } else { "DISABLED" });
+    println!("{}\n", "Press Ctrl+C to stop".dimmed());
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(CommandOutput::new_empty())
 }

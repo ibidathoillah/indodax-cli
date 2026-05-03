@@ -6,14 +6,16 @@ use anyhow::Result;
 
 #[derive(Debug, clap::Subcommand)]
 pub enum AuthCommand {
-    #[command(name = "set", about = "Set API key and secret")]
+    #[command(name = "set", about = "Set API key, secret and callback URL")]
     Set {
         #[arg(short = 'k', long = "api-key", help = "Your Indodax API key")]
-        api_key: String,
+        api_key: Option<String>,
         #[arg(short = 's', long = "api-secret", help = "Your Indodax API secret")]
         api_secret: Option<String>,
         #[arg(long = "api-secret-stdin", help = "Read API secret from stdin")]
         api_secret_stdin: bool,
+        #[arg(long = "callback-url", help = "Your Indodax Callback URL")]
+        callback_url: Option<String>,
     },
 
     #[command(name = "show", about = "Show current API configuration")]
@@ -32,26 +34,28 @@ pub async fn execute(
     cmd: &AuthCommand,
 ) -> Result<CommandOutput> {
     match cmd {
-        AuthCommand::Set { api_key, api_secret, api_secret_stdin } => {
-            let secret = if *api_secret_stdin {
+        AuthCommand::Set { api_key, api_secret, api_secret_stdin, callback_url } => {
+            if let Some(key) = api_key {
+                config.api_key = Some(SecretValue::new(key));
+            }
+
+            if *api_secret_stdin {
                 let mut buf = String::new();
                 std::io::stdin().read_line(&mut buf)?;
-                buf.trim().to_string()
+                config.api_secret = Some(SecretValue::new(buf.trim().to_string()));
             } else if let Some(s) = api_secret {
-                s.clone()
-            } else {
-                return Err(anyhow::anyhow!(
-                    "API secret is required. Use --api-secret or --api-secret-stdin"
-                ));
-            };
+                config.api_secret = Some(SecretValue::new(s.clone()));
+            }
 
-            config.api_key = Some(SecretValue::new(api_key));
-            config.api_secret = Some(SecretValue::new(secret));
+            if let Some(url) = callback_url {
+                config.callback_url = Some(url.clone());
+            }
+
             config.save()?;
 
             let data = serde_json::json!({
                 "status": "ok",
-                "message": "API credentials saved"
+                "message": "API configuration updated"
             });
             Ok(CommandOutput::json(data))
         }
@@ -65,6 +69,10 @@ pub async fn execute(
                 .api_secret
                 .as_ref()
                 .map_or("not set", |_| "set");
+            let callback_url = config
+                .callback_url
+                .as_deref()
+                .unwrap_or("not set");
             let config_path = IndodaxConfig::config_path();
 
             let headers = vec!["Field".into(), "Value".into()];
@@ -72,12 +80,14 @@ pub async fn execute(
                 vec!["Config path".into(), config_path.display().to_string()],
                 vec!["API Key".into(), key_status.into()],
                 vec!["API Secret".into(), secret_status.into()],
+                vec!["Callback URL".into(), callback_url.into()],
             ];
 
             let data = serde_json::json!({
                 "config_path": config_path.to_string_lossy(),
                 "api_key_set": config.api_key.is_some(),
                 "api_secret_set": config.api_secret.is_some(),
+                "callback_url": config.callback_url,
             });
 
             Ok(CommandOutput::new(data, headers, rows))
@@ -128,6 +138,7 @@ pub async fn execute(
         AuthCommand::Reset => {
             config.api_key = None;
             config.api_secret = None;
+            config.callback_url = None;
             config.save()?;
 
             let data = serde_json::json!({

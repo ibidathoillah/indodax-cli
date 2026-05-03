@@ -59,6 +59,7 @@ impl From<&str> for SecretValue {
 pub struct IndodaxConfig {
     pub api_key: Option<SecretValue>,
     pub api_secret: Option<SecretValue>,
+    pub callback_url: Option<String>,
     pub paper_balances: Option<serde_json::Value>,
 }
 
@@ -67,6 +68,7 @@ impl Default for IndodaxConfig {
         Self {
             api_key: None,
             api_secret: None,
+            callback_url: None,
             paper_balances: None,
         }
     }

@@ -36,8 +36,13 @@ async fn setup() -> Result<CommandOutput> {
         .with_prompt("Enter your Indodax API secret")
         .interact()?;
 
+    let callback_url: String = Input::new()
+        .with_prompt("Enter your Indodax Callback URL (optional, e.g., https://indodax.tep2.in/)")
+        .allow_empty(true)
+        .interact_text()?;
+
     let save: bool = Confirm::new()
-        .with_prompt("Save credentials to config?")
+        .with_prompt("Save configuration to config?")
         .default(true)
         .interact()?;
 
@@ -45,8 +50,11 @@ async fn setup() -> Result<CommandOutput> {
         let mut config = crate::config::IndodaxConfig::load()?;
         config.api_key = Some(crate::config::SecretValue::new(&api_key));
         config.api_secret = Some(crate::config::SecretValue::new(&api_secret));
+        if !callback_url.is_empty() {
+            config.callback_url = Some(callback_url);
+        }
         config.save()?;
-        println!("\nCredentials saved to {:?}", crate::config::IndodaxConfig::config_path());
+        println!("\nConfiguration saved to {:?}", crate::config::IndodaxConfig::config_path());
     }
 
     let data = serde_json::json!({

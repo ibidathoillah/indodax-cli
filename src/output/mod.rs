@@ -52,6 +52,16 @@ impl CommandOutput {
         }
     }
 
+    pub fn new_empty() -> Self {
+        Self {
+            data: serde_json::json!({}),
+            headers: vec![],
+            rows: vec![],
+            format: OutputFormat::Table,
+            addendum: None,
+        }
+    }
+
     pub fn with_format(mut self, format: OutputFormat) -> Self {
         self.format = format;
         self
