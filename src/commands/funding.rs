@@ -136,7 +136,7 @@ async fn serve_callback(port: u16, auto_ok: bool) -> Result<CommandOutput> {
     use std::net::SocketAddr;
 
     let app = Router::new().route(
-        "/",
+        "/callback",
         post(move |body: String| async move {
             println!("\n{} Incoming Callback Request", ">>>".green());
             println!("{}: {}", "Body".bold(), body);

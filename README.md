@@ -181,7 +181,7 @@ Indodax uses HMAC-SHA512 signing for API authentication. Credentials are resolve
 For withdrawals, Indodax requires a Callback URL to validate the request. You can set this in your config:
 
 ```bash
-indodax auth set --callback-url https://indodax.tep2.in/
+indodax auth set --callback-url https://indodax.tep2.in/callback
 ```
 
 Then run the server to handle incoming validation requests:
