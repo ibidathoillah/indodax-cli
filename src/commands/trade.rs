@@ -10,12 +10,10 @@ pub enum TradeCommand {
     Buy {
         #[arg(short, long)]
         pair: String,
-        #[arg(long)]
-        price: f64,
-        #[arg(short, long, help = "Amount in base currency (e.g. BTC)")]
-        amount: f64,
-        #[arg(long, default_value = "limit")]
-        order_type: String,
+        #[arg(long, help = "The total IDR amount to spend.")]
+        idr: f64,
+        #[arg(long, help = "Limit price. If omitted, a market order will be placed.")]
+        price: Option<f64>,
     },
 
     #[command(name = "sell", about = "Place a sell order")]
@@ -60,11 +58,11 @@ pub async fn execute(
     cmd: &TradeCommand,
 ) -> Result<CommandOutput> {
     match cmd {
-        TradeCommand::Buy { pair, price, amount, order_type } => {
-            place_order(client, pair, *price, *amount, order_type, "buy").await
+        TradeCommand::Buy { pair, idr, price } => {
+            place_buy_order(client, pair, *idr, *price).await
         }
         TradeCommand::Sell { pair, price, amount, order_type } => {
-            place_order(client, pair, *price, *amount, order_type, "sell").await
+            place_sell_order(client, pair, *price, *amount, order_type).await
         }
         TradeCommand::Cancel { order_id, pair, order_type } => {
             cancel_order(client, *order_id, pair, order_type).await
@@ -78,36 +76,60 @@ pub async fn execute(
     }
 }
 
-async fn place_order(
+async fn place_buy_order(
+    client: &IndodaxClient,
+    pair: &str,
+    idr_amount: f64,
+    price: Option<f64>,
+) -> Result<CommandOutput> {
+    let mut params = HashMap::new();
+    params.insert("pair".to_string(), pair.to_string());
+    params.insert("type".to_string(), "buy".to_string());
+    params.insert("idr".to_string(), idr_amount.to_string());
+
+    let order_type_str = if let Some(p) = price {
+        params.insert("price".to_string(), p.to_string());
+        "limit"
+    } else {
+        params.insert("order_type".to_string(), "market".to_string());
+        "market"
+    };
+
+    let data: serde_json::Value =
+        client.private_post_v1("trade", &params).await?;
+
+    let headers = vec!["Field".into(), "Value".into()];
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    if let serde_json::Value::Object(ref map) = data {
+        for (k, v) in map {
+            rows.push(vec![k.clone(), helpers::value_to_string(v)]);
+        }
+    }
+
+    Ok(CommandOutput::new(data, headers, rows)
+        .with_addendum(format!("Buy order ({}) placed for {} IDR on pair {}", order_type_str, idr_amount, pair)))
+}
+
+async fn place_sell_order(
     client: &IndodaxClient,
     pair: &str,
     price: f64,
     amount: f64,
     order_type: &str,
-    side: &str,
 ) -> Result<CommandOutput> {
-    let price_str = if order_type == "market" {
-        "0".to_string()
-    } else {
-        let pair_lower = pair.to_lowercase();
-        let precision = match pair_lower.as_str() {
-            p if p.contains("idr") => 0,
-            p if p.contains("usdt") => 2,
-            _ => 8,
-        };
-        format!("{:.precision$}", price, precision = precision)
-    };
-
-    let amount_precision = 8;
-    let amount_str = format!("{:.precision$}", amount, precision = amount_precision);
-
+    let base_currency = pair.split('_').next().unwrap_or_default();
+    if base_currency.is_empty() {
+        return Err(anyhow::anyhow!("Invalid pair format: {}", pair));
+    }
+    
     let mut params = HashMap::new();
-    params.insert("pair".into(), pair.to_string());
-    params.insert("type".into(), side.to_string());
-    params.insert("price".into(), price_str);
-    params.insert(order_type.to_string().into(), amount_str);
+    params.insert("pair".to_string(), pair.to_string());
+    params.insert("type".to_string(), "sell".to_string());
+    params.insert("price".to_string(), price.to_string());
+    params.insert(base_currency.to_string(), amount.to_string());
+    
     if order_type == "market" {
-        params.insert("type".into(), format!("{}_{}", side, order_type));
+        params.insert("order_type".to_string(), "market".to_string());
     }
 
     let data: serde_json::Value =
@@ -122,7 +144,7 @@ async fn place_order(
     }
 
     Ok(CommandOutput::new(data, headers, rows)
-        .with_addendum(format!("Order placed: {} {} {} @ {} ({})", side, amount, pair, price, order_type)))
+        .with_addendum(format!("Sell order placed: {} {} @ {} ({})", amount, pair, price, order_type)))
 }
 
 async fn cancel_order(
