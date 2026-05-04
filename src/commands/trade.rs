@@ -235,3 +235,83 @@ async fn countdown_cancel_all(
 
     Ok(CommandOutput::json(data).with_addendum(msg))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trade_command_variants() {
+        let _cmd1 = TradeCommand::Buy { 
+            pair: "btc_idr".into(), 
+            idr: 100_000.0, 
+            price: Some(100_000_000.0) 
+        };
+        let _cmd2 = TradeCommand::Sell { 
+            pair: "btc_idr".into(), 
+            price: 100_000_000.0, 
+            amount: 0.5, 
+            order_type: "limit".into() 
+        };
+        let _cmd3 = TradeCommand::Cancel { 
+            order_id: 123, 
+            pair: "btc_idr".into(), 
+            order_type: "buy".into() 
+        };
+        let _cmd4 = TradeCommand::CancelByClientId { 
+            client_order_id: "client_123".into() 
+        };
+        let _cmd5 = TradeCommand::CountdownCancelAll { 
+            pair: Some("btc_idr".into()), 
+            countdown_time: 60000 
+        };
+    }
+
+    #[test]
+    fn test_trade_command_buy_market_order() {
+        let cmd = TradeCommand::Buy { 
+            pair: "btc_idr".into(), 
+            idr: 100_000.0, 
+            price: None 
+        };
+        match cmd {
+            TradeCommand::Buy { pair, idr, price } => {
+                assert_eq!(pair, "btc_idr");
+                assert_eq!(idr, 100_000.0);
+                assert!(price.is_none());
+            }
+            _ => panic!("Expected Buy command"),
+        }
+    }
+
+    #[test]
+    fn test_trade_command_sell_market_order() {
+        let cmd = TradeCommand::Sell { 
+            pair: "eth_idr".into(), 
+            price: 10_000_000.0, 
+            amount: 1.0, 
+            order_type: "market".into() 
+        };
+        match cmd {
+            TradeCommand::Sell { order_type, .. } => {
+                assert_eq!(order_type, "market");
+            }
+            _ => panic!("Expected Sell command"),
+        }
+    }
+
+    #[test]
+    fn test_trade_command_cancel_all_no_pair() {
+        let cmd = TradeCommand::CountdownCancelAll { 
+            pair: None, 
+            countdown_time: 0 
+        };
+        match cmd {
+            TradeCommand::CountdownCancelAll { pair, countdown_time } => {
+                assert!(pair.is_none());
+                assert_eq!(countdown_time, 0);
+            }
+            _ => panic!("Expected CountdownCancelAll command"),
+        }
+    }
+}

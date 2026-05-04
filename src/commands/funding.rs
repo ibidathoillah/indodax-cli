@@ -162,3 +162,96 @@ async fn serve_callback(port: u16, auto_ok: bool) -> Result<CommandOutput> {
 
     Ok(CommandOutput::new_empty())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_funding_command_variants() {
+        let _cmd1 = FundingCommand::WithdrawFee { 
+            currency: "btc".into(), 
+            network: Some("BTC".into()) 
+        };
+        let _cmd2 = FundingCommand::Withdraw { 
+            currency: "btc".into(), 
+            amount: 0.5, 
+            address: "addr123".into(), 
+            username: false, 
+            memo: None, 
+            network: Some("BTC".into()), 
+            callback_url: None 
+        };
+        let _cmd3 = FundingCommand::ServeCallback { 
+            port: 8080, 
+            auto_ok: true 
+        };
+    }
+
+    #[test]
+    fn test_funding_command_withdraw_to_username() {
+        let cmd = FundingCommand::Withdraw { 
+            currency: "btc".into(), 
+            amount: 0.5, 
+            address: "user123".into(), 
+            username: true, 
+            memo: None, 
+            network: None, 
+            callback_url: None 
+        };
+        match cmd {
+            FundingCommand::Withdraw { username, .. } => {
+                assert!(username);
+            }
+            _ => panic!("Expected Withdraw command"),
+        }
+    }
+
+    #[test]
+    fn test_funding_command_serve_callback_defaults() {
+        let cmd = FundingCommand::ServeCallback { 
+            port: 8080, 
+            auto_ok: true 
+        };
+        match cmd {
+            FundingCommand::ServeCallback { port, auto_ok } => {
+                assert_eq!(port, 8080);
+                assert!(auto_ok);
+            }
+            _ => panic!("Expected ServeCallback command"),
+        }
+    }
+
+    #[test]
+    fn test_funding_command_withdraw_fee_no_network() {
+        let cmd = FundingCommand::WithdrawFee { 
+            currency: "eth".into(), 
+            network: None 
+        };
+        match cmd {
+            FundingCommand::WithdrawFee { network, .. } => {
+                assert!(network.is_none());
+            }
+            _ => panic!("Expected WithdrawFee command"),
+        }
+    }
+
+    #[test]
+    fn test_funding_command_with_memo() {
+        let cmd = FundingCommand::Withdraw { 
+            currency: "xrp".into(), 
+            amount: 100.0, 
+            address: "rAddress".into(), 
+            username: false, 
+            memo: Some("123456".into()), 
+            network: None, 
+            callback_url: None 
+        };
+        match cmd {
+            FundingCommand::Withdraw { memo, .. } => {
+                assert_eq!(memo, Some("123456".into()));
+            }
+            _ => panic!("Expected Withdraw command"),
+        }
+    }
+}

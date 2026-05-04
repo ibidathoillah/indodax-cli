@@ -296,3 +296,78 @@ async fn price_increments(client: &IndodaxClient) -> Result<CommandOutput> {
         Ok(CommandOutput::new(data, headers, rows))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_first_of_first_key_exists() {
+        let val = json!({"a": "1", "b": "2"});
+        let result = first_of(&val, &["a", "b"]);
+        assert_eq!(result, &json!("1"));
+    }
+
+    #[test]
+    fn test_first_of_second_key_exists() {
+        let val = json!({"a": null, "b": "2"});
+        let result = first_of(&val, &["a", "b"]);
+        assert_eq!(result, &json!("2"));
+    }
+
+    #[test]
+    fn test_first_of_no_keys_exist() {
+        let val = json!({"a": null, "b": null});
+        let result = first_of(&val, &["a", "b"]);
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_first_of_empty_value() {
+        let val = json!({"a": "", "b": "value"});
+        let result = first_of(&val, &["a", "b"]);
+        // first_of skips empty strings
+        assert_eq!(result, &json!("value"));
+    }
+
+    #[test]
+    fn test_first_of_null_value() {
+        let val = json!({"a": "null", "b": "value"});
+        let result = first_of(&val, &["a", "b"]);
+        // first_of skips values where string representation is "null"
+        assert_eq!(result, &json!("value"));
+    }
+
+    #[test]
+    fn test_market_command_variants() {
+        let _cmd1 = MarketCommand::ServerTime;
+        let _cmd2 = MarketCommand::Pairs;
+        let _cmd3 = MarketCommand::Ticker { pair: "btc_idr".into() };
+        let _cmd4 = MarketCommand::TickerAll;
+        let _cmd5 = MarketCommand::Summaries;
+        let _cmd6 = MarketCommand::Orderbook { pair: "btcidr".into() };
+        let _cmd7 = MarketCommand::Trades { pair: "btcidr".into() };
+        let _cmd8 = MarketCommand::Ohlc { 
+            symbol: "BTCIDR".into(), 
+            timeframe: "60".into(), 
+            from: None, 
+            to: None 
+        };
+        let _cmd9 = MarketCommand::PriceIncrements;
+    }
+
+    #[test]
+    fn test_first_of_with_json_null() {
+        let val = json!(null);
+        let result = first_of(&val, &["key"]);
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_first_of_empty_keys() {
+        let val = json!({"a": 1});
+        let result = first_of(&val, &[]);
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+}

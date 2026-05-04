@@ -215,3 +215,112 @@ async fn ws_orders() -> Result<CommandOutput> {
         "message": "Private WebSocket connection requires manual token generation. See docs for /api/private_ws/v1/generate_token"
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_websocket_command_variants() {
+        let _cmd1 = WebSocketCommand::Ticker { pair: "btc_idr".into() };
+        let _cmd2 = WebSocketCommand::Trades { pair: "eth_idr".into() };
+        let _cmd3 = WebSocketCommand::Book { pair: "btc_idr".into() };
+        let _cmd4 = WebSocketCommand::Summary;
+        let _cmd5 = WebSocketCommand::Orders;
+    }
+
+    #[test]
+    fn test_websocket_command_ticker() {
+        let cmd = WebSocketCommand::Ticker { pair: "xrp_idr".into() };
+        match cmd {
+            WebSocketCommand::Ticker { pair } => {
+                assert_eq!(pair, "xrp_idr");
+            }
+            _ => panic!("Expected Ticker command"),
+        }
+    }
+
+    #[test]
+    fn test_websocket_command_trades() {
+        let cmd = WebSocketCommand::Trades { pair: "doge_idr".into() };
+        match cmd {
+            WebSocketCommand::Trades { pair } => {
+                assert_eq!(pair, "doge_idr");
+            }
+            _ => panic!("Expected Trades command"),
+        }
+    }
+
+    #[test]
+    fn test_websocket_command_book() {
+        let cmd = WebSocketCommand::Book { pair: "eth_idr".into() };
+        match cmd {
+            WebSocketCommand::Book { pair } => {
+                assert_eq!(pair, "eth_idr");
+            }
+            _ => panic!("Expected Book command"),
+        }
+    }
+
+    #[test]
+    fn test_websocket_command_summary() {
+        let cmd = WebSocketCommand::Summary;
+        match cmd {
+            WebSocketCommand::Summary => (),
+            _ => panic!("Expected Summary command"),
+        }
+    }
+
+    #[test]
+    fn test_websocket_command_orders() {
+        let cmd = WebSocketCommand::Orders;
+        match cmd {
+            WebSocketCommand::Orders => (),
+            _ => panic!("Expected Orders command"),
+        }
+    }
+
+    #[test]
+    fn test_format_ws_price_u64() {
+        let val = serde_json::json!(123456);
+        let result = format_ws_price(&val);
+        assert!(result.contains("123456"));
+    }
+
+    #[test]
+    fn test_format_ws_price_f64() {
+        let val = serde_json::json!(123.456);
+        let result = format_ws_price(&val);
+        assert!(result.contains("123") || result.contains("123.456"));
+    }
+
+    #[test]
+    fn test_format_ws_price_str() {
+        let val = serde_json::json!("789");
+        let result = format_ws_price(&val);
+        assert!(result.contains("789") || result == "\"789\"");
+    }
+
+    #[test]
+    fn test_format_ws_price_null() {
+        let val = serde_json::json!(null);
+        let result = format_ws_price(&val);
+        // Should return empty string or "null" string representation
+        assert!(result.is_empty() || result == "0" || result.contains("null"));
+    }
+
+    #[test]
+    fn test_public_ws_url() {
+        assert!(PUBLIC_WS_URL.contains("ws3.indodax.com"));
+    }
+
+    #[test]
+    fn test_private_ws_url() {
+        assert!(PRIVATE_WS_URL.contains("pws.indodax.com"));
+    }
+
+    #[test]
+    fn test_ws_token_not_empty() {
+        assert!(!WS_TOKEN.is_empty());
+    }
+}

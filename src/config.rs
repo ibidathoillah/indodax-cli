@@ -3,7 +3,7 @@ use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SecretValue(String);
 
 impl SecretValue {
@@ -30,19 +30,6 @@ impl fmt::Display for SecretValue {
     }
 }
 
-impl Serialize for SecretValue {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.0)
-    }
-}
-
-impl<'de> Deserialize<'de> for SecretValue {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(deserializer)?;
-        Ok(SecretValue(s))
-    }
-}
-
 impl From<String> for SecretValue {
     fn from(s: String) -> Self {
         SecretValue(s)
@@ -55,7 +42,8 @@ impl From<&str> for SecretValue {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndodaxConfig {
     pub api_key: Option<SecretValue>,
     pub api_secret: Option<SecretValue>,
@@ -157,7 +145,273 @@ impl IndodaxConfig {
                 api_key: key,
                 api_secret: secret,
             })),
-            _ => Ok(None),
+        _ => Ok(None),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn test_secret_value_new() {
+        let sv = SecretValue::new("test_secret");
+        assert_eq!(sv.as_str(), "test_secret");
+    }
+
+    #[test]
+    fn test_secret_value_as_str() {
+        let sv = SecretValue::new("mykey");
+        assert_eq!(sv.as_str(), "mykey");
+    }
+
+    #[test]
+    fn test_secret_value_is_empty() {
+        let sv_empty = SecretValue::new("");
+        assert!(sv_empty.is_empty());
+        
+        let sv_non_empty = SecretValue::new("value");
+        assert!(!sv_non_empty.is_empty());
+    }
+
+    #[test]
+    fn test_secret_value_display_masked() {
+        let sv = SecretValue::new("secret123");
+        let display = format!("{}", sv);
+        assert_eq!(display, "********");
+    }
+
+    #[test]
+    fn test_secret_value_display_empty() {
+        let sv = SecretValue::new("");
+        let display = format!("{}", sv);
+        assert_eq!(display, "");
+    }
+
+    #[test]
+    fn test_secret_value_serialize() {
+        let sv = SecretValue::new("serialize_me");
+        let serialized = serde_json::to_string(&sv).unwrap();
+        assert!(serialized.contains("serialize_me"));
+    }
+
+    #[test]
+    fn test_secret_value_deserialize() {
+        // JSON string format
+        let json_str = "\"deserialize_me\"";
+        let sv: SecretValue = serde_json::from_str(json_str).unwrap();
+        assert_eq!(sv.as_str(), "deserialize_me");
+    }
+
+    #[test]
+    fn test_secret_value_from_string() {
+        let s = String::from("from_string");
+        let sv: SecretValue = s.into();
+        assert_eq!(sv.as_str(), "from_string");
+    }
+
+    #[test]
+    fn test_secret_value_from_str() {
+        let sv: SecretValue = "from_str".into();
+        assert_eq!(sv.as_str(), "from_str");
+    }
+
+    #[test]
+    fn test_secret_value_equality() {
+        let sv1 = SecretValue::new("same");
+        let sv2 = SecretValue::new("same");
+        let sv3 = SecretValue::new("different");
+        assert_eq!(sv1, sv2);
+        assert_ne!(sv1, sv3);
+    }
+
+    #[test]
+    fn test_indodax_config_default() {
+        let config = IndodaxConfig::default();
+        assert!(config.api_key.is_none());
+        assert!(config.api_secret.is_none());
+        assert!(config.callback_url.is_none());
+        assert!(config.paper_balances.is_none());
+    }
+
+    #[test]
+    fn test_indodax_config_save_and_load() {
+        let config = IndodaxConfig {
+            api_key: Some(SecretValue::new("test_key")),
+            api_secret: Some(SecretValue::new("test_secret")),
+            callback_url: Some("http://callback.test".into()),
+            paper_balances: None,
+        };
+        
+        let config_path = IndodaxConfig::config_path();
+        config.save().unwrap();
+        assert!(config_path.exists());
+        
+        let loaded = IndodaxConfig::load().unwrap();
+        assert_eq!(loaded.api_key.as_ref().unwrap().as_str(), "test_key");
+        assert_eq!(loaded.api_secret.as_ref().unwrap().as_str(), "test_secret");
+        assert_eq!(loaded.callback_url.as_ref().unwrap(), "http://callback.test");
+        
+        // Clean up
+        fs::remove_file(&config_path).ok();
+    }
+
+    #[test]
+    fn test_indodax_config_load_no_file() {
+        // Remove any existing config file to ensure clean state
+        let config_path = IndodaxConfig::config_path();
+        if config_path.exists() {
+            fs::remove_file(&config_path).ok();
+        }
+        
+        // Just test that load() works when no config file exists
+        let config = IndodaxConfig::load().unwrap();
+        assert!(config.api_key.is_none());
+        assert!(config.api_secret.is_none());
+    }
+
+    #[test]
+    fn test_indodax_config_config_path() {
+        let path = IndodaxConfig::config_path();
+        assert!(path.to_string_lossy().contains("indodax"));
+        assert!(path.to_string_lossy().contains("config.toml"));
+    }
+
+    #[test]
+    fn test_indodax_config_config_dir() {
+        let dir = IndodaxConfig::config_dir();
+        assert!(dir.to_string_lossy().contains("indodax"));
+    }
+
+    #[test]
+    fn test_resolve_credentials_cli_override() {
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+        
+        let config = IndodaxConfig {
+            api_key: Some(SecretValue::new("config_key")),
+            api_secret: Some(SecretValue::new("config_secret")),
+            callback_url: None,
+            paper_balances: None,
+        };
+        
+        let result = config.resolve_credentials(
+            Some("cli_key".into()),
+            Some("cli_secret".into()),
+        ).unwrap();
+        
+        assert!(result.is_some());
+        let creds = result.unwrap();
+        assert_eq!(creds.api_key.as_str(), "cli_key");
+        assert_eq!(creds.api_secret.as_str(), "cli_secret");
+    }
+
+    #[test]
+    fn test_resolve_credentials_env_variable() {
+        // Clean up any existing env vars first
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+        
+        env::set_var("INDODAX_API_KEY", "env_key");
+        env::set_var("INDODAX_API_SECRET", "env_secret");
+        
+        let config = IndodaxConfig::default();
+        
+        let result = config.resolve_credentials(None, None).unwrap();
+        assert!(result.is_some());
+        let creds = result.unwrap();
+        assert_eq!(creds.api_key.as_str(), "env_key");
+        assert_eq!(creds.api_secret.as_str(), "env_secret");
+        
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+    }
+
+    #[test]
+    fn test_resolve_credentials_env_overrides_config() {
+        // Clean up any existing env vars first
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+        
+        env::set_var("INDODAX_API_KEY", "env_key");
+        env::set_var("INDODAX_API_SECRET", "env_secret");
+        
+        let config = IndodaxConfig {
+            api_key: Some(SecretValue::new("config_key")),
+            api_secret: Some(SecretValue::new("config_secret")),
+            callback_url: None,
+            paper_balances: None,
+        };
+        
+        let result = config.resolve_credentials(None, None).unwrap();
+        assert!(result.is_some());
+        let creds = result.unwrap();
+        assert_eq!(creds.api_key.as_str(), "env_key");
+        assert_eq!(creds.api_secret.as_str(), "env_secret");
+        
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+    }
+
+    #[test]
+    fn test_resolve_credentials_empty_cli() {
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+        
+        let config = IndodaxConfig::default();
+        
+        let result = config.resolve_credentials(
+            Some("".into()),
+            Some("".into()),
+        ).unwrap();
+        
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_credentials_empty_env_var() {
+        // Clean up any existing env vars first
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+        
+        env::set_var("INDODAX_API_KEY", "");
+        env::set_var("INDODAX_API_SECRET", "");
+        
+        let config = IndodaxConfig::default();
+        
+        let result = config.resolve_credentials(None, None).unwrap();
+        assert!(result.is_none());
+        
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+    }
+
+    #[test]
+    fn test_resolve_credentials_no_credentials() {
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+        
+        let config = IndodaxConfig::default();
+        
+        let result = config.resolve_credentials(None, None).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_credentials_partial_none() {
+        env::remove_var("INDODAX_API_KEY");
+        env::remove_var("INDODAX_API_SECRET");
+        
+        let config = IndodaxConfig {
+            api_key: Some(SecretValue::new("key_only")),
+            api_secret: None,
+            callback_url: None,
+            paper_balances: None,
+        };
+        
+        let result = config.resolve_credentials(None, None).unwrap();
+        assert!(result.is_none());
     }
 }

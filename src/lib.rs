@@ -106,3 +106,92 @@ pub async fn dispatch(
 
     Ok(output.with_format(cli.output))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_parse_market_ticker() {
+        let args = vec!["indodax", "market", "ticker", "btc_idr"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        match cli.command {
+            Command::Market { cmd: _ } => {
+                // Just verify it parsed
+            }
+            _ => panic!("Expected Market command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_output_json() {
+        let args = vec!["indodax", "-o", "json", "market", "ticker"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert_eq!(cli.output, OutputFormat::Json);
+    }
+
+    #[test]
+    fn test_cli_parse_api_key() {
+        let args = vec!["indodax", "--api-key", "mykey", "market", "ticker"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert_eq!(cli.api_key, Some("mykey".into()));
+    }
+
+    #[test]
+    fn test_cli_parse_api_secret() {
+        let args = vec!["indodax", "--api-secret", "mysecret", "market", "ticker"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert_eq!(cli.api_secret, Some("mysecret".into()));
+    }
+
+    #[test]
+    fn test_cli_parse_verbose() {
+        let args = vec!["indodax", "-v", "market", "ticker"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert!(cli.verbose);
+    }
+
+    #[test]
+    fn test_command_variants() {
+        let _cmd1 = Command::Market { cmd: crate::commands::market::MarketCommand::ServerTime };
+        let _cmd2 = Command::Account { cmd: crate::commands::account::AccountCommand::Info };
+        let _cmd3 = Command::Trade { cmd: crate::commands::trade::TradeCommand::Buy { 
+            pair: "btc_idr".into(), 
+            idr: 100_000.0, 
+            price: None 
+        }};
+        let _cmd4 = Command::Funding { cmd: crate::commands::funding::FundingCommand::WithdrawFee { 
+            currency: "btc".into(), 
+            network: None 
+        }};
+        let _cmd5 = Command::Ws { cmd: crate::commands::websocket::WebSocketCommand::Ticker { 
+            pair: "btc_idr".into() 
+        }};
+        let _cmd6 = Command::Paper { cmd: crate::commands::paper::PaperCommand::Balance };
+        let _cmd7 = Command::Auth { cmd: crate::commands::auth::AuthCommand::Show };
+        let _cmd8 = Command::Setup;
+        let _cmd9 = Command::Shell;
+    }
+
+    #[test]
+    fn test_output_format_clap() {
+        // Test that OutputFormat works with clap
+        let args = vec!["indodax", "-o", "table", "market", "ticker"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert_eq!(cli.output, OutputFormat::Table);
+    }
+
+    #[test]
+    fn test_cli_parse_default_output() {
+        let args = vec!["indodax", "market", "ticker"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert_eq!(cli.output, OutputFormat::Table);
+    }
+
+    #[test]
+    fn test_command_display() {
+        let cli = Cli::try_parse_from(vec!["indodax", "market", "ticker"]).unwrap();
+        // Just verify the struct can be created
+        let _ = format!("{:?}", cli);
+    }
+}

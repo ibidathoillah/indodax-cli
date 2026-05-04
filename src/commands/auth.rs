@@ -145,7 +145,90 @@ pub async fn execute(
                 "status": "ok",
                 "message": "API credentials removed"
             });
-            Ok(CommandOutput::json(data))
+                Ok(CommandOutput::json(data))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_auth_command_set() {
+        let cmd = AuthCommand::Set {
+            api_key: Some("key123".into()),
+            api_secret: Some("secret456".into()),
+            api_secret_stdin: false,
+            callback_url: Some("http://callback.test".into()),
+        };
+        match cmd {
+            AuthCommand::Set { api_key, api_secret, api_secret_stdin, callback_url } => {
+                assert_eq!(api_key, Some("key123".into()));
+                assert_eq!(api_secret, Some("secret456".into()));
+                assert!(!api_secret_stdin);
+                assert_eq!(callback_url, Some("http://callback.test".into()));
+            }
+            _ => panic!("Expected Set command"),
+        }
+    }
+
+    #[test]
+    fn test_auth_command_show() {
+        let cmd = AuthCommand::Show;
+        match cmd {
+            AuthCommand::Show => (),
+            _ => panic!("Expected Show command"),
+        }
+    }
+
+    #[test]
+    fn test_auth_command_test() {
+        let cmd = AuthCommand::Test;
+        match cmd {
+            AuthCommand::Test => (),
+            _ => panic!("Expected Test command"),
+        }
+    }
+
+    #[test]
+    fn test_auth_command_reset() {
+        let cmd = AuthCommand::Reset;
+        match cmd {
+            AuthCommand::Reset => (),
+            _ => panic!("Expected Reset command"),
+        }
+    }
+
+    #[test]
+    fn test_auth_command_set_minimal() {
+        let cmd = AuthCommand::Set {
+            api_key: None,
+            api_secret: None,
+            api_secret_stdin: true,
+            callback_url: None,
+        };
+        match cmd {
+            AuthCommand::Set { api_key, api_secret, api_secret_stdin, callback_url } => {
+                assert!(api_key.is_none());
+                assert!(api_secret.is_none());
+                assert!(api_secret_stdin);
+                assert!(callback_url.is_none());
+            }
+            _ => panic!("Expected Set command"),
+        }
+    }
+
+    #[test]
+    fn test_auth_command_variants() {
+        let _cmd1 = AuthCommand::Set { 
+            api_key: None, 
+            api_secret: None, 
+            api_secret_stdin: false, 
+            callback_url: None 
+        };
+        let _cmd2 = AuthCommand::Show;
+        let _cmd3 = AuthCommand::Test;
+        let _cmd4 = AuthCommand::Reset;
     }
 }

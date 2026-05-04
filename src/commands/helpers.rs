@@ -78,3 +78,193 @@ pub fn extract_pairs(data: &serde_json::Value) -> Vec<(String, String)> {
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
     pairs
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_flatten_json_to_table_object() {
+        let json = json!({"name": "Alice", "age": 30, "city": "NYC"});
+        let (headers, rows) = flatten_json_to_table(&json);
+        
+        assert_eq!(headers.len(), 3);
+        assert_eq!(rows.len(), 1);
+        assert!(headers.contains(&"name".into()));
+        assert!(headers.contains(&"age".into()));
+        assert!(headers.contains(&"city".into()));
+    }
+
+    #[test]
+    fn test_flatten_json_to_table_array() {
+        let json = json!([
+            {"id": 1, "val": 100},
+            {"id": 2, "val": 200}
+        ]);
+        let (headers, rows) = flatten_json_to_table(&json);
+        
+        assert_eq!(headers.len(), 2);
+        assert_eq!(rows.len(), 2);
+        assert!(headers.contains(&"id".into()));
+        assert!(headers.contains(&"val".into()));
+    }
+
+    #[test]
+    fn test_flatten_json_to_table_empty_array() {
+        let json = json!([]);
+        let (headers, rows) = flatten_json_to_table(&json);
+        
+        // For empty array, returns single "Value" header and one row
+        assert_eq!(headers.len(), 1);
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_flatten_json_to_table_primitive() {
+        let json = json!("hello");
+        let (headers, rows) = flatten_json_to_table(&json);
+        
+        assert_eq!(headers.len(), 1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][0], "hello");
+    }
+
+    #[test]
+    fn test_flatten_json_to_table_number() {
+        let json = json!(42);
+        let (_headers, rows) = flatten_json_to_table(&json);
+        
+        assert_eq!(rows[0][0], "42");
+    }
+
+    #[test]
+    fn test_flatten_json_to_table_bool() {
+        let json = json!(true);
+        let (_headers, rows) = flatten_json_to_table(&json);
+        
+        assert_eq!(rows[0][0], "true");
+    }
+
+    #[test]
+    fn test_flatten_json_to_table_null() {
+        let json = json!(null);
+        let (_headers, rows) = flatten_json_to_table(&json);
+        
+        assert_eq!(rows[0][0], "");
+    }
+
+    #[test]
+    fn test_value_to_string_string() {
+        let v = json!("hello");
+        assert_eq!(value_to_string(&v), "hello");
+    }
+
+    #[test]
+    fn test_value_to_string_number() {
+        let v = json!(42);
+        assert_eq!(value_to_string(&v), "42");
+    }
+
+    #[test]
+    fn test_value_to_string_bool() {
+        let v = json!(true);
+        assert_eq!(value_to_string(&v), "true");
+    }
+
+    #[test]
+    fn test_value_to_string_null() {
+        let v = json!(null);
+        assert_eq!(value_to_string(&v), "");
+    }
+
+    #[test]
+    fn test_value_to_string_array() {
+        let v = json!([1, 2, 3]);
+        let result = value_to_string(&v);
+        assert!(result.contains("1"));
+        assert!(result.contains("2"));
+        assert!(result.contains("3"));
+    }
+
+    #[test]
+    fn test_value_to_string_object() {
+        let v = json!({"a": 1});
+        let result = value_to_string(&v);
+        assert!(result.contains("a") || result.contains("1"));
+    }
+
+    #[test]
+    fn test_format_timestamp_millis() {
+        // 2024-01-01 00:00:00 UTC in millis
+        let ts = 1704067200000u64;
+        let result = format_timestamp(ts, true);
+        assert!(result.contains("2024") || result.contains("01-01"));
+    }
+
+    #[test]
+    fn test_format_timestamp_seconds() {
+        // 2024-01-01 00:00:00 UTC in seconds
+        let ts = 1704067200u64;
+        let result = format_timestamp(ts, false);
+        assert!(result.contains("2024") || result.contains("01-01"));
+    }
+
+    #[test]
+    fn test_format_timestamp_invalid() {
+        let result = format_timestamp(0, false);
+        // Timestamp 0 is valid (1970-01-01), so it returns a formatted date
+        assert!(result.contains("1970") || result.contains("01-01"));
+    }
+
+    #[test]
+    fn test_extract_pairs() {
+        let data = json!({
+            "btcidr": {
+                "traded_currency": "btc",
+                "base_currency": "idr",
+                "symbol": "BTC/IDR"
+            },
+            "ethidr": {
+                "traded_currency": "eth",
+                "base_currency": "idr",
+                "symbol": "ETH/IDR"
+            }
+        });
+        
+        let pairs = extract_pairs(&data);
+        assert_eq!(pairs.len(), 2);
+        assert!(pairs[0].0 == "btcidr" || pairs[0].0 == "ethidr");
+        assert!(pairs.iter().any(|(k, _)| k == "btcidr"));
+        assert!(pairs.iter().any(|(k, _)| k == "ethidr"));
+    }
+
+    #[test]
+    fn test_extract_pairs_with_base_currency() {
+        let data = json!({
+            "btcidr": {
+                "tradedCurrency": "btc",
+                "baseCurrency": "idr"
+            }
+        });
+        
+        let pairs = extract_pairs(&data);
+        assert_eq!(pairs.len(), 1);
+        assert!(pairs[0].1.contains("btc"));
+        assert!(pairs[0].1.contains("idr"));
+    }
+
+    #[test]
+    fn test_extract_pairs_empty() {
+        let data = json!({});
+        let pairs = extract_pairs(&data);
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn test_extract_pairs_not_object() {
+        let data = json!([]);
+        let pairs = extract_pairs(&data);
+        assert!(pairs.is_empty());
+    }
+}

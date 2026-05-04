@@ -354,3 +354,98 @@ fn priv_get<'a>(val: &'a serde_json::Value, keys: &[&str]) -> &'a serde_json::Va
     }
     &serde_json::Value::Null
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn test_priv_get_existing_key() {
+        let val = json!({"name": "Alice", "age": 30});
+        let result = priv_get(&val, &["name"]);
+        assert_eq!(result, &json!("Alice"));
+    }
+
+    #[test]
+    fn test_priv_get_first_key_exists() {
+        let val = json!({"a": 1, "b": 2});
+        let result = priv_get(&val, &["a", "b"]);
+        assert_eq!(result, &json!(1));
+    }
+
+    #[test]
+    fn test_priv_get_second_key_exists() {
+        let val = json!({"a": null, "b": "2"});
+        let result = priv_get(&val, &["a", "b"]);
+        // priv_get returns the first key that exists in the JSON, even if null
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_priv_get_no_keys_exist() {
+        let val = json!({"a": 1});
+        let result = priv_get(&val, &["x", "y", "z"]);
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_priv_get_with_json_null() {
+        let val = json!(null);
+        let result = priv_get(&val, &["key"]);
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_priv_get_empty_keys() {
+        let val = json!({"a": 1});
+        let result = priv_get(&val, &[]);
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_priv_get_nested_value() {
+        let val = json!({"data": {"name": "Bob"}});
+        let result = priv_get(&val, &["data"]);
+        assert_eq!(result, &json!({"name": "Bob"}));
+    }
+
+    #[test]
+    fn test_account_command_variants() {
+        let _cmd1 = AccountCommand::Info;
+        let _cmd2 = AccountCommand::Balance;
+        let _cmd3 = AccountCommand::OpenOrders { pair: Some("btc_idr".into()) };
+        let _cmd4 = AccountCommand::OrderHistory { symbol: "btc_idr".into(), limit: 100 };
+        let _cmd5 = AccountCommand::TradeHistory { symbol: "btc_idr".into(), limit: 100 };
+        let _cmd6 = AccountCommand::TransHistory;
+        let _cmd7 = AccountCommand::GetOrder { order_id: 123, pair: "btc_idr".into() };
+    }
+
+    #[test]
+    fn test_priv_get_with_null_first() {
+        let val = json!({"first": null, "second": "value"});
+        let result = priv_get(&val, &["first", "second"]);
+        // priv_get returns the first key that exists, even if it's null
+        assert_eq!(result, &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_priv_get_array_value() {
+        let val = json!({"arr": [1, 2, 3]});
+        let result = priv_get(&val, &["arr"]);
+        assert_eq!(result, &json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn test_priv_get_number_value() {
+        let val = json!({"num": 42.5});
+        let result = priv_get(&val, &["num"]);
+        assert_eq!(result, &json!(42.5));
+    }
+
+    #[test]
+    fn test_priv_get_bool_value() {
+        let val = json!({"flag": true});
+        let result = priv_get(&val, &["flag"]);
+        assert_eq!(result, &json!(true));
+    }
+}

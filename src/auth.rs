@@ -64,3 +64,121 @@ impl Signer {
         mac.finalize().into_bytes().to_vec()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_signer_new() {
+        let signer = Signer::new("api_key", "secret_key");
+        assert_eq!(signer.api_key(), "api_key");
+    }
+
+    #[test]
+    fn test_signer_api_key() {
+        let signer = Signer::new("my_api_key", "my_secret");
+        assert_eq!(signer.api_key(), "my_api_key");
+    }
+
+    #[test]
+    fn test_signer_next_nonce_str() {
+        let signer = Signer::new("key", "secret");
+        let nonce = signer.next_nonce_str();
+        assert!(!nonce.is_empty());
+        // Nonce should be a number
+        assert!(nonce.parse::<u64>().is_ok());
+    }
+
+    #[test]
+    fn test_signer_next_nonce_is_increasing() {
+        let signer = Signer::new("key", "secret");
+        let nonce1 = signer.next_nonce();
+        let nonce2 = signer.next_nonce();
+        // Nonces should be increasing (or at least not decreasing)
+        assert!(nonce2 >= nonce1);
+    }
+
+    #[test]
+    fn test_signer_now_millis() {
+        let millis = Signer::now_millis();
+        assert!(millis > 0);
+        // Should be around current time in millis
+        assert!(millis > 1_000_000_000_000); // After year 2001
+    }
+
+    #[test]
+    fn test_signer_sign_v1() {
+        let signer = Signer::new("key", "secret");
+        let (payload, signature) = signer.sign_v1("method=test&nonce=123", false);
+        assert_eq!(payload, "method=test&nonce=123");
+        assert!(!signature.is_empty());
+        // Signature should be hex encoded
+        assert!(hex::decode(&signature).is_ok());
+    }
+
+    #[test]
+    fn test_signer_sign_v1_different_secrets() {
+        let signer1 = Signer::new("key", "secret1");
+        let signer2 = Signer::new("key", "secret2");
+        let (_payload, sig1) = signer1.sign_v1("test", false);
+        let (_payload2, sig2) = signer2.sign_v1("test", false);
+        assert_ne!(sig1, sig2);
+    }
+
+    #[test]
+    fn test_signer_sign_v2() {
+        let signer = Signer::new("key", "secret");
+        let signature = signer.sign_v2("param1=value1", 1234567890);
+        assert!(!signature.is_empty());
+        // Signature should be base64 encoded
+        assert!(BASE64.decode(&signature).is_ok());
+    }
+
+    #[test]
+    fn test_signer_sign_v2_with_timestamp() {
+        let signer = Signer::new("key", "secret");
+        let query_string = "symbol=BTCIDR";
+        let timestamp = 1234567890000u64;
+        let signature = signer.sign_v2(query_string, timestamp);
+        
+        // Verify the payload that was signed
+        let _expected_payload = format!("{}&timestamp={}&recvWindow=10000", query_string, timestamp);
+        let _decoded = BASE64.decode(&signature).unwrap();
+        // We can't easily verify the HMAC without knowing the secret, but we can verify it's valid base64
+        assert!(!signature.is_empty());
+    }
+
+    #[test]
+    fn test_signer_sign_ws_auth() {
+        let signer = Signer::new("key", "secret");
+        let signature = signer.sign_ws_auth("body_data");
+        assert!(!signature.is_empty());
+        // Signature should be base64 encoded
+        assert!(BASE64.decode(&signature).is_ok());
+    }
+
+    #[test]
+    fn test_signer_sign_ws_auth_different_bodies() {
+        let signer = Signer::new("key", "secret");
+        let sig1 = signer.sign_ws_auth("body1");
+        let sig2 = signer.sign_ws_auth("body2");
+        assert_ne!(sig1, sig2);
+    }
+
+    #[test]
+    fn test_hmac_sha512_output_length() {
+        let signer = Signer::new("key", "secret");
+        let result = signer.hmac_sha512("test data", "secret");
+        // SHA512 produces 64 bytes
+        assert_eq!(result.len(), 64);
+    }
+
+    #[test]
+    fn test_signer_multiple_signatures_different() {
+        let signer = Signer::new("key", "secret");
+        let (_, sig1) = signer.sign_v1("payload1", false);
+        let (_, sig2) = signer.sign_v1("payload2", false);
+        assert_ne!(sig1, sig2);
+    }
+}

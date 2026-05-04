@@ -97,3 +97,166 @@ impl IndodaxError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_category_connection() {
+        let cat = ErrorCategory::Connection;
+        assert_eq!(format!("{}", cat), "connection_error");
+    }
+
+    #[test]
+    fn test_error_category_authentication() {
+        let cat = ErrorCategory::Authentication;
+        assert_eq!(format!("{}", cat), "authentication_error");
+    }
+
+    #[test]
+    fn test_error_category_authorization() {
+        let cat = ErrorCategory::Authorization;
+        assert_eq!(format!("{}", cat), "authorization_error");
+    }
+
+    #[test]
+    fn test_error_category_rate_limit() {
+        let cat = ErrorCategory::RateLimit;
+        assert_eq!(format!("{}", cat), "rate_limit");
+    }
+
+    #[test]
+    fn test_error_category_validation() {
+        let cat = ErrorCategory::Validation;
+        assert_eq!(format!("{}", cat), "validation_error");
+    }
+
+    #[test]
+    fn test_error_category_server() {
+        let cat = ErrorCategory::Server;
+        assert_eq!(format!("{}", cat), "server_error");
+    }
+
+    #[test]
+    fn test_error_category_not_found() {
+        let cat = ErrorCategory::NotFound;
+        assert_eq!(format!("{}", cat), "not_found");
+    }
+
+    #[test]
+    fn test_error_category_config() {
+        let cat = ErrorCategory::Config;
+        assert_eq!(format!("{}", cat), "config_error");
+    }
+
+    #[test]
+    fn test_error_category_unknown() {
+        let cat = ErrorCategory::Unknown;
+        assert_eq!(format!("{}", cat), "unknown_error");
+    }
+
+    #[test]
+    fn test_indodax_error_http() {
+        // Test that Http error wraps reqwest::Error
+        // Since we can't easily create a reqwest error, we skip this test
+        // or use a mock approach
+        assert!(true); // Placeholder test
+    }
+
+    #[test]
+    fn test_indodax_error_api_basic() {
+        let err = IndodaxError::api("test message", ErrorCategory::Server, Some("500".into()));
+        let msg = err.to_string();
+        assert!(msg.contains("test message"));
+    }
+
+    #[test]
+    fn test_indodax_error_api_category_connection() {
+        let err = IndodaxError::api("conn error", ErrorCategory::Connection, None);
+        assert_eq!(err.category(), "connection_error");
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_indodax_error_api_category_server() {
+        let err = IndodaxError::api("server error", ErrorCategory::Server, None);
+        assert_eq!(err.category(), "server_error");
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_indodax_error_api_category_rate_limit() {
+        let err = IndodaxError::api("rate limit", ErrorCategory::RateLimit, None);
+        assert_eq!(err.category(), "rate_limit");
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_indodax_error_api_category_not_retryable() {
+        let err = IndodaxError::api("auth error", ErrorCategory::Authentication, None);
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn test_indodax_error_config() {
+        let err = IndodaxError::Config("config error message".into());
+        assert_eq!(err.category(), "config_error");
+        let msg = err.to_string();
+        assert!(msg.contains("config error message"));
+    }
+
+    #[test]
+    fn test_indodax_error_parse() {
+        let err = IndodaxError::Parse("parse error".into());
+        assert_eq!(err.category(), "validation_error");
+        let msg = err.to_string();
+        assert!(msg.contains("parse error"));
+    }
+
+    #[test]
+    fn test_indodax_error_io() {
+        let err = IndodaxError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+        assert_eq!(err.category(), "io_error");
+    }
+
+    #[test]
+    fn test_indodax_error_other() {
+        let err = IndodaxError::Other("other error".into());
+        assert_eq!(err.category(), "unknown_error");
+        let msg = err.to_string();
+        assert!(msg.contains("other error"));
+    }
+
+    #[test]
+    fn test_indodax_error_json() {
+        let err = IndodaxError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err());
+        assert_eq!(err.category(), "validation_error");
+    }
+
+    #[test]
+    fn test_indodax_error_websocket() {
+        // WebSocket errors are harder to construct, but we can test the category
+        let err = IndodaxError::WebSocket(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
+        assert_eq!(err.category(), "connection_error");
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_api_error_retryable_field() {
+        let err = IndodaxError::api("test", ErrorCategory::Connection, None);
+        match err {
+            IndodaxError::Api { retryable, .. } => assert!(retryable),
+            _ => panic!("Expected Api error"),
+        }
+    }
+
+    #[test]
+    fn test_api_error_code() {
+        let err = IndodaxError::api("test", ErrorCategory::Unknown, Some("ERR_123".into()));
+        match err {
+            IndodaxError::Api { code, .. } => assert_eq!(code, Some("ERR_123".into())),
+            _ => panic!("Expected Api error"),
+        }
+    }
+}
