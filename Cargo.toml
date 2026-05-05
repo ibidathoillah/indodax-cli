@@ -40,3 +40,6 @@ indicatif = "0.17"
 axum = "0.8"
 tower-http = { version = "0.6", features = ["trace"] }
 tempfile = "3"
+
+[dev-dependencies]
+serial_test = "3.4.0"

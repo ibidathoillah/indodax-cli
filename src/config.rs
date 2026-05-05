@@ -154,6 +154,7 @@ impl IndodaxConfig {
 mod tests {
     use super::*;
     use std::env;
+    use serial_test::serial;
 
     #[test]
     fn test_secret_value_new() {
@@ -237,6 +238,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_indodax_config_save_and_load() {
         let config = IndodaxConfig {
             api_key: Some(SecretValue::new("test_key")),
@@ -309,6 +311,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_resolve_credentials_env_variable() {
         // Clean up any existing env vars first
         env::remove_var("INDODAX_API_KEY");
@@ -330,6 +333,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_resolve_credentials_env_overrides_config() {
         // Clean up any existing env vars first
         env::remove_var("INDODAX_API_KEY");
@@ -371,6 +375,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_resolve_credentials_empty_env_var() {
         // Clean up any existing env vars first
         env::remove_var("INDODAX_API_KEY");
