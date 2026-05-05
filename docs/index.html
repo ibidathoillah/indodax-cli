@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indodax CLI — Unofficial Terminal Interface for Indodax</title>
+    <meta name="description" content="A fast, feature-rich command-line interface for the Indodax cryptocurrency exchange. Trade, track markets, and manage your account from the terminal.">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --bg-elevated: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-dim: #1f6feb;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+            --code-bg: #21262d;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header / Hero */
+        header {
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-elevated);
+            padding: 64px 0 48px;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 4px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 48px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 12px;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            font-size: 20px;
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 32px;
+        }
+
+        .cta-row {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .btn-primary {
+            background: var(--accent-dim);
+            color: #fff;
+            border-color: var(--accent-dim);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent);
+            text-decoration: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--code-bg);
+            text-decoration: none;
+        }
+
+        /* Terminal window */
+        .terminal {
+            max-width: 720px;
+            margin: 40px auto 0;
+            background: #000;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            text-align: left;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        .terminal-header {
+            background: var(--code-bg);
+            padding: 10px 16px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+        .dot-red { background: var(--danger); }
+        .dot-yellow { background: var(--warning); }
+        .dot-green { background: var(--success); }
+
+        .terminal-body {
+            padding: 20px 24px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 14px;
+            line-height: 1.7;
+            color: #e6edf3;
+        }
+
+        .prompt { color: var(--success); }
+        .cmd { color: #e6edf3; }
+        .comment { color: var(--text-muted); }
+        .output { color: #7d8590; }
+        .highlight { color: var(--accent); }
+
+        /* Sections */
+        section {
+            padding: 64px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        section:last-of-type {
+            border-bottom: none;
+        }
+
+        h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 32px 0 12px;
+            color: var(--text);
+        }
+
+        p {
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        /* Features grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+            margin-top: 32px;
+        }
+
+        .feature {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .feature:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent-dim);
+        }
+
+        .feature-icon {
+            font-size: 28px;
+            margin-bottom: 12px;
+        }
+
+        .feature h3 {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+
+        .feature p {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Code blocks */
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            overflow-x: auto;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 13px;
+            margin: 16px 0;
+        }
+
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 13px;
+            background: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--bg-elevated);
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        td {
+            color: var(--text-muted);
+        }
+
+        tr:nth-child(even) {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 48px 0;
+            color: var(--text-muted);
+            font-size: 14px;
+            border-top: 1px solid var(--border);
+        }
+
+        footer a {
+            color: var(--text-muted);
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            h1 { font-size: 32px; }
+            .subtitle { font-size: 16px; }
+            .terminal { margin: 24px 12px 0; }
+            section { padding: 40px 0; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <div class="badge">Unofficial CLI</div>
+        <h1>Indodax CLI</h1>
+        <p class="subtitle">Trade, track markets, and manage your Indodax account from the terminal. Built with Rust for speed and reliability.</p>
+        <div class="cta-row">
+            <a class="btn btn-primary" href="https://github.com/ibidathoillah/indodax-cli#readme">View on GitHub</a>
+            <a class="btn btn-secondary" href="#installation">Installation</a>
+        </div>
+
+        <div class="terminal">
+            <div class="terminal-header">
+                <span class="dot dot-red"></span>
+                <span class="dot dot-yellow"></span>
+                <span class="dot dot-green"></span>
+            </div>
+            <div class="terminal-body">
+                <span class="prompt">$</span> <span class="cmd">indodax market ticker btc_idr</span><br>
+                <span class="output">+----------+-------------+-------------+-----------+</span><br>
+                <span class="output">| Pair     | Last Price  | High (24h)  | Low (24h) |</span><br>
+                <span class="output">+----------+-------------+-------------+-----------+</span><br>
+                <span class="output">| BTC/IDR  | 1,050,000,000 | 1,080,000,000 | 1,020,000,000 |</span><br>
+                <span class="output">+----------+-------------+-------------+-----------+</span><br><br>
+                <span class="prompt">$</span> <span class="cmd">indodax -o json account balance</span><br>
+                <span class="highlight">{ "idr": 250000000, "btc": 0.42, "eth": 3.5 }</span><br><br>
+                <span class="prompt">$</span> <span class="cmd">indodax ws ticker btc_idr</span><br>
+                <span class="comment"># Streaming real-time ticker data...</span>
+            </div>
+        </div>
+    </div>
+</header>
+
+<section id="features">
+    <div class="container">
+        <h2>⚡ Features</h2>
+        <p>Everything you need to interact with Indodax — without leaving your terminal.</p>
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🔥</div>
+                <h3>Real-Time Streams</h3>
+                <p>WebSocket support for live ticker, trades, order book, and private order updates.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📊</div>
+                <h3>Market Data</h3>
+                <p>OHLCV, order books, tickers, summaries, and price increments at your fingertips.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">💰</div>
+                <h3>Account &amp; Trading</h3>
+                <p>Check balances, place orders, view history, and manage your portfolio.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🧪</div>
+                <h3>Paper Trading</h3>
+                <p>Simulated trading environment with virtual balances to test strategies risk-free.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔐</div>
+                <h3>Secure Auth</h3>
+                <p>HMAC-SHA512 signing with 0600-permission config files and env variable support.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🖥️</div>
+                <h3>Interactive Shell</h3>
+                <p>Built-in REPL for exploratory usage and quick command execution.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="installation">
+    <div class="container">
+        <h2>📦 Installation</h2>
+        <p>Requires <a href="https://rustup.rs/">Rust</a>. Install from source in seconds:</p>
+        <pre><code>git clone https://github.com/ibidathoillah/indodax-cli.git
+cd indodax-cli
+cargo install --path .</code></pre>
+        <p>Or build locally:</p>
+        <pre><code>cargo build --release
+./target/release/indodax --help</code></pre>
+    </div>
+</section>
+
+<section id="quickstart">
+    <div class="container">
+        <h2>🚀 Quick Start</h2>
+
+        <h3>1. Set API Credentials</h3>
+        <pre><code>indodax auth set --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET</code></pre>
+        <p>Or use environment variables for CI/CD:</p>
+        <pre><code>export INDODAX_API_KEY=your_api_key
+export INDODAX_API_SECRET=your_api_secret</code></pre>
+
+        <h3>2. Check the Market</h3>
+        <pre><code>indodax market ticker btc_idr
+indodax market orderbook btc_idr</code></pre>
+
+        <h3>3. Start the Interactive Shell</h3>
+        <pre><code>indodax shell</code></pre>
+    </div>
+</section>
+
+<section id="commands">
+    <div class="container">
+        <h2>📖 Commands</h2>
+
+        <h3>Market Data (Public API)</h3>
+        <table>
+            <tr><th>Command</th><th>Description</th></tr>
+            <tr><td><code>market server-time</code></td><td>Get server time</td></tr>
+            <tr><td><code>market pairs</code></td><td>List available trading pairs</td></tr>
+            <tr><td><code>market ticker &lt;pair&gt;</code></td><td>Get ticker for a pair</td></tr>
+            <tr><td><code>market ticker-all</code></td><td>Get tickers for all pairs</td></tr>
+            <tr><td><code>market summaries</code></td><td>Get 24h and 7d summaries</td></tr>
+            <tr><td><code>market orderbook &lt;pair&gt;</code></td><td>Get order book</td></tr>
+            <tr><td><code>market trades &lt;pair&gt;</code></td><td>Get recent trades</td></tr>
+            <tr><td><code>market ohlc</code></td><td>Get OHLCV candle data</td></tr>
+        </table>
+
+        <h3>Account (Private API)</h3>
+        <table>
+            <tr><th>Command</th><th>Description</th></tr>
+            <tr><td><code>account info</code></td><td>Get account information</td></tr>
+            <tr><td><code>account balance</code></td><td>Show wallet balances</td></tr>
+            <tr><td><code>account open-orders</code></td><td>List open orders</td></tr>
+            <tr><td><code>account order-history</code></td><td>Get order history (v2 API)</td></tr>
+            <tr><td><code>account trade-history</code></td><td>Get trade fill history (v2 API)</td></tr>
+        </table>
+
+        <h3>Trading (Private API)</h3>
+        <table>
+            <tr><th>Command</th><th>Description</th></tr>
+            <tr><td><code>trade buy</code></td><td>Place a buy order</td></tr>
+            <tr><td><code>trade sell</code></td><td>Place a sell order</td></tr>
+            <tr><td><code>trade cancel</code></td><td>Cancel an order by ID</td></tr>
+            <tr><td><code>trade countdown</code></td><td>Deadman switch countdown</td></tr>
+        </table>
+
+        <h3>WebSocket Streaming</h3>
+        <table>
+            <tr><th>Command</th><th>Description</th></tr>
+            <tr><td><code>ws ticker &lt;pair&gt;</code></td><td>Stream real-time ticker</td></tr>
+            <tr><td><code>ws trades &lt;pair&gt;</code></td><td>Stream real-time trades</td></tr>
+            <tr><td><code>ws book &lt;pair&gt;</code></td><td>Stream real-time order book</td></tr>
+            <tr><td><code>ws orders</code></td><td>Stream private order updates</td></tr>
+        </table>
+    </div>
+</section>
+
+<section id="output">
+    <div class="container">
+        <h2>📝 Output Formats</h2>
+        <p>Human-friendly tables by default, or JSON for automation and scripting.</p>
+        <pre><code># Table mode (default)
+indodax market ticker btc_idr
+
+# JSON mode
+indodax -o json market ticker btc_idr</code></pre>
+    </div>
+</section>
+
+<section id="paper">
+    <div class="container">
+        <h2>🧪 Paper Trading</h2>
+        <p>Test strategies with virtual balances before risking real funds.</p>
+        <pre><code># Initialize with default balances (100M IDR, 1 BTC)
+indodax paper init
+
+# Place simulated orders
+indodax paper buy --pair btc_idr --price 500000000 --amount 0.1
+indodax paper sell --pair btc_idr --price 600000000 --amount 0.05
+
+# Check status
+indodax paper balance
+indodax paper status</code></pre>
+    </div>
+</section>
+
+<section id="security">
+    <div class="container">
+        <h2>🔐 Security</h2>
+        <p>Indodax uses HMAC-SHA512 signing. Credentials are resolved in priority order:</p>
+        <ol>
+            <li>CLI flags (<code>--api-key</code>, <code>--api-secret</code>)</li>
+            <li>Environment variables (<code>INDODAX_API_KEY</code>, <code>INDODAX_API_SECRET</code>)</li>
+            <li>Config file (<code>~/.config/indodax/config.toml</code> with <code>0600</code> permissions)</li>
+        </ol>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <p>Built with Rust. Not affiliated with or endorsed by Indodax.</p>
+        <p><a href="https://github.com/ibidathoillah/indodax-cli">GitHub</a> · MIT License</p>
+    </div>
+</footer>
+
+</body>
+</html>

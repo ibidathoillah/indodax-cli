@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "A command-line interface for the Indodax cryptocurrency exchange"
 license = "MIT"
-repository = "https://github.com/btcid/indodax-cli"
+repository = "https://github.com/ibidathoillah/indodax-cli"
 
 [[bin]]
 name = "indodax"
