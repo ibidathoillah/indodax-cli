@@ -178,7 +178,7 @@ fn paper_balance(state: &PaperState) -> Result<CommandOutput> {
     Ok(CommandOutput::new(data, headers, rows).with_addendum("[PAPER]"))
 }
 
-fn place_paper_order(
+pub fn place_paper_order(
     state: &mut PaperState,
     pair: &str,
     side: &str,
@@ -431,6 +431,76 @@ fn paper_status(state: &PaperState) -> Result<CommandOutput> {
     });
 
     Ok(CommandOutput::new(data, headers, rows).with_addendum("[PAPER]"))
+}
+
+// ──────────────────────────────────────────────
+// Public helpers for MCP tools
+// ──────────────────────────────────────────────
+
+/// Cancel a paper order by ID (public wrapper for MCP tools).
+pub fn cancel_paper_order(state: &mut PaperState, order_id: u64) -> Result<()> {
+    if let Some(order) = state.orders.iter_mut().find(|o| o.id == order_id) {
+        if order.status == "filled" || order.status == "cancelled" {
+            return Err(anyhow::anyhow!(
+                "[PAPER] Order {} already {}",
+                order_id, order.status
+            ));
+        }
+
+        let base = order.pair.split('_').next().unwrap_or("btc");
+        let quote = order.pair.split('_').last().unwrap_or("idr");
+        let refund = order.price * order.remaining;
+        if order.side == "buy" {
+            *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
+        } else {
+            *state.balances.entry(base.to_string()).or_insert(0.0) += order.remaining;
+        }
+        order.status = "cancelled".to_string();
+        order.remaining = 0.0;
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("[PAPER] Order {} not found", order_id))
+    }
+}
+
+/// Cancel all paper orders that can be cancelled (public wrapper for MCP tools).
+/// Returns the number of cancelled orders.
+pub fn cancel_all_paper_orders(state: &mut PaperState) -> usize {
+    let active_ids: Vec<u64> = state
+        .orders
+        .iter()
+        .filter(|o| o.status != "filled" && o.status != "cancelled")
+        .map(|o| o.id)
+        .collect();
+
+    let count = active_ids.len();
+    for id in &active_ids {
+        if let Some(order) = state.orders.iter_mut().find(|o| o.id == *id) {
+            let base = order.pair.split('_').next().unwrap_or("btc");
+            let quote = order.pair.split('_').last().unwrap_or("idr");
+            let refund = order.price * order.remaining;
+            if order.side == "buy" {
+                *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
+            } else {
+                *state.balances.entry(base.to_string()).or_insert(0.0) += order.remaining;
+            }
+            order.status = "cancelled".to_string();
+            order.remaining = 0.0;
+        }
+    }
+    count
+}
+
+/// Initialize paper trading state (public wrapper for MCP tools).
+pub async fn paper_init_cmd(_config: &IndodaxConfig) -> Option<CommandOutput> {
+    Some(CommandOutput::json(serde_json::json!({
+        "mode": "paper",
+        "status": "initialized",
+        "default_balances": {
+            "idr": DEFAULT_BALANCE_IDR,
+            "btc": DEFAULT_BALANCE_BTC,
+        }
+    })).with_addendum("[PAPER] Trading initialized with virtual balances"))
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@ pub mod client;
 pub mod commands;
 pub mod config;
 pub mod errors;
+pub mod mcp;
 pub mod output;
 pub mod telemetry;
 
@@ -84,6 +85,14 @@ pub enum Command {
 
     #[command(name = "shell", about = "Start interactive REPL")]
     Shell,
+
+    #[command(name = "mcp", about = "Start MCP stdio server for AI agent integration")]
+    Mcp {
+        #[arg(short = 's', long = "groups", default_value = "market,account,paper", help = "Comma-separated service groups: market, account, trade, funding, paper, auth")]
+        groups: String,
+        #[arg(long, help = "Allow dangerous operations (trade, funding) without acknowledged flag")]
+        allow_dangerous: bool,
+    },
 }
 
 pub async fn dispatch(
@@ -99,7 +108,7 @@ pub async fn dispatch(
         Command::Ws { cmd } => commands::websocket::execute(client, &cmd).await?,
         Command::Paper { cmd } => commands::paper::execute(config, &cmd).await?,
         Command::Auth { cmd } => commands::auth::execute(client, config, &cmd).await?,
-        Command::Setup | Command::Shell => {
+        Command::Setup | Command::Shell | Command::Mcp { .. } => {
             return Err(anyhow::anyhow!("This command is handled separately"));
         }
     };
@@ -171,6 +180,7 @@ mod tests {
         let _cmd7 = Command::Auth { cmd: crate::commands::auth::AuthCommand::Show };
         let _cmd8 = Command::Setup;
         let _cmd9 = Command::Shell;
+        let _cmd10 = Command::Mcp { groups: "market,paper".into(), allow_dangerous: false };
     }
 
     #[test]
