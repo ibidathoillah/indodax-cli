@@ -4,6 +4,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha512;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Debug)]
 pub struct Signer {
     api_key: String,
     secret_key: String,

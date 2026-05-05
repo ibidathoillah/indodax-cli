@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Indodax CLI — Unofficial Terminal Interface for Indodax</title>
-    <meta name="description" content="A fast, feature-rich command-line interface for the Indodax cryptocurrency exchange. Trade, track markets, and manage your account from the terminal.">
+    <meta name="description" content="A fast, feature-rich command-line interface for the Indodax cryptocurrency exchange. Trade, track markets, manage your account, and integrate with AI agents via MCP.">
     <style>
         :root {
             --bg: #0d1117;
@@ -196,6 +196,27 @@
             margin-bottom: 16px;
         }
 
+        /* Warning callout */
+        .warning {
+            background: rgba(210, 153, 34, 0.1);
+            border: 1px solid var(--warning);
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin: 20px 0;
+        }
+
+        .warning strong {
+            color: var(--warning);
+        }
+
+        .warning p {
+            margin-bottom: 8px;
+        }
+
+        .warning p:last-child {
+            margin-bottom: 0;
+        }
+
         /* Features grid */
         .features {
             display: grid;
@@ -317,10 +338,11 @@
     <div class="container">
         <div class="badge">Unofficial CLI</div>
         <h1>Indodax CLI</h1>
-        <p class="subtitle">Trade, track markets, and manage your Indodax account from the terminal. Built with Rust for speed and reliability.</p>
+        <p class="subtitle">Trade, track markets, and manage your Indodax account from the terminal. Built-in MCP server for AI agent integration.</p>
         <div class="cta-row">
             <a class="btn btn-primary" href="https://github.com/ibidathoillah/indodax-cli#readme">View on GitHub</a>
             <a class="btn btn-secondary" href="#installation">Installation</a>
+            <a class="btn btn-secondary" href="#mcp">MCP Server</a>
         </div>
 
         <div class="terminal">
@@ -338,8 +360,8 @@
                 <span class="output">+----------+-------------+-------------+-----------+</span><br><br>
                 <span class="prompt">$</span> <span class="cmd">indodax -o json account balance</span><br>
                 <span class="highlight">{ "idr": 250000000, "btc": 0.42, "eth": 3.5 }</span><br><br>
-                <span class="prompt">$</span> <span class="cmd">indodax ws ticker btc_idr</span><br>
-                <span class="comment"># Streaming real-time ticker data...</span>
+                <span class="prompt">$</span> <span class="cmd">indodax mcp -s market,paper</span><br>
+                <span class="comment"># MCP server started — connect your AI agent</span>
             </div>
         </div>
     </div>
@@ -350,6 +372,11 @@
         <h2>⚡ Features</h2>
         <p>Everything you need to interact with Indodax — without leaving your terminal.</p>
         <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🤖</div>
+                <h3>AI Agent Integration</h3>
+                <p>Built-in MCP server for Claude, ChatGPT, Cursor, VS Code, Gemini CLI, and any MCP-compatible agent.</p>
+            </div>
             <div class="feature">
                 <div class="feature-icon">🔥</div>
                 <h3>Real-Time Streams</h3>
@@ -375,11 +402,6 @@
                 <h3>Secure Auth</h3>
                 <p>HMAC-SHA512 signing with 0600-permission config files and env variable support.</p>
             </div>
-            <div class="feature">
-                <div class="feature-icon">🖥️</div>
-                <h3>Interactive Shell</h3>
-                <p>Built-in REPL for exploratory usage and quick command execution.</p>
-            </div>
         </div>
     </div>
 </section>
@@ -401,18 +423,80 @@ cargo install --path .</code></pre>
     <div class="container">
         <h2>🚀 Quick Start</h2>
 
-        <h3>1. Set API Credentials</h3>
+        <h3>1. Check Market Data <span style="color: var(--success);">(No API Key Needed)</span></h3>
+        <pre><code>indodax market server-time
+indodax market ticker btc_idr
+indodax market orderbook btcidr
+indodax market pairs</code></pre>
+
+        <h3>2. Set API Credentials (For Account &amp; Trading)</h3>
         <pre><code>indodax auth set --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET</code></pre>
         <p>Or use environment variables for CI/CD:</p>
         <pre><code>export INDODAX_API_KEY=your_api_key
 export INDODAX_API_SECRET=your_api_secret</code></pre>
 
-        <h3>2. Check the Market</h3>
-        <pre><code>indodax market ticker btc_idr
-indodax market orderbook btc_idr</code></pre>
+        <h3>3. Check Your Account</h3>
+        <pre><code>indodax account balance
+indodax account info</code></pre>
 
-        <h3>3. Start the Interactive Shell</h3>
+        <h3>4. Start the Interactive Shell</h3>
         <pre><code>indodax shell</code></pre>
+    </div>
+</section>
+
+<section id="mcp">
+    <div class="container">
+        <h2>🤖 MCP Server</h2>
+        <p>indodax-cli includes a built-in <strong>Model Context Protocol (MCP)</strong> server over stdio. No subprocess wrappers needed.</p>
+        <p>MCP tool calls run through the same Rust code path as CLI commands and inherit the same error handling, rate-limit behavior, and security model.</p>
+
+        <div class="warning">
+            <strong>⚠️ Warning</strong>
+            <p>MCP is local-first and designed for your own machine. Any AI agent connected to this MCP server uses the same configured Indodax account and API key permissions. Do <strong>not</strong> expose, tunnel, or share this server outside systems you control. Always use <code>https://</code> and <code>wss://</code> endpoints. Treat this integration as alpha and use <strong>least-privilege API keys</strong>.</p>
+        </div>
+
+        <h3>Usage</h3>
+        <pre><code>indodax mcp                           # default: market, account, paper (read-only)
+indodax mcp -s all                    # all services, dangerous calls require acknowledged=true
+indodax mcp -s all --allow-dangerous  # all services, no per-call confirmation
+indodax mcp -s market,trade,paper     # specific service groups</code></pre>
+
+        <h3>Service Groups</h3>
+        <table>
+            <tr><th>Group</th><th>Tools</th><th>Auth</th><th>Dangerous</th></tr>
+            <tr><td><code>market</code></td><td>Server time, ticker, pairs, orderbook, trades, OHLC, price increments</td><td>No</td><td>No</td></tr>
+            <tr><td><code>account</code></td><td>Balance, open orders, order history, trade history, account info</td><td>Yes</td><td>No</td></tr>
+            <tr><td><code>trade</code></td><td>Buy, sell, cancel orders</td><td>Yes</td><td><strong>Yes</strong></td></tr>
+            <tr><td><code>funding</code></td><td>Withdraw fees, withdraw crypto</td><td>Yes</td><td><strong>Yes</strong></td></tr>
+            <tr><td><code>paper</code></td><td>Paper trading init, balance, buy, sell, orders, cancel, history, status</td><td>No</td><td>No</td></tr>
+            <tr><td><code>auth</code></td><td>Show config, test credentials</td><td>Varies</td><td>No</td></tr>
+        </table>
+
+        <h3>Configure Your MCP Client</h3>
+        <p>Add to your MCP client configuration:</p>
+
+        <p><strong>Claude Desktop</strong> (<code>claude_desktop_config.json</code>):</p>
+        <pre><code>{
+  "mcpServers": {
+    "indodax": {
+      "command": "indodax",
+      "args": ["mcp", "-s", "all"]
+    }
+  }
+}</code></pre>
+
+        <p><strong>VS Code / Cursor</strong> (<code>.vscode/mcp.json</code> or Cursor MCP settings):</p>
+        <pre><code>{
+  "mcpServers": {
+    "indodax": {
+      "command": "indodax",
+      "args": ["mcp", "-s", "all"]
+    }
+  }
+}</code></pre>
+
+        <p><strong>Gemini CLI</strong>:</p>
+        <pre><code>gemini extensions install https://github.com/ibidathoillah/indodax-cli</code></pre>
     </div>
 </section>
 
@@ -466,12 +550,19 @@ indodax market orderbook btc_idr</code></pre>
 <section id="output">
     <div class="container">
         <h2>📝 Output Formats</h2>
-        <p>Human-friendly tables by default, or JSON for automation and scripting.</p>
+        <p>Human-friendly tables by default, or JSON for automation and AI agent consumption.</p>
         <pre><code># Table mode (default)
 indodax market ticker btc_idr
 
 # JSON mode
 indodax -o json market ticker btc_idr</code></pre>
+        <p>When an error occurs in JSON mode, a structured error envelope is returned:</p>
+        <pre><code>{
+  "error": true,
+  "message": "Invalid trading pair: xxx_idr",
+  "error_type": "invalid_pair",
+  "retryable": false
+}</code></pre>
     </div>
 </section>
 

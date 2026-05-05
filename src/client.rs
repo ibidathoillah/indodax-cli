@@ -11,6 +11,7 @@ const PRIVATE_V1_URL: &str = "https://indodax.com/tapi";
 const PRIVATE_V2_BASE: &str = "https://tapi.indodax.com";
 const MAX_RETRIES: u32 = 3;
 
+#[derive(Debug)]
 pub struct IndodaxClient {
     http: Client,
     signer: Option<Signer>,

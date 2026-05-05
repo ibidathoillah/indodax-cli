@@ -4,6 +4,7 @@ pub mod tools;
 
 use crate::client::IndodaxClient;
 use crate::config::IndodaxConfig;
+use rmcp::ServiceExt;
 use service::ServiceGroup;
 use tools::IndodaxMcp;
 

@@ -7,7 +7,7 @@ use indodax_cli::{
 };
 use indodax_cli::errors::IndodaxError;
 use indodax_cli::mcp;
-use indodax_cli::output::{CommandOutput, OutputFormat};
+use indodax_cli::output::OutputFormat;
 use std::process;
 
 #[tokio::main]

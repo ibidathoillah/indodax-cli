@@ -1,25 +1,25 @@
 use std::sync::Arc;
+
 use tokio::sync::Mutex;
+use serde_json::{Map, Value};
 
 use rmcp::model::{
-    CallToolResult, Content, Implementation, ListToolsResult, RequestContext,
-    RoleServer, ServerCapabilities, ServerInfo, TextContent, Tool,
+    CallToolRequestParams, CallToolResult, Content, Implementation, InitializeResult,
+    ListToolsResult, PaginatedRequestParams, ServerCapabilities, Tool,
 };
-use rmcp::{
-    HandlerError, ServerHandler,
-};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::ErrorData as McpError;
 
 use crate::auth::Signer;
 use crate::client::IndodaxClient;
-use crate::config::{IndodaxConfig, SecretValue};
-use crate::errors::{ErrorCategory, IndodaxError};
+use crate::config::IndodaxConfig;
 use crate::mcp::safety::SafetyConfig;
 use crate::mcp::service::ServiceGroup;
 
 /// The MCP server exposing Indodax trading functionality as tools.
 #[derive(Debug, Clone)]
 pub struct IndodaxMcp {
-    client: IndodaxClient,
+    client: Arc<IndodaxClient>,
     config: Arc<Mutex<IndodaxConfig>>,
     safety: SafetyConfig,
     enabled_groups: Vec<ServiceGroup>,
@@ -33,7 +33,7 @@ impl IndodaxMcp {
         enabled_groups: Vec<ServiceGroup>,
     ) -> Self {
         Self {
-            client,
+            client: Arc::new(client),
             config: Arc::new(Mutex::new(config)),
             safety,
             enabled_groups,
@@ -44,57 +44,98 @@ impl IndodaxMcp {
         self.enabled_groups.contains(group)
     }
 
-    /// Build a JSON Schema for a tool parameter definition.
-    fn str_param(description: &str, required: bool, default_: Option<&str>) -> serde_json::Value {
+    // ──────────────────────────────────────────────
+    // Schema helpers
+    // ──────────────────────────────────────────────
+
+    fn str_param(description: &str, _required: bool, default_: Option<&str>) -> Value {
         let mut schema = serde_json::json!({
             "type": "string",
             "description": description,
         });
         if let Some(d) = default_ {
-            schema["default"] = serde_json::Value::String(d.to_string());
-        }
-        if required {
-            // required is tracked at the tool level, not param level
+            schema["default"] = Value::String(d.to_string());
         }
         schema
     }
 
-    fn num_param(description: &str, required: bool) -> serde_json::Value {
+    fn num_param(description: &str, _required: bool) -> Value {
         serde_json::json!({
             "type": "number",
             "description": description,
         })
     }
 
-    fn bool_param(description: &str) -> serde_json::Value {
+    fn bool_param(description: &str) -> Value {
         serde_json::json!({
             "type": "boolean",
             "description": description,
         })
     }
 
-    fn tool_def(
-        name: &str,
-        description: &str,
-        properties: serde_json::Value,
-        required: Vec<&str>,
-    ) -> Tool {
-        let required: Vec<String> = required.iter().map(|s| s.to_string()).collect();
-        let input_schema = serde_json::json!({
-            "type": "object",
-            "properties": properties,
-            "required": required,
-        });
+    fn tool_def(name: &str, description: &str, properties: Value, required: Vec<&str>) -> Tool {
+        let mut schema = Map::new();
+        schema.insert("type".to_string(), Value::String("object".to_string()));
 
-        Tool {
-            name: name.to_string(),
-            description: Some(description.to_string()),
-            input_schema: Some(input_schema),
+        if let Value::Object(props) = properties {
+            if !props.is_empty() {
+                schema.insert("properties".to_string(), Value::Object(props));
+            }
         }
+
+        if !required.is_empty() {
+            let req_values: Vec<Value> = required
+                .iter()
+                .map(|s| Value::String(s.to_string()))
+                .collect();
+            schema.insert("required".to_string(), Value::Array(req_values));
+        }
+
+        Tool::new(name.to_string(), description.to_string(), Arc::new(schema))
     }
 
     // ──────────────────────────────────────────────
-    // Market tools (no auth required)
+    // Argument extraction helpers
+    // ──────────────────────────────────────────────
+
+    fn get_str(args: &Map<String, Value>, name: &str) -> Option<String> {
+        args.get(name)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
+
+    fn get_num(args: &Map<String, Value>, name: &str) -> Option<f64> {
+        args.get(name).and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+        })
+    }
+
+    fn get_bool(args: &Map<String, Value>, name: &str) -> bool {
+        args.get(name)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
+    // ──────────────────────────────────────────────
+    // Result helpers
+    // ──────────────────────────────────────────────
+
+    fn ok_result(text: String) -> CallToolResult {
+        CallToolResult::success(vec![Content::text(text)])
+    }
+
+    fn error_result(text: String) -> CallToolResult {
+        CallToolResult::error(vec![Content::text(text)])
+    }
+
+    fn json_result(value: Value) -> CallToolResult {
+        let text = serde_json::to_string_pretty(&value).unwrap_or_default();
+        Self::ok_result(text)
+    }
+
+    // ──────────────────────────────────────────────
+    // Tool definitions by group
     // ──────────────────────────────────────────────
 
     fn market_tools(&self) -> Vec<Tool> {
@@ -152,7 +193,11 @@ impl IndodaxMcp {
                 "Get OHLCV candle data",
                 serde_json::json!({
                     "symbol": Self::str_param("Trading pair symbol, e.g. BTCIDR", true, None),
-                    "timeframe": Self::str_param("Candle timeframe in minutes, e.g. 60", false, Some("60")),
+                    "timeframe": Self::str_param(
+                        "Candle timeframe in minutes, e.g. 60",
+                        false,
+                        Some("60"),
+                    ),
                     "from": Self::num_param("Start timestamp (seconds)", false),
                     "to": Self::num_param("End timestamp (seconds)", false),
                 }),
@@ -167,27 +212,23 @@ impl IndodaxMcp {
         ]
     }
 
-    // ──────────────────────────────────────────────
-    // Account tools (auth required)
-    // ──────────────────────────────────────────────
-
     fn account_tools(&self) -> Vec<Tool> {
-        let mut tools = vec![
+        vec![
             Self::tool_def(
                 "account_info",
-                "Get account information including balances",
+                "[REQUIRES AUTH] Get account information including balances",
                 serde_json::json!({}),
                 vec![],
             ),
             Self::tool_def(
                 "balance",
-                "Get wallet balances (non-zero only)",
+                "[REQUIRES AUTH] Get wallet balances (non-zero only)",
                 serde_json::json!({}),
                 vec![],
             ),
             Self::tool_def(
                 "open_orders",
-                "List open orders",
+                "[REQUIRES AUTH] List open orders",
                 serde_json::json!({
                     "pair": Self::str_param("Filter by trading pair (optional)", false, None)
                 }),
@@ -195,25 +236,33 @@ impl IndodaxMcp {
             ),
             Self::tool_def(
                 "order_history",
-                "Get order history",
+                "[REQUIRES AUTH] Get order history",
                 serde_json::json!({
-                    "symbol": Self::str_param("Trading pair symbol, e.g. btc_idr", false, Some("btc_idr")),
+                    "symbol": Self::str_param(
+                        "Trading pair symbol, e.g. btc_idr",
+                        false,
+                        Some("btc_idr"),
+                    ),
                     "limit": Self::num_param("Maximum number of orders to return", false),
                 }),
                 vec![],
             ),
             Self::tool_def(
                 "trade_history",
-                "Get trade fill history",
+                "[REQUIRES AUTH] Get trade fill history",
                 serde_json::json!({
-                    "symbol": Self::str_param("Trading pair symbol, e.g. btc_idr", false, Some("btc_idr")),
+                    "symbol": Self::str_param(
+                        "Trading pair symbol, e.g. btc_idr",
+                        false,
+                        Some("btc_idr"),
+                    ),
                     "limit": Self::num_param("Maximum number of trades to return", false),
                 }),
                 vec![],
             ),
             Self::tool_def(
                 "get_order",
-                "Get order details by order ID",
+                "[REQUIRES AUTH] Get order details by order ID",
                 serde_json::json!({
                     "order_id": Self::num_param("Order ID", true),
                     "pair": Self::str_param("Trading pair, e.g. btc_idr", true, None),
@@ -222,24 +271,12 @@ impl IndodaxMcp {
             ),
             Self::tool_def(
                 "trans_history",
-                "Get deposit and withdrawal transaction history",
+                "[REQUIRES AUTH] Get deposit and withdrawal transaction history",
                 serde_json::json!({}),
                 vec![],
             ),
-        ];
-        // Add dangerous prefix for trade/funding tools
-        for t in &mut tools {
-            let desc = t
-                .description
-                .get_or_insert_with(|| String::new());
-            *desc = format!("[REQUIRES AUTH] {}", desc);
-        }
-        tools
+        ]
     }
-
-    // ──────────────────────────────────────────────
-    // Trade tools (auth required, dangerous)
-    // ──────────────────────────────────────────────
 
     fn trade_tools(&self) -> Vec<Tool> {
         vec![
@@ -250,7 +287,8 @@ impl IndodaxMcp {
                     "pair": Self::str_param("Trading pair, e.g. btc_idr", true, None),
                     "idr": Self::num_param("Total IDR amount to spend", true),
                     "price": Self::num_param("Limit price (omit for market order)", false),
-                    "acknowledged": Self::bool_param("Must be true to confirm this dangerous operation"),
+                    "acknowledged":
+                        Self::bool_param("Must be true to confirm this dangerous operation"),
                 }),
                 vec!["pair", "idr", "acknowledged"],
             ),
@@ -261,8 +299,10 @@ impl IndodaxMcp {
                     "pair": Self::str_param("Trading pair, e.g. btc_idr", true, None),
                     "price": Self::num_param("Limit price", true),
                     "amount": Self::num_param("Amount in base currency (e.g. BTC)", true),
-                    "order_type": Self::str_param("Order type: limit or market", false, Some("limit")),
-                    "acknowledged": Self::bool_param("Must be true to confirm this dangerous operation"),
+                    "order_type":
+                        Self::str_param("Order type: limit or market", false, Some("limit")),
+                    "acknowledged":
+                        Self::bool_param("Must be true to confirm this dangerous operation"),
                 }),
                 vec!["pair", "price", "amount", "acknowledged"],
             ),
@@ -273,22 +313,19 @@ impl IndodaxMcp {
                     "order_id": Self::num_param("Order ID to cancel", true),
                     "pair": Self::str_param("Trading pair, e.g. btc_idr", true, None),
                     "order_type": Self::str_param("Order type: buy or sell", true, None),
-                    "acknowledged": Self::bool_param("Must be true to confirm this dangerous operation"),
+                    "acknowledged":
+                        Self::bool_param("Must be true to confirm this dangerous operation"),
                 }),
                 vec!["order_id", "pair", "order_type", "acknowledged"],
             ),
         ]
     }
 
-    // ──────────────────────────────────────────────
-    // Funding tools (auth required, dangerous)
-    // ──────────────────────────────────────────────
-
     fn funding_tools(&self) -> Vec<Tool> {
         vec![
             Self::tool_def(
                 "withdraw_fee",
-                "Check withdrawal fee for a currency",
+                "[REQUIRES AUTH] Check withdrawal fee for a currency",
                 serde_json::json!({
                     "currency": Self::str_param("Currency to check, e.g. btc", true, None),
                     "network": Self::str_param("Blockchain network (optional)", false, None),
@@ -301,20 +338,19 @@ impl IndodaxMcp {
                 serde_json::json!({
                     "currency": Self::str_param("Currency to withdraw, e.g. btc", true, None),
                     "amount": Self::num_param("Amount to withdraw", true),
-                    "address": Self::str_param("Destination address or Indodax username", true, None),
-                    "to_username": Self::bool_param("Withdraw to Indodax username instead of blockchain address"),
+                    "address":
+                        Self::str_param("Destination address or Indodax username", true, None),
+                    "to_username":
+                        Self::bool_param("Withdraw to Indodax username instead of blockchain address"),
                     "memo": Self::str_param("Memo/tag for currencies that require it", false, None),
                     "network": Self::str_param("Blockchain network", false, None),
-                    "acknowledged": Self::bool_param("Must be true to confirm this dangerous operation"),
+                    "acknowledged":
+                        Self::bool_param("Must be true to confirm this dangerous operation"),
                 }),
                 vec!["currency", "amount", "address", "acknowledged"],
             ),
         ]
     }
-
-    // ──────────────────────────────────────────────
-    // Paper trading tools (no auth required)
-    // ──────────────────────────────────────────────
 
     fn paper_tools(&self) -> Vec<Tool> {
         vec![
@@ -340,7 +376,8 @@ impl IndodaxMcp {
                 "paper_buy",
                 "Place a simulated paper buy order",
                 serde_json::json!({
-                    "pair": Self::str_param("Trading pair, e.g. btc_idr", false, Some("btc_idr")),
+                    "pair":
+                        Self::str_param("Trading pair, e.g. btc_idr", false, Some("btc_idr")),
                     "price": Self::num_param("Price for the order", true),
                     "amount": Self::num_param("Amount in base currency", true),
                 }),
@@ -350,7 +387,8 @@ impl IndodaxMcp {
                 "paper_sell",
                 "Place a simulated paper sell order",
                 serde_json::json!({
-                    "pair": Self::str_param("Trading pair, e.g. btc_idr", false, Some("btc_idr")),
+                    "pair":
+                        Self::str_param("Trading pair, e.g. btc_idr", false, Some("btc_idr")),
                     "price": Self::num_param("Price for the order", true),
                     "amount": Self::num_param("Amount in base currency", true),
                 }),
@@ -391,10 +429,6 @@ impl IndodaxMcp {
         ]
     }
 
-    // ──────────────────────────────────────────────
-    // Auth tools (no auth required, manage credentials)
-    // ──────────────────────────────────────────────
-
     fn auth_tools(&self) -> Vec<Tool> {
         vec![
             Self::tool_def(
@@ -422,15 +456,11 @@ impl IndodaxMcp {
             tools.extend(self.account_tools());
         }
         if self.is_group_enabled(&ServiceGroup::Trade) {
-            self.safety
-                .check_group(&ServiceGroup::Trade)
-                .unwrap_or_default();
+            let _ = self.safety.check_group(&ServiceGroup::Trade);
             tools.extend(self.trade_tools());
         }
         if self.is_group_enabled(&ServiceGroup::Funding) {
-            self.safety
-                .check_group(&ServiceGroup::Funding)
-                .unwrap_or_default();
+            let _ = self.safety.check_group(&ServiceGroup::Funding);
             tools.extend(self.funding_tools());
         }
         if self.is_group_enabled(&ServiceGroup::Paper) {
@@ -443,61 +473,16 @@ impl IndodaxMcp {
         tools
     }
 
-    /// Extract a string parameter from tool call arguments.
-    fn get_str(args: &serde_json::Value, name: &str) -> Option<String> {
-        args.get(name)
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-    }
-
-    /// Extract a number parameter as f64 from tool call arguments.
-    fn get_num(args: &serde_json::Value, name: &str) -> Option<f64> {
-        args.get(name).and_then(|v| {
-            v.as_f64()
-                .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
-        })
-    }
-
-    /// Extract a boolean parameter from tool call arguments.
-    fn get_bool(args: &serde_json::Value, name: &str) -> bool {
-        args.get(name)
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-    }
-
-    /// Helper to create a successful text result.
-    fn ok_result(text: String) -> CallToolResult {
-        CallToolResult {
-            content: vec![Content::Text(TextContent {
-                text,
-                annotations: None,
-            })],
-            is_error: false,
-        }
-    }
-
-    /// Helper to create an error text result.
-    fn error_result(text: String) -> CallToolResult {
-        CallToolResult {
-            content: vec![Content::Text(TextContent {
-                text,
-                annotations: None,
-            })],
-            is_error: true,
-        }
-    }
-
-    /// Helper to serialize any JSON value as a result.
-    fn json_result(value: serde_json::Value) -> CallToolResult {
-        Self::ok_result(serde_json::to_string_pretty(&value).unwrap_or_default())
-    }
-
     // ──────────────────────────────────────────────
-    // Tool dispatch
+    // Market handlers (no auth required)
     // ──────────────────────────────────────────────
 
     async fn handle_server_time(&self) -> CallToolResult {
-        match self.client.public_get::<serde_json::Value>("/api/server_time").await {
+        match self
+            .client
+            .public_get::<Value>("/api/server_time")
+            .await
+        {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
@@ -505,28 +490,36 @@ impl IndodaxMcp {
 
     async fn handle_ticker(&self, pair: &str) -> CallToolResult {
         let path = format!("/api/ticker/{}", pair);
-        match self.client.public_get::<serde_json::Value>(&path).await {
+        match self.client.public_get::<Value>(&path).await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
     }
 
     async fn handle_ticker_all(&self) -> CallToolResult {
-        match self.client.public_get::<serde_json::Value>("/api/ticker_all").await {
+        match self
+            .client
+            .public_get::<Value>("/api/ticker_all")
+            .await
+        {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
     }
 
     async fn handle_pairs(&self) -> CallToolResult {
-        match self.client.public_get::<serde_json::Value>("/api/pairs").await {
+        match self.client.public_get::<Value>("/api/pairs").await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
     }
 
     async fn handle_summaries(&self) -> CallToolResult {
-        match self.client.public_get::<serde_json::Value>("/api/summaries").await {
+        match self
+            .client
+            .public_get::<Value>("/api/summaries")
+            .await
+        {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
@@ -534,7 +527,7 @@ impl IndodaxMcp {
 
     async fn handle_orderbook(&self, pair: &str) -> CallToolResult {
         let path = format!("/api/depth/{}", pair);
-        match self.client.public_get::<serde_json::Value>(&path).await {
+        match self.client.public_get::<Value>(&path).await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
@@ -542,7 +535,7 @@ impl IndodaxMcp {
 
     async fn handle_trades(&self, pair: &str) -> CallToolResult {
         let path = format!("/api/trades/{}", pair);
-        match self.client.public_get::<serde_json::Value>(&path).await {
+        match self.client.public_get::<Value>(&path).await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
@@ -565,7 +558,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .public_get_v2::<serde_json::Value>(
+            .public_get_v2::<Value>(
                 "/tradingview/history_v2",
                 &[
                     ("symbol", symbol),
@@ -582,20 +575,24 @@ impl IndodaxMcp {
     }
 
     async fn handle_price_increments(&self) -> CallToolResult {
-        match self.client.public_get::<serde_json::Value>("/api/price_increments").await {
+        match self
+            .client
+            .public_get::<Value>("/api/price_increments")
+            .await
+        {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_result(e.to_string()),
         }
     }
 
     // ──────────────────────────────────────────────
-    // Account handlers
+    // Account handlers (auth required)
     // ──────────────────────────────────────────────
 
     async fn handle_account_info(&self) -> CallToolResult {
         match self
             .client
-            .private_post_v1::<serde_json::Value>("getInfo", &std::collections::HashMap::new())
+            .private_post_v1::<Value>("getInfo", &std::collections::HashMap::new())
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -606,11 +603,14 @@ impl IndodaxMcp {
     async fn handle_balance(&self) -> CallToolResult {
         match self
             .client
-            .private_post_v1::<serde_json::Value>("getInfo", &std::collections::HashMap::new())
+            .private_post_v1::<Value>("getInfo", &std::collections::HashMap::new())
             .await
         {
             Ok(data) => {
-                let balance = data.get("balance").cloned().unwrap_or(serde_json::json!({}));
+                let balance = data
+                    .get("balance")
+                    .cloned()
+                    .unwrap_or(Value::Object(Map::new()));
                 Self::json_result(balance)
             }
             Err(e) => Self::error_result(e.to_string()),
@@ -624,7 +624,7 @@ impl IndodaxMcp {
         }
         match self
             .client
-            .private_post_v1::<serde_json::Value>("openOrders", &params)
+            .private_post_v1::<Value>("openOrders", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -645,7 +645,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_get_v2::<serde_json::Value>("/api/v2/order/histories", &params)
+            .private_get_v2::<Value>("/api/v2/order/histories", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -666,7 +666,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_get_v2::<serde_json::Value>("/api/v2/myTrades", &params)
+            .private_get_v2::<Value>("/api/v2/myTrades", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -681,7 +681,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_post_v1::<serde_json::Value>("getOrder", &params)
+            .private_post_v1::<Value>("getOrder", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -692,7 +692,7 @@ impl IndodaxMcp {
     async fn handle_trans_history(&self) -> CallToolResult {
         match self
             .client
-            .private_post_v1::<serde_json::Value>("transHistory", &std::collections::HashMap::new())
+            .private_post_v1::<Value>("transHistory", &std::collections::HashMap::new())
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -704,12 +704,7 @@ impl IndodaxMcp {
     // Trade handlers (dangerous)
     // ──────────────────────────────────────────────
 
-    async fn handle_buy_order(
-        &self,
-        pair: &str,
-        idr: f64,
-        price: Option<f64>,
-    ) -> CallToolResult {
+    async fn handle_buy_order(&self, pair: &str, idr: f64, price: Option<f64>) -> CallToolResult {
         let mut params = std::collections::HashMap::new();
         params.insert("pair".to_string(), pair.to_string());
         params.insert("type".to_string(), "buy".to_string());
@@ -723,7 +718,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_post_v1::<serde_json::Value>("trade", &params)
+            .private_post_v1::<Value>("trade", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -755,7 +750,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_post_v1::<serde_json::Value>("trade", &params)
+            .private_post_v1::<Value>("trade", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -776,7 +771,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_post_v1::<serde_json::Value>("cancelOrder", &params)
+            .private_post_v1::<Value>("cancelOrder", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -788,7 +783,11 @@ impl IndodaxMcp {
     // Funding handlers
     // ──────────────────────────────────────────────
 
-    async fn handle_withdraw_fee(&self, currency: &str, network: Option<&str>) -> CallToolResult {
+    async fn handle_withdraw_fee(
+        &self,
+        currency: &str,
+        network: Option<&str>,
+    ) -> CallToolResult {
         let mut params = std::collections::HashMap::new();
         params.insert("currency".to_string(), currency.to_string());
         if let Some(n) = network {
@@ -797,7 +796,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_post_v1::<serde_json::Value>("withdrawFee", &params)
+            .private_post_v1::<Value>("withdrawFee", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -805,6 +804,7 @@ impl IndodaxMcp {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_withdraw(
         &self,
         currency: &str,
@@ -834,7 +834,7 @@ impl IndodaxMcp {
 
         match self
             .client
-            .private_post_v1::<serde_json::Value>("withdrawCoin", &params)
+            .private_post_v1::<Value>("withdrawCoin", &params)
             .await
         {
             Ok(data) => Self::json_result(data),
@@ -849,7 +849,9 @@ impl IndodaxMcp {
     async fn handle_paper_init(&self) -> CallToolResult {
         let config = self.config.lock().await;
         match crate::commands::paper::paper_init_cmd(&config).await {
-            Some(result) => result,
+            Some(_output) => Self::ok_result(
+                "[PAPER] Paper trading initialized with 100,000,000 IDR and 1 BTC".to_string(),
+            ),
             None => Self::error_result("Failed to initialize paper trading".to_string()),
         }
     }
@@ -869,63 +871,61 @@ impl IndodaxMcp {
 // ServerHandler implementation
 // ──────────────────────────────────────────────
 
-#[rmcp::async_trait]
-impl ServerHandler for IndodaxMcp {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: rmcp::model::ProtocolVersion::default(),
-            capabilities: ServerCapabilities::builder()
-                .tools()
+impl rmcp::handler::server::ServerHandler for IndodaxMcp {
+    fn get_info(&self) -> InitializeResult {
+        InitializeResult::new(
+            ServerCapabilities::builder()
+                .enable_tools()
                 .build(),
-            server_info: Implementation {
-                name: "indodax-cli".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-            },
-            instructions: None,
-        }
+        )
+        .with_server_info(Implementation::new(
+            "indodax-cli",
+            env!("CARGO_PKG_VERSION"),
+        ))
     }
 
     async fn list_tools(
         &self,
-        _request: Option<rmcp::model::ListToolsRequestParams>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, HandlerError> {
+    ) -> Result<ListToolsResult, McpError> {
         let tools = self.all_tools();
-        Ok(ListToolsResult {
-            tools,
-            next_cursor: None,
-        })
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
     async fn call_tool(
         &self,
-        request: rmcp::model::CallToolRequestParams,
+        request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, HandlerError> {
-        let name = &request.name;
-        let args = request.arguments.unwrap_or(serde_json::json!({}));
+    ) -> Result<CallToolResult, McpError> {
+        let name = request.name.to_string();
+        let args = request.arguments.unwrap_or_default();
 
         let result = match name.as_str() {
-            // Market
+            // Market (public, no auth needed)
             "server_time" => self.handle_server_time().await,
             "ticker" => {
-                let pair = Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into());
+                let pair =
+                    Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into());
                 self.handle_ticker(&pair).await
             }
             "ticker_all" => self.handle_ticker_all().await,
             "pairs" => self.handle_pairs().await,
             "summaries" => self.handle_summaries().await,
             "orderbook" => {
-                let pair = Self::get_str(&args, "pair").unwrap_or_else(|| "btcidr".into());
+                let pair =
+                    Self::get_str(&args, "pair").unwrap_or_else(|| "btcidr".into());
                 self.handle_orderbook(&pair).await
             }
             "trades" => {
-                let pair = Self::get_str(&args, "pair").unwrap_or_else(|| "btcidr".into());
+                let pair =
+                    Self::get_str(&args, "pair").unwrap_or_else(|| "btcidr".into());
                 self.handle_trades(&pair).await
             }
             "ohlc" => {
                 let symbol = Self::get_str(&args, "symbol").unwrap_or_default();
-                let timeframe = Self::get_str(&args, "timeframe").unwrap_or_else(|| "60".into());
+                let timeframe =
+                    Self::get_str(&args, "timeframe").unwrap_or_else(|| "60".into());
                 let from = Self::get_num(&args, "from");
                 let to = Self::get_num(&args, "to");
                 self.handle_ohlc(&symbol, &timeframe, from, to).await
@@ -940,12 +940,14 @@ impl ServerHandler for IndodaxMcp {
                 self.handle_open_orders(pair.as_deref()).await
             }
             "order_history" => {
-                let symbol = Self::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into());
+                let symbol =
+                    Self::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into());
                 let limit = Self::get_num(&args, "limit");
                 self.handle_order_history(&symbol, limit).await
             }
             "trade_history" => {
-                let symbol = Self::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into());
+                let symbol =
+                    Self::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into());
                 let limit = Self::get_num(&args, "limit");
                 self.handle_trade_history(&symbol, limit).await
             }
@@ -959,7 +961,9 @@ impl ServerHandler for IndodaxMcp {
             // Trade (dangerous)
             "buy_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
-                if let Err(msg) = self.safety.check_operation(&ServiceGroup::Trade, acknowledged) {
+                if let Err(msg) =
+                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
+                {
                     return Ok(Self::error_result(msg));
                 }
                 let pair = Self::get_str(&args, "pair").unwrap_or_default();
@@ -969,18 +973,23 @@ impl ServerHandler for IndodaxMcp {
             }
             "sell_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
-                if let Err(msg) = self.safety.check_operation(&ServiceGroup::Trade, acknowledged) {
+                if let Err(msg) =
+                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
+                {
                     return Ok(Self::error_result(msg));
                 }
                 let pair = Self::get_str(&args, "pair").unwrap_or_default();
                 let price = Self::get_num(&args, "price").unwrap_or(0.0);
                 let amount = Self::get_num(&args, "amount").unwrap_or(0.0);
-                let order_type = Self::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
+                let order_type =
+                    Self::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
                 self.handle_sell_order(&pair, price, amount, &order_type).await
             }
             "cancel_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
-                if let Err(msg) = self.safety.check_operation(&ServiceGroup::Trade, acknowledged) {
+                if let Err(msg) =
+                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
+                {
                     return Ok(Self::error_result(msg));
                 }
                 let order_id = Self::get_num(&args, "order_id").unwrap_or(0.0);
@@ -989,15 +998,18 @@ impl ServerHandler for IndodaxMcp {
                 self.handle_cancel_order(order_id, &pair, &order_type).await
             }
 
-            // Funding (dangerous)
+            // Funding
             "withdraw_fee" => {
                 let currency = Self::get_str(&args, "currency").unwrap_or_default();
                 let network = Self::get_str(&args, "network");
-                self.handle_withdraw_fee(&currency, network.as_deref()).await
+                self.handle_withdraw_fee(&currency, network.as_deref())
+                    .await
             }
             "withdraw" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
-                if let Err(msg) = self.safety.check_operation(&ServiceGroup::Funding, acknowledged) {
+                if let Err(msg) =
+                    self.safety.check_operation(&ServiceGroup::Funding, acknowledged)
+                {
                     return Ok(Self::error_result(msg));
                 }
                 let currency = Self::get_str(&args, "currency").unwrap_or_default();
@@ -1006,7 +1018,15 @@ impl ServerHandler for IndodaxMcp {
                 let to_username = Self::get_bool(&args, "to_username");
                 let memo = Self::get_str(&args, "memo");
                 let network = Self::get_str(&args, "network");
-                self.handle_withdraw(&currency, amount, &address, to_username, memo.as_deref(), network.as_deref()).await
+                self.handle_withdraw(
+                    &currency,
+                    amount,
+                    &address,
+                    to_username,
+                    memo.as_deref(),
+                    network.as_deref(),
+                )
+                .await
             }
 
             // Paper
@@ -1016,15 +1036,22 @@ impl ServerHandler for IndodaxMcp {
             }
             "paper_balance" => self.handle_paper_balance().await,
             "paper_buy" | "paper_sell" => {
-                let pair = Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into());
+                let pair = Self::get_str(&args, "pair")
+                    .unwrap_or_else(|| "btc_idr".into());
                 let price = Self::get_num(&args, "price").unwrap_or(0.0);
                 let amount = Self::get_num(&args, "amount").unwrap_or(0.0);
-                let side = if name == "paper_buy" { "buy" } else { "sell" };
+                let side = if name == "paper_buy" {
+                    "buy"
+                } else {
+                    "sell"
+                };
 
                 let mut config = self.config.lock().await;
                 let mut state = crate::commands::paper::PaperState::load(&config);
-                match crate::commands::paper::place_paper_order(&mut state, &pair, side, price, amount) {
-                    Ok(output) => {
+                match crate::commands::paper::place_paper_order(
+                    &mut state, &pair, side, price, amount,
+                ) {
+                    Ok(_output) => {
                         let _ = state.save(&mut config);
                         Self::json_result(serde_json::json!({
                             "mode": "paper",
@@ -1041,9 +1068,28 @@ impl ServerHandler for IndodaxMcp {
             "paper_orders" => {
                 let config = self.config.lock().await;
                 let state = crate::commands::paper::PaperState::load(&config);
+                let open_orders: Vec<&crate::commands::paper::PaperOrder> = state
+                    .orders
+                    .iter()
+                    .filter(|o| o.status != "cancelled")
+                    .collect();
+                let count = open_orders.len();
+                let orders: Vec<Value> = open_orders
+                    .iter()
+                    .map(|o| serde_json::json!({
+                        "id": o.id,
+                        "pair": o.pair,
+                        "side": o.side,
+                        "price": o.price,
+                        "amount": o.amount,
+                        "remaining": o.remaining,
+                        "status": o.status,
+                    }))
+                    .collect();
                 Self::json_result(serde_json::json!({
                     "mode": "paper",
-                    "orders": state.orders.iter().filter(|o| o.status != "cancelled").collect::<Vec<_>>(),
+                    "count": count,
+                    "orders": orders,
                 }))
             }
             "paper_cancel" => {
@@ -1077,9 +1123,21 @@ impl ServerHandler for IndodaxMcp {
             "paper_status" => {
                 let config = self.config.lock().await;
                 let state = crate::commands::paper::PaperState::load(&config);
-                let filled = state.orders.iter().filter(|o| o.status == "filled").count();
-                let open = state.orders.iter().filter(|o| o.status != "filled" && o.status != "cancelled").count();
-                let cancelled = state.orders.iter().filter(|o| o.status == "cancelled").count();
+                let filled = state
+                    .orders
+                    .iter()
+                    .filter(|o| o.status == "filled")
+                    .count();
+                let open = state
+                    .orders
+                    .iter()
+                    .filter(|o| o.status != "filled" && o.status != "cancelled")
+                    .count();
+                let cancelled = state
+                    .orders
+                    .iter()
+                    .filter(|o| o.status == "cancelled")
+                    .count();
                 Self::json_result(serde_json::json!({
                     "mode": "paper",
                     "trade_count": state.trade_count,
@@ -1099,23 +1157,34 @@ impl ServerHandler for IndodaxMcp {
                     "callback_url": config.callback_url,
                 }))
             }
-            "auth_test" => {
-                match self.client.signer() {
-                    Some(_) => {
-                        match self.client.private_post_v1::<serde_json::Value>("getInfo", &std::collections::HashMap::new()).await {
-                            Ok(data) => {
-                                let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                                Self::json_result(serde_json::json!({
-                                    "status": "ok",
-                                    "name": name,
-                                }))
-                            }
-                            Err(e) => Self::error_result(e.to_string()),
+            "auth_test" => match self.client.signer() {
+                Some(_) => {
+                    match self
+                        .client
+                        .private_post_v1::<Value>(
+                            "getInfo",
+                            &std::collections::HashMap::new(),
+                        )
+                        .await
+                    {
+                        Ok(data) => {
+                            let name = data
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown");
+                            Self::json_result(serde_json::json!({
+                                "status": "ok",
+                                "name": name,
+                            }))
                         }
+                        Err(e) => Self::error_result(e.to_string()),
                     }
-                    None => Self::error_result("No API credentials configured. Use environment variables or config file.".to_string()),
                 }
-            }
+                None => Self::error_result(
+                    "No API credentials configured. Use environment variables or config file."
+                        .to_string(),
+                ),
+            },
 
             _ => Self::error_result(format!("Unknown tool: {}", name)),
         };

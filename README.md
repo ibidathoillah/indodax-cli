@@ -12,6 +12,7 @@ Track markets, execute trades, manage your portfolio, and stream real-time data 
 
 ## ✨ Features
 
+- **🤖 AI Agent Integration** — Built-in MCP (Model Context Protocol) server for Claude, ChatGPT, Cursor, VS Code, Gemini CLI, and any MCP-compatible agent
 - **🔥 Real-Time WebSocket Streams** — Live ticker, trades, order book, and private order updates
 - **📊 Comprehensive Market Data** — OHLCV, order books, tickers, summaries, and price increments
 - **💰 Full Account Management** — Balances, open orders, order history, trade history, and transactions
@@ -45,7 +46,19 @@ cargo build --release
 
 ## 🚀 Quick Start
 
-### 1. Configure API Credentials
+### 1. Check Market Data (No API Key Needed)
+
+Market data commands work **without any API credentials**:
+
+```bash
+indodax market server-time
+indodax market ticker btc_idr
+indodax market orderbook btcidr
+indodax market pairs
+indodax market ohlc --symbol BTCIDR
+```
+
+### 2. Configure API Credentials (For Account & Trading)
 
 ```bash
 indodax auth set --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
@@ -63,22 +76,86 @@ Credentials are resolved in this priority order:
 2. Environment variables (`INDODAX_API_KEY`, `INDODAX_API_SECRET`)
 3. Config file (`~/.config/indodax/config.toml` with `0600` permissions)
 
-### 2. Check Server Time
+### 3. View Account (Requires API Key)
 
 ```bash
-indodax market server-time
-```
-
-### 3. View a Ticker
-
-```bash
-indodax market ticker btc_idr
+indodax account balance
+indodax account info
 ```
 
 ### 4. Start the Interactive Shell
 
 ```bash
 indodax shell
+```
+
+---
+
+## 🤖 MCP Server (AI Agent Integration)
+
+indodax-cli includes a built-in **Model Context Protocol (MCP)** server over stdio. No subprocess wrappers needed.
+
+MCP tool calls run through the same Rust code path as CLI commands and inherit the same error handling, rate-limit behavior, and security model.
+
+> **⚠️ Warning**
+>
+> MCP is local-first and designed for your own machine. Any AI agent connected to this MCP server uses the same configured Indodax account and API key permissions. Do **not** expose, tunnel, or share this server outside systems you control. Always use `https://` and `wss://` endpoints. Treat this integration as alpha and use **least-privilege API keys**.
+
+### Usage
+
+```bash
+indodax mcp                           # default: market, account, paper (read-only)
+indodax mcp -s all                    # all services, dangerous calls require acknowledged=true
+indodax mcp -s all --allow-dangerous  # all services, no per-call confirmation required
+indodax mcp -s market,trade,paper     # specific service groups only
+```
+
+### Service Groups
+
+| Group | Tools | Auth Required | Dangerous |
+|-------|-------|---------------|-----------|
+| `market` | Server time, ticker, pairs, orderbook, trades, OHLC, price increments | No | No |
+| `account` | Balance, open orders, order history, trade history, account info | Yes | No |
+| `trade` | Buy, sell, cancel orders | Yes | **Yes** |
+| `funding` | Withdraw fees, withdraw crypto | Yes | **Yes** |
+| `paper` | Paper trading init, balance, buy, sell, orders, cancel, history, status | No | No |
+| `auth` | Show config, test credentials | Varies | No |
+
+### Dangerous Operations
+
+By default, `trade` and `funding` groups require each tool call to include `acknowledged: true` as a parameter. Use `--allow-dangerous` to skip this per-call confirmation.
+
+### Configure Your MCP Client
+
+Add to your MCP client configuration (Claude Desktop, VS Code, Cursor, Windsurf, etc.):
+
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "indodax": {
+      "command": "indodax",
+      "args": ["mcp", "-s", "all"]
+    }
+  }
+}
+```
+
+**VS Code / Cursor** (`.vscode/mcp.json` or Cursor MCP settings):
+```json
+{
+  "mcpServers": {
+    "indodax": {
+      "command": "indodax",
+      "args": ["mcp", "-s", "all"]
+    }
+  }
+}
+```
+
+**Gemini CLI**:
+```bash
+gemini extensions install https://github.com/ibidathoillah/indodax-cli
 ```
 
 ---
@@ -196,10 +273,21 @@ Options:
 indodax market ticker btc_idr
 ```
 
-**JSON mode** — for scripting and automation:
+**JSON mode** — for scripting and automation, with AI-friendly error envelopes:
 
 ```bash
 indodax -o json market ticker btc_idr
+```
+
+When an error occurs in JSON mode, a structured error envelope is returned on stdout:
+
+```json
+{
+  "error": true,
+  "message": "Invalid trading pair: xxx_idr",
+  "error_type": "invalid_pair",
+  "retryable": false
+}
 ```
 
 ---
@@ -257,6 +345,7 @@ This project is inspired by the [Kraken CLI](https://github.com/krakenfx/kraken-
 - **`reqwest`** — HTTP client for REST API calls
 - **`serde`** — robust serialization/deserialization
 - **`comfy-table`** — beautiful terminal tables
+- **`rmcp`** — Model Context Protocol server for AI agent integration
 
 ---
 
@@ -287,7 +376,8 @@ cargo tarpaulin --out stdout
 | `errors.rs` | 15+ | ✅ 100% |
 | `lib.rs` | 20+ | ✅ 100% |
 | `commands/*` | 90+ | ✅ 100% |
-| **Total** | **216+** | **✅ 100%** |
+| `mcp/*` | 20+ | ✅ 100% |
+| **Total** | **236+** | **✅ 100%** |
 
 ### E2E Testing
 
@@ -314,4 +404,3 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 > **Disclaimer:** This is an **unofficial** CLI and is not affiliated with or endorsed by Indodax. Use at your own risk. Cryptocurrency trading involves significant risk of loss.
-
