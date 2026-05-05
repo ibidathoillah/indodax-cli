@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 const DEFAULT_BALANCE_IDR: f64 = 100_000_000.0;
 const DEFAULT_BALANCE_BTC: f64 = 1.0;
+const TAKER_FEE: f64 = 0.0026; // 0.26% taker fee
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperOrder {
@@ -18,6 +19,10 @@ pub struct PaperOrder {
     pub order_type: String,
     pub status: String,
     pub created_at: u64,
+    #[serde(default)]
+    pub fees_paid: f64,
+    #[serde(default)]
+    pub filled_price: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +232,8 @@ pub fn place_paper_order(
         order_type: "limit".into(),
         status: "filled".into(),
         created_at: now,
+        fees_paid: 0.0,
+        filled_price: 0.0,
     });
 
     execute_fill(state, order_id, base, quote, side, price, amount)?;
@@ -268,17 +275,22 @@ fn execute_fill(
     amount: f64,
 ) -> Result<()> {
     let total = price * amount;
+    let fee = total * TAKER_FEE;
     if side == "buy" {
         let base_balance = state.balances.entry(base.to_string()).or_insert(0.0);
         *base_balance += amount;
+        let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
+        *quote_balance -= fee;
     } else {
         let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
-        *quote_balance += total;
+        *quote_balance += total - fee;
     }
 
     if let Some(order) = state.orders.iter_mut().find(|o| o.id == order_id) {
         order.remaining = 0.0;
         order.status = "filled".to_string();
+        order.fees_paid = fee;
+        order.filled_price = price;
     }
     Ok(())
 }
@@ -575,7 +587,7 @@ mod tests {
             orders: vec![PaperOrder {
                 id: 1, pair: "test".into(), side: "buy".into(), price: 1.0,
                 amount: 1.0, remaining: 0.0, order_type: "limit".into(),
-                status: "filled".into(), created_at: 0,
+                status: "filled".into(), created_at: 0, fees_paid: 0.0, filled_price: 0.0,
             }],
             next_order_id: 50,
             trade_count: 10,
@@ -604,7 +616,7 @@ mod tests {
         let result = place_paper_order(&mut state, "btc_idr", "buy", 100_000.0, 0.5);
         
         assert!(result.is_ok());
-        assert_eq!(state.balances.get("idr").unwrap(), &(100_000_000.0 - 50_000.0));
+        assert_eq!(state.balances.get("idr").unwrap(), &99949870.0);
         assert_eq!(state.balances.get("btc").unwrap(), &1.5);
         assert_eq!(state.orders.len(), 1);
         assert_eq!(state.trade_count, 1);
@@ -617,7 +629,7 @@ mod tests {
         
         assert!(result.is_ok());
         assert_eq!(state.balances.get("btc").unwrap(), &0.5);
-        assert_eq!(state.balances.get("idr").unwrap(), &150_000_000.0);
+        assert_eq!(state.balances.get("idr").unwrap(), &149870000.0);
     }
 
     #[test]
@@ -747,7 +759,7 @@ mod tests {
         
         let result = execute_fill(&mut state, 1, "btc", "idr", "sell", 100_000_000.0, 0.5);
         assert!(result.is_ok());
-        assert_eq!(state.balances.get("idr").unwrap(), &50_000_000.0);
+        assert_eq!(state.balances.get("idr").unwrap(), &49870000.0);
     }
 
     #[test]
@@ -762,6 +774,8 @@ mod tests {
             order_type: "limit".into(),
             status: "filled".into(),
             created_at: 12345,
+            fees_paid: 0.0,
+            filled_price: 100_000.0,
         };
         
         assert_eq!(order.id, 1);

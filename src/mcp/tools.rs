@@ -847,12 +847,22 @@ impl IndodaxMcp {
     // ──────────────────────────────────────────────
 
     async fn handle_paper_init(&self) -> CallToolResult {
-        let config = self.config.lock().await;
-        match crate::commands::paper::paper_init_cmd(&config).await {
-            Some(_output) => Self::ok_result(
+        let mut config = self.config.lock().await;
+        let state = crate::commands::paper::PaperState::default();
+        match state.save(&mut config) {
+            Ok(()) => Self::ok_result(
                 "[PAPER] Paper trading initialized with 100,000,000 IDR and 1 BTC".to_string(),
             ),
-            None => Self::error_result("Failed to initialize paper trading".to_string()),
+            Err(e) => Self::error_result(format!("Failed to initialize paper trading: {}", e)),
+        }
+    }
+
+    async fn handle_paper_reset(&self) -> CallToolResult {
+        let mut config = self.config.lock().await;
+        let state = crate::commands::paper::PaperState::default();
+        match state.save(&mut config) {
+            Ok(()) => Self::ok_result("[PAPER] Paper trading state reset".to_string()),
+            Err(e) => Self::error_result(format!("Failed to reset paper trading: {}", e)),
         }
     }
 
@@ -1031,9 +1041,7 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
 
             // Paper
             "paper_init" => self.handle_paper_init().await,
-            "paper_reset" => {
-                Self::ok_result("[PAPER] Trading state reset".to_string())
-            }
+            "paper_reset" => self.handle_paper_reset().await,
             "paper_balance" => self.handle_paper_balance().await,
             "paper_buy" | "paper_sell" => {
                 let pair = Self::get_str(&args, "pair")
