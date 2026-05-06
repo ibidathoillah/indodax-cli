@@ -473,6 +473,9 @@
         async function fetchMarketData() {
             const proxies = [
                 'https://everyorigin.jwvbremen.nl/get?url=',
+                'https://api.allorigins.win/raw?url=',
+                'https://whateverorigin.org/get?url=',
+                'https://anyorigin.com/get?url=',
                 ''
             ];
             
@@ -480,13 +483,18 @@
                 try {
                     const url = proxy + encodeURIComponent('https://indodax.com/api/ticker_all');
                     const response = await fetch(url);
+                    if (!response.ok) continue;
+                    
                     let data;
                     if (proxy) {
                         const json = await response.json();
-                        data = json.contents ? JSON.parse(json.contents) : null;
+                        if (json.contents) {
+                            data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
+                        }
                     } else {
                         data = await response.json();
                     }
+                    
                     if (data && data.tickers) {
                         PAIRS.forEach(pair => {
                             const ticker = data.tickers[pair.id];
