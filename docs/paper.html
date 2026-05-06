@@ -471,67 +471,62 @@
         };
 
         async function fetchMarketData() {
-            try {
-                const proxies = [
-                    'https://api.allorigins.win/raw?url=',
-                    'https://corsproxy.io/?',
-                    ''
-                ];
-                let data = null;
-                
-                for (const proxy of proxies) {
-                    try {
-                        const url = proxy + encodeURIComponent('https://indodax.com/api/ticker_all');
-                        const response = await fetch(url);
-                        if (response.ok) {
-                            data = await response.json();
-                            break;
-                        }
-                    } catch(e) { continue; }
-                }
-                
-                if (!data) {
-                    console.log('No data received, showing CORS notice');
-                    showCORSNotice();
-                    PAIRS.forEach(pair => {
-                        marketData[pair.id] = {
-                            last: pair.base * (1 + (Math.random() - 0.5) * 0.05),
-                            high: pair.base * 1.02,
-                            low: pair.base * 0.98,
-                            vol: Math.random() * 100,
-                            change: (Math.random() - 0.5) * 10
-                        };
-                        if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
-                        priceHistory[pair.id].push(marketData[pair.id].last);
-                        if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
-                    });
-                    document.getElementById('last-update').textContent = 'Simulated (API unavailable)';
-                    renderCharts();
-                    return;
-                }
-                
-                PAIRS.forEach(pair => {
-                    const ticker = data.tickers[pair.id];
-                    if (ticker) {
-                        marketData[pair.id] = {
-                            last: parseFloat(ticker.last),
-                            high: parseFloat(ticker.high),
-                            low: parseFloat(ticker.low),
-                            vol: parseFloat(ticker.vol_btc),
-                            change: parseFloat(ticker.change_24h)
-                        };
-                        if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
-                        priceHistory[pair.id].push(parseFloat(ticker.last));
-                        if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
+            let allFailed = true;
+            const proxies = [
+                'https://api.allorigins.win/raw?url=',
+                'https://corsproxy.io/?',
+                ''
+            ];
+            
+            for (let i = 0; i < proxies.length; i++) {
+                const proxy = proxies[i];
+                try {
+                    const url = proxy + encodeURIComponent('https://indodax.com/api/ticker_all');
+                    console.log('Trying proxy:', proxy || 'direct');
+                    const response = await fetch(url);
+                    if (response.ok) {
+                        const data = await response.json();
+                        allFailed = false;
+                        PAIRS.forEach(pair => {
+                            const ticker = data.tickers[pair.id];
+                            if (ticker) {
+                                marketData[pair.id] = {
+                                    last: parseFloat(ticker.last),
+                                    high: parseFloat(ticker.high),
+                                    low: parseFloat(ticker.low),
+                                    vol: parseFloat(ticker.vol_btc),
+                                    change: parseFloat(ticker.change_24h)
+                                };
+                                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
+                                priceHistory[pair.id].push(marketData[pair.id].last);
+                                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
+                            }
+                        });
+                        document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                        renderCharts();
+                        return;
                     }
-                });
-                
-                document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-                renderCharts();
-                updateQuickPrices();
-            } catch (e) {
-                console.error('Failed to fetch market data:', e);
+                } catch(e) {
+                    console.log('Proxy failed:', proxy, e.message);
+                }
             }
+            
+            console.log('All proxies failed, showing CORS notice');
+            showCORSNotice();
+            PAIRS.forEach(pair => {
+                marketData[pair.id] = {
+                    last: pair.base * (1 + (Math.random() - 0.5) * 0.05),
+                    high: pair.base * 1.02,
+                    low: pair.base * 0.98,
+                    vol: Math.random() * 100,
+                    change: (Math.random() - 0.5) * 10
+                };
+                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
+                priceHistory[pair.id].push(marketData[pair.id].last);
+                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
+            });
+            document.getElementById('last-update').textContent = 'Simulated (API unavailable)';
+            renderCharts();
         }
 
         function renderPairSelectors() {
