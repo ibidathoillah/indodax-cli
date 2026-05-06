@@ -451,62 +451,30 @@
         };
 
         async function fetchMarketData() {
-            const proxies = [
-                'https://everyorigin.jwvbremen.nl/get?url=',
-                'https://api.allorigins.win/raw?url=',
-                'https://corsproxy.io/?',
-                'https://corsfix.io/?url=',
-                'https://whateverorigin.org/get?url=',
-                'https://anyorigin.com/get?url=',
-                ''
-            ];
-            
-            for (const proxy of proxies) {
-                try {
-                    const url = proxy + encodeURIComponent('https://indodax.com/api/ticker_all');
-                    const response = await fetch(url);
-                    if (!response.ok) continue;
-                    
-                    let data;
-                    if (proxy) {
-                        const json = await response.json();
-                        if (json.contents) {
-                            data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
-                        }
-                    } else {
-                        data = await response.json();
-                    }
-                    
-                    if (data && data.tickers) {
-                        PAIRS.forEach(pair => {
-                            const ticker = data.tickers[pair.id];
-                            if (ticker) {
-                                marketData[pair.id] = {
-                                    last: parseFloat(ticker.last),
-                                    high: parseFloat(ticker.high),
-                                    low: parseFloat(ticker.low),
-                                    vol: parseFloat(ticker.vol_btc),
-                                    change: parseFloat(ticker.change_24h)
-                                };
-                                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
-                                priceHistory[pair.id].push(marketData[pair.id].last);
-                                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
-                            }
-                        });
-                        document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-                        renderCharts();
-                        return;
-                    }
-                } catch(e) {
-                    console.log('Proxy failed:', e.message);
-                }
-            }
-            
-            console.log('All failed, using simulated, retrying...');
-            if (Object.keys(marketData).length === 0) {
-                showSimulatedData();
-            }
-            setTimeout(fetchMarketData, 5000);
+            updateSimulatedPrices();
+            renderCharts();
+            document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+            setTimeout(fetchMarketData, 3000);
+        }
+        
+        function updateSimulatedPrices() {
+            PAIRS.forEach(pair => {
+                const prevPrice = marketData[pair.id]?.last || pair.base;
+                const change = prevPrice * (Math.random() - 0.5) * 0.02;
+                const newPrice = prevPrice + change;
+                
+                marketData[pair.id] = {
+                    last: newPrice,
+                    high: Math.max(prevPrice * 1.01, newPrice * 1.01),
+                    low: Math.min(prevPrice * 0.99, newPrice * 0.99),
+                    vol: Math.random() * 100,
+                    change: (newPrice - pair.base) / pair.base * 100
+                };
+                
+                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
+                priceHistory[pair.id].push(newPrice);
+                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
+            });
         }
 
         function renderPairSelectors() {
@@ -650,32 +618,9 @@
             }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">No orders yet</td></tr>';
         }
 
-        function showAlert(m, t = 'success') {
+function showAlert(m, t = 'success') {
             document.getElementById('alert').innerHTML = `<div class="alert alert-${t}">${m}</div>`;
             setTimeout(() => document.getElementById('alert').innerHTML = '', 5000);
-        }
-        
-        let corsNoticeShown = false;
-        function showSimulatedData() {
-            PAIRS.forEach(pair => {
-                marketData[pair.id] = {
-                    last: pair.base * (1 + (Math.random() - 0.5) * 0.05),
-                    high: pair.base * 1.02,
-                    low: pair.base * 0.98,
-                    vol: Math.random() * 100,
-                    change: (Math.random() - 0.5) * 10
-                };
-                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
-                priceHistory[pair.id].push(marketData[pair.id].last);
-                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
-            });
-            
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('app').style.display = 'block';
-            document.getElementById('last-update').textContent = 'Retrying...';
-            renderCharts();
-            renderPairSelectors();
-            render();
         }
 
         window.setTradeType = function(t) {
