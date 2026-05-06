@@ -119,15 +119,19 @@
         const QUICK_PRICES = {'btc_idr': 1050000000, 'eth_idr': 25000000, 'usdt_idr': 16500};
         window.init = async function() {
             try {
-                await import('./pkg/paper_wasm.js');
-                const { PaperTrader } = await import('./pkg/paper_wasm.js');
+                const wasm = await import('./pkg/paper_wasm.js');
+                await wasm.default();
+                const { PaperTrader } = wasm;
                 trader = new PaperTrader();
                 const saved = localStorage.getItem('paper-trading-state');
                 if (saved) try { trader.load_state(saved); } catch(e) {}
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
                 render();
-            } catch (e) { document.getElementById('loading').innerHTML = '<div class="alert alert-error">WASM load failed</div>'; }
+            } catch (e) { 
+                console.error(e);
+                document.getElementById('loading').innerHTML = '<div class="alert alert-error">WASM load failed: ' + e.message + '</div>'; 
+            }
         };
         function render() { renderBalances(); renderStats(); renderOrders(); renderQuickPrices(); }
         function renderBalances() {
