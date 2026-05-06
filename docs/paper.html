@@ -417,9 +417,12 @@
         let wsReconnectTimer = null;
         let useSimulated = false;
 
+        const CORS_PROXY = 'https://corsproxy.io/?key=47986306&url=';
+        const INDO_TICKER_ALL = 'https://indodax.com/api/ticker_all';
         const WS_URL = 'wss://ws3.indodax.com/ws/';
         const WS_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJwdWJsaWMiLCJpYXQiOjE3NDYyMzg0MDAsImV4cCI6MTc3Nzc3NDQwMCwic3ViIjoicHVibGljIn0.3NlrJjVX5Q1s9m2tZKwQFT7xXNPN9GLQUJEN4rQIfyM';
         const FILL_CHECK_INTERVAL = 3000;
+        const API_POLL_INTERVAL = 5000;
 
         const PAIRS = [
             { id: 'btc_idr', name: 'Bitcoin', symbol: 'BTC', icon: '₿', base: 1000000000 },
@@ -455,18 +458,44 @@
                 }
 
                 renderPairSelectors();
-                connectWebSocket();
 
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
 
                 render();
                 startFillChecks();
+
+                try {
+                    await fetchTickerAll();
+                } catch(e) {
+                    console.warn('CORS proxy fetch failed, trying WebSocket...');
+                }
+                connectWebSocket();
+                startApiPolling();
             } catch (e) {
                 console.error(e);
                 document.getElementById('loading').innerHTML = '<div class="alert alert-error">WASM load failed: ' + e.message + '</div>';
             }
         };
+
+        async function fetchTickerAll() {
+            const url = CORS_PROXY + encodeURIComponent(INDO_TICKER_ALL);
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const json = await resp.json();
+            const tickers = json.tickers || json;
+            if (tickers && Object.keys(tickers).length > 0) {
+                handleMarketData(tickers);
+                updateConnectionIndicator('live');
+            }
+        }
+
+        function startApiPolling() {
+            setInterval(async () => {
+                if (ws && ws.readyState === WebSocket.OPEN) return;
+                try { await fetchTickerAll(); } catch(e) {}
+            }, API_POLL_INTERVAL);
+        }
 
         function connectWebSocket() {
             if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
