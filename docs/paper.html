@@ -423,6 +423,7 @@
         const WS_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJwdWJsaWMiLCJpYXQiOjE3NDYyMzg0MDAsImV4cCI6MTc3Nzc3NDQwMCwic3ViIjoicHVibGljIn0.3NlrJjVX5Q1s9m2tZKwQFT7xXNPN9GLQUJEN4rQIfyM';
         const FILL_CHECK_INTERVAL = 3000;
         const API_POLL_INTERVAL = 5000;
+        const SIMULATED_FALLBACK_MS = 8000;
 
         const PAIRS = [
             { id: 'btc_idr', name: 'Bitcoin', symbol: 'BTC', icon: '₿', base: 1000000000 },
@@ -464,6 +465,20 @@
 
                 render();
                 startFillChecks();
+
+                let hasRealData = false;
+                const originalHandle = handleMarketData;
+                handleMarketData = function(data) {
+                    hasRealData = true;
+                    originalHandle(data);
+                };
+
+                setTimeout(() => {
+                    if (!hasRealData && !useSimulated) {
+                        console.warn('No real data after ' + SIMULATED_FALLBACK_MS + 'ms, falling back to simulated prices');
+                        fallbackToSimulated();
+                    }
+                }, SIMULATED_FALLBACK_MS);
 
                 try {
                     await fetchTickerAll();
