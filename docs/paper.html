@@ -460,6 +460,7 @@
                 
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
+                document.getElementById('app').style.display = 'block';
                 
                 render();
                 setInterval(fetchMarketData, 5000);
@@ -490,6 +491,7 @@
                 }
                 
                 if (!data) {
+                    console.log('No data received, showing CORS notice');
                     showCORSNotice();
                     PAIRS.forEach(pair => {
                         marketData[pair.id] = {
@@ -682,18 +684,25 @@
         function showCORSNotice() {
             if (corsNoticeShown) return;
             corsNoticeShown = true;
-            const notice = document.createElement('div');
-            notice.className = 'cors-notice';
-            notice.innerHTML = `
-                <h3>⚠️ API Tidak Tersedia</h3>
-                <p>Browser memblokir permintaan ke API Indodax karena CORS. Untuk menggunakan data harga real-time, pasang ekstensi browser di bawah:</p>
-                <a href="https://chromewebstore.google.com/detail/allow-cors-access-control/lhobafahddgcelffkeicbaginigeejlf" target="_blank">
-                    📦 Install Allow CORS Extension
-                </a>
-                <p style="margin-top:16px;font-size:13px;">Setelah install, aktifkan dengan klik ikon "C" di toolbar browser (warna oranye)</p>
-                <button onclick="this.parentElement.remove();showSimulatedPrices();">Tutup - Gunakan Harga Simulasi</button>
+            
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            
+            const noticeHTML = `
+                <div class="cors-notice" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;">
+                    <div style="background:var(--bg-elevated);border:2px solid var(--warning);border-radius:16px;padding:40px;max-width:500px;text-align:center;">
+                        <h3 style="color:var(--warning);margin-bottom:20px;font-size:24px;">⚠️ API Tidak Tersedia</h3>
+                        <p style="color:var(--text-muted);margin-bottom:20px;line-height:1.6;">Browser memblokir permintaan ke API Indodax karena CORS policy. Untuk menggunakan data harga real-time, pasang ekstensi browser:</p>
+                        <a href="https://chromewebstore.google.com/detail/allow-cors-access-control/lhobafahddgcelffkeicbaginigeejlf" target="_blank" style="display:inline-block;padding:14px 28px;background:var(--accent-dim);color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;margin:10px 0;">
+                            📦 Install Allow CORS
+                        </a>
+                        <p style="margin-top:16px;font-size:13px;color:var(--text-muted);">Setelah install, klik ikon "C" di toolbar browser (warna oranye) untuk mengaktifkan</p>
+                        <button onclick="this.parentElement.parentElement.remove();corsNoticeShown=false;showSimulatedPrices();" style="margin-top:20px;padding:12px 24px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:8px;cursor:pointer;font-size:14px;">Tutup - Gunakan Harga Simulasi</button>
+                    </div>
+                </div>
             `;
-            document.body.appendChild(notice);
+            
+            document.body.insertAdjacentHTML('beforeend', noticeHTML);
         }
         
         function showSimulatedPrices() {
