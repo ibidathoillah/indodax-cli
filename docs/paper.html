@@ -274,6 +274,26 @@
         
         .last-update { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 12px; }
         
+        .cors-notice {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-elevated);
+            border: 2px solid var(--warning);
+            border-radius: 16px;
+            padding: 30px 40px;
+            text-align: center;
+            z-index: 1000;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .cors-notice h3 { color: var(--warning); margin-bottom: 16px; font-size: 20px; }
+        .cors-notice p { color: var(--text-muted); margin-bottom: 20px; line-height: 1.6; }
+        .cors-notice a { display: inline-block; padding: 12px 24px; background: var(--accent-dim); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.2s; }
+        .cors-notice a:hover { background: var(--accent); transform: translateY(-2px); }
+        .cors-notice button { margin-top: 16px; padding: 10px 20px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; }
+        
         .pair-icons {
             btc_idr: '₿', eth_idr: 'Ξ', usdt_idr: '₮', bnb_idr: '⬡', xrp_idr: '✕',
             ada_idr: '₳', doge_idr: 'Ð', sol_idr: '◎', dot_idr: '●', matic_idr: '⬟',
@@ -470,6 +490,7 @@
                 }
                 
                 if (!data) {
+                    showCORSNotice();
                     PAIRS.forEach(pair => {
                         marketData[pair.id] = {
                             last: pair.base * (1 + (Math.random() - 0.5) * 0.05),
@@ -656,6 +677,26 @@
             document.getElementById('alert').innerHTML = `<div class="alert alert-${t}">${m}</div>`;
             setTimeout(() => document.getElementById('alert').innerHTML = '', 5000);
         }
+        
+        let corsNoticeShown = false;
+        function showCORSNotice() {
+            if (corsNoticeShown) return;
+            corsNoticeShown = true;
+            const notice = document.createElement('div');
+            notice.className = 'cors-notice';
+            notice.innerHTML = `
+                <h3>⚠️ API Tidak Tersedia</h3>
+                <p>Browser memblokir permintaan ke API Indodax karena CORS. Untuk menggunakan data harga real-time, pasang ekstensi browser di bawah:</p>
+                <a href="https://chromewebstore.google.com/detail/allow-cors-access-control/lhobafahddgcelffkeicbaginigeejlf" target="_blank">
+                    📦 Install Allow CORS Extension
+                </a>
+                <p style="margin-top:16px;font-size:13px;">Setelah install, aktifkan dengan klik ikon "C" di toolbar browser (warna oranye)</p>
+                <button onclick="this.parentElement.remove();showSimulatedPrices();">Tutup - Gunakan Harga Simulasi</button>
+            `;
+            document.body.appendChild(notice);
+        }
+        
+        function showSimulatedPrices() {
 
         window.setTradeType = function(t) {
             tradeType = t;
