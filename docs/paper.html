@@ -701,6 +701,10 @@
         }
         
         function showSimulatedPrices() {
+            renderPairSelectors();
+            document.getElementById('app').style.display = 'block';
+            render();
+        }
 
         window.setTradeType = function(t) {
             tradeType = t;
