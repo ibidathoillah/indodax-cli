@@ -52,6 +52,9 @@
         .pair-btn { padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; }
         .pair-btn.active { border-color: var(--accent); background: var(--accent-dim); color: #fff; }
         .back-link { display: inline-block; margin-bottom: 20px; color: var(--accent); text-decoration: none; }
+        .chart-container { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+        .chart-title { font-size: 18px; margin-bottom: 16px; }
+        .chart-canvas { width: 100%; height: 200px; }
     </style>
 </head>
 <body>
@@ -64,6 +67,10 @@
         <div id="loading"><div class="spinner"></div>Loading...</div>
         <div id="app" style="display: none;">
             <div id="alert"></div>
+            <div class="card chart-container">
+                <h2 class="chart-title">📈 Price Chart (Simulated)</h2>
+                <svg id="price-chart" class="chart-canvas" viewBox="0 0 800 200" preserveAspectRatio="none"></svg>
+            </div>
             <div class="grid">
                 <div class="card">
                     <h2>💰 Balances</h2>
@@ -133,7 +140,7 @@
                 document.getElementById('loading').innerHTML = '<div class="alert alert-error">WASM load failed: ' + e.message + '</div>'; 
             }
         };
-        function render() { renderBalances(); renderStats(); renderOrders(); renderQuickPrices(); }
+        function render() { renderBalances(); renderStats(); renderOrders(); renderQuickPrices(); renderChart(currentPair); }
         function renderBalances() {
             const b = trader.get_balances();
             document.getElementById('balances').innerHTML = Object.entries(b).map(([c,a]) => `<div class="balance-row"><span class="balance-currency">${c.toUpperCase()}</span><span class="balance-amount">${formatNumber(a)}</span></div>`).join('');
@@ -155,6 +162,42 @@
         window.resetTrading = function() { if (confirm('Reset?')) { trader.reset(); localStorage.removeItem('paper-trading-state'); render(); showAlert('Reset'); } };
         function saveState() { localStorage.setItem('paper-trading-state', trader.save_state()); }
         function formatNumber(n) { return n >= 1000000 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : n >= 1 ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : n.toLocaleString('en-US', { maximumFractionDigits: 8 }); }
+        
+        const priceHistory = { 'btc_idr': [], 'eth_idr': [], 'usdt_idr': [] };
+        function generatePriceData(pair) {
+            const basePrices = { 'btc_idr': 1050000000, 'eth_idr': 25000000, 'usdt_idr': 16500 };
+            const base = basePrices[pair];
+            let prices = [];
+            let price = base;
+            for (let i = 0; i < 50; i++) {
+                price = price * (1 + (Math.random() - 0.5) * 0.02);
+                prices.push(price);
+            }
+            return prices;
+        }
+        function renderChart(pair) {
+            if (!priceHistory[pair].length) priceHistory[pair] = generatePriceData(pair);
+            const prices = priceHistory[pair];
+            const min = Math.min(...prices), max = Math.max(...prices);
+            const range = max - min || 1;
+            const width = 800, height = 200, padding = 10;
+            const points = prices.map((p, i) => `${(i / (prices.length - 1)) * (width - padding * 2) + padding},${height - padding - ((p - min) / range) * (height - padding * 2)}`).join(' ');
+            const areaPoints = `${padding},${height - padding} ${points} ${width - padding},${height - padding}`;
+            document.getElementById('price-chart').innerHTML = `
+                <defs>
+                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>
+                        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                    </linearGradient>
+                </defs>
+                <rect x="0" y="0" width="${width}" height="${height}" fill="var(--code-bg)"/>
+                <polyline fill="none" stroke="var(--accent)" stroke-width="2" points="${points}"/>
+                <polygon fill="url(#chartGradient)" points="${areaPoints}"/>
+                <text x="${padding}" y="20" fill="var(--text-muted)" font-size="12">Low: ${formatNumber(min)}</text>
+                <text x="${padding}" y="${height - padding - 5}" fill="var(--text-muted)" font-size="12">High: ${formatNumber(max)}</text>
+                <text x="${width - 100}" y="20" fill="var(--success)" font-size="14" font-weight="bold">${formatNumber(prices[prices.length-1])}</text>
+            `;
+        }
         init();
     </script>
 </body>
