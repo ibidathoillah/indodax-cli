@@ -512,8 +512,11 @@
                 }
             }
             
-            console.log('Using simulated data');
-            showCORSNotice();
+            console.log('All failed, using simulated, retrying...');
+            if (Object.keys(marketData).length === 0) {
+                showSimulatedData();
+            }
+            setTimeout(fetchMarketData, 5000);
         }
 
         function renderPairSelectors() {
@@ -663,10 +666,7 @@
         }
         
         let corsNoticeShown = false;
-        function showCORSNotice() {
-            if (corsNoticeShown) return;
-            corsNoticeShown = true;
-            
+        function showSimulatedData() {
             PAIRS.forEach(pair => {
                 marketData[pair.id] = {
                     last: pair.base * (1 + (Math.random() - 0.5) * 0.05),
@@ -682,26 +682,10 @@
             
             document.getElementById('loading').style.display = 'none';
             document.getElementById('app').style.display = 'block';
-            document.getElementById('last-update').textContent = 'Simulated (API unavailable)';
+            document.getElementById('last-update').textContent = 'Retrying...';
             renderCharts();
             renderPairSelectors();
             render();
-            
-            const noticeHTML = `
-                <div class="cors-notice" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;">
-                    <div style="background:var(--bg-elevated);border:2px solid var(--warning);border-radius:16px;padding:40px;max-width:500px;text-align:center;">
-                        <h3 style="color:var(--warning);margin-bottom:20px;font-size:24px;">⚠️ API Tidak Tersedia</h3>
-                        <p style="color:var(--text-muted);margin-bottom:20px;line-height:1.6;">Browser memblokir permintaan ke API Indodax karena CORS policy. Untuk menggunakan data harga real-time, pasang ekstensi browser:</p>
-                        <a href="https://chromewebstore.google.com/detail/allow-cors-access-control/lhobafahddgcelffkeicbaginigeejlf" target="_blank" style="display:inline-block;padding:14px 28px;background:var(--accent-dim);color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;margin:10px 0;">
-                            📦 Install Allow CORS
-                        </a>
-                        <p style="margin-top:16px;font-size:13px;color:var(--text-muted);">Setelah install, klik ikon "C" di toolbar browser (warna oranye) untuk mengaktifkan</p>
-                        <button onclick="this.parentElement.parentElement.remove();location.reload();" style="margin-top:20px;padding:12px 24px;background:var(--success);border:none;color:#000;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">OK - Gunakan Data Simulasi</button>
-                    </div>
-                </div>
-            `;
-            
-            document.body.insertAdjacentHTML('beforeend', noticeHTML);
         }
 
         window.setTradeType = function(t) {
