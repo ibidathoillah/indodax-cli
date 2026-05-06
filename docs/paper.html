@@ -47,15 +47,23 @@
         h1 { font-size: 28px; font-weight: 800; }
         .subtitle { color: var(--text-muted); font-size: 14px; }
         .header-right { display: flex; gap: 12px; align-items: center; }
-        .live-indicator {
+        .sim-indicator {
             display: flex;
             align-items: center;
             gap: 8px;
             padding: 6px 12px;
-            background: var(--success-dim);
+            background: var(--warning);
             border-radius: 20px;
             font-size: 12px;
-            color: var(--success);
+            color: #000;
+            transition: background 0.3s, color 0.3s;
+        }
+        .sim-dot {
+            width: 8px;
+            height: 8px;
+            background: #000;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
         }
         .live-dot {
             width: 8px;
@@ -78,13 +86,17 @@
             border: none;
             transition: all 0.2s;
         }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-primary { background: var(--accent-dim); color: #fff; }
-        .btn-primary:hover { background: var(--accent); transform: translateY(-1px); }
+        .btn-primary:hover:not(:disabled) { background: var(--accent); transform: translateY(-1px); }
         .btn-secondary { background: var(--code-bg); color: var(--text); border: 1px solid var(--border); }
-        .btn-secondary:hover { background: var(--bg-elevated); }
-        .btn-success { background: var(--success); color: #000; }
-        .btn-success:hover { filter: brightness(1.1); }
+        .btn-secondary:hover:not(:disabled) { background: var(--bg-elevated); }
         .btn-danger { background: var(--danger); color: #fff; }
+        .btn-danger:hover:not(:disabled) { filter: brightness(1.1); }
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 11px;
+        }
         .alert {
             padding: 14px 20px;
             border-radius: 10px;
@@ -96,14 +108,14 @@
         @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         .alert-success { background: var(--success-dim); border: 1px solid var(--success); color: var(--success); }
         .alert-error { background: var(--danger-dim); border: 1px solid var(--danger); color: var(--danger); }
-        
+
         .main-grid {
             display: grid;
             grid-template-columns: 320px 1fr;
             gap: 24px;
         }
         @media (max-width: 1000px) { .main-grid { grid-template-columns: 1fr; } }
-        
+
         .sidebar { display: flex; flex-direction: column; gap: 20px; }
         .card {
             background: var(--bg-elevated);
@@ -118,7 +130,7 @@
             margin-bottom: 16px;
         }
         .card-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-        
+
         .balance-grid { display: flex; flex-direction: column; gap: 10px; }
         .balance-row {
             display: flex;
@@ -138,7 +150,7 @@
         }
         .balance-currency .icon { font-size: 18px; }
         .balance-amount { color: var(--success); font-weight: 600; font-size: 14px; }
-        
+
         .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .stat-box {
             background: var(--code-bg);
@@ -148,7 +160,7 @@
         }
         .stat-value { font-size: 24px; font-weight: 700; color: var(--accent); font-family: 'SF Mono', monospace; }
         .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
-        
+
         .trade-form { display: flex; flex-direction: column; gap: 16px; }
         .trade-type-toggle { display: flex; gap: 8px; }
         .trade-type-btn {
@@ -165,7 +177,7 @@
         }
         .trade-type-btn.active.buy { border-color: var(--success); background: var(--success-dim); color: var(--success); }
         .trade-type-btn.active.sell { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
-        
+
         .pair-select {
             display: flex;
             flex-wrap: wrap;
@@ -184,7 +196,7 @@
         }
         .pair-btn:hover { border-color: var(--accent); }
         .pair-btn.active { border-color: var(--accent); background: var(--accent-dim); color: #fff; }
-        
+
         .form-group { display: flex; flex-direction: column; gap: 6px; }
         .form-group label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
         .form-group input {
@@ -197,16 +209,17 @@
             font-family: 'SF Mono', monospace;
         }
         .form-group input:focus { outline: none; border-color: var(--accent); }
-        
+
         .orders-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .orders-table th, .orders-table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        .orders-table th, .orders-table td { padding: 12px 8px; text-align: left; border-bottom: 1px solid var(--border); }
         .orders-table th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
         .orders-table tr:hover { background: var(--code-bg); }
         .side-buy { color: var(--success); font-weight: 700; }
         .side-sell { color: var(--danger); font-weight: 700; }
         .status-pending { color: var(--warning); }
         .status-filled { color: var(--success); }
-        
+        .status-cancelled { color: var(--text-muted); text-decoration: line-through; }
+
         .charts-section { display: flex; flex-direction: column; gap: 20px; }
         .charts-grid {
             display: grid;
@@ -214,7 +227,7 @@
             gap: 20px;
         }
         @media (max-width: 500px) { .charts-grid { grid-template-columns: 1fr; } }
-        
+
         .chart-card {
             background: var(--bg-elevated);
             border: 1px solid var(--border);
@@ -238,10 +251,10 @@
         .price-change { font-size: 13px; font-weight: 600; }
         .price-change.positive { color: var(--success); }
         .price-change.negative { color: var(--danger); }
-        
+
         .chart-container { position: relative; height: 150px; }
         .chart-svg { width: 100%; height: 100%; }
-        
+
         .mini-stats {
             display: flex;
             justify-content: space-between;
@@ -252,7 +265,7 @@
         .mini-stat { text-align: center; }
         .mini-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
         .mini-stat-value { font-size: 12px; font-weight: 600; font-family: 'SF Mono', monospace; }
-        
+
         #loading {
             display: flex;
             flex-direction: column;
@@ -271,16 +284,8 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { color: var(--text-muted); font-size: 16px; }
-        
+
         .last-update { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 12px; }
-        
-        .pair-icons {
-            btc_idr: '₿', eth_idr: 'Ξ', usdt_idr: '₮', bnb_idr: '⬡', xrp_idr: '✕',
-            ada_idr: '₳', doge_idr: 'Ð', sol_idr: '◎', dot_idr: '●', matic_idr: '⬟',
-            avax_idr: '▲', link_idr: '⬡', uni_idr: '🦄', ltc_idr: 'Ł', etc_idr: 'Ξ',
-            near_idr: '⬡', arkm_idr: '◈', op_idr: '⬡', inj_idr: '◈', sui_idr: '◈',
-            pepe_idr: '🐸', shib_idr: '🐕', ftm_idr: '◆', sand_idr: '⬛', mana_idr: '◆'
-        }
     </style>
 </head>
 <body>
@@ -294,23 +299,23 @@
                 </div>
             </div>
             <div class="header-right">
-                <div class="live-indicator">
-                    <span class="live-dot"></span>
-                    Live Prices
+                <div class="sim-indicator">
+                    <span class="sim-dot"></span>
+                    Simulated
                 </div>
                 <button class="btn btn-secondary" onclick="resetTrading()">↻ Reset</button>
                 <a href="index.html" class="btn btn-secondary">← Back</a>
             </div>
         </header>
-        
+
         <div id="loading">
             <div class="spinner"></div>
             <div class="loading-text">Loading market data...</div>
         </div>
-        
+
         <div id="app" style="display: none;">
             <div id="alert"></div>
-            
+
             <div class="main-grid">
                 <div class="sidebar">
                     <div class="card">
@@ -319,7 +324,7 @@
                         </div>
                         <div id="balances" class="balance-grid"></div>
                     </div>
-                    
+
                     <div class="card">
                         <div class="card-header">
                             <span class="card-title">📊 Statistics</span>
@@ -327,7 +332,7 @@
                         <div class="stat-grid">
                             <div class="stat-box">
                                 <div class="stat-value" id="stat-trades">0</div>
-                                <div class="stat-label">Total Trades</div>
+                                <div class="stat-label">Total Orders</div>
                             </div>
                             <div class="stat-box">
                                 <div class="stat-value" id="stat-filled">0</div>
@@ -343,7 +348,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="card">
                         <div class="card-header">
                             <span class="card-title">📈 Place Order</span>
@@ -362,10 +367,10 @@
                                 <label>Amount</label>
                                 <input type="number" id="order-amount" step="any" placeholder="0">
                             </div>
-                            <button class="btn btn-primary" style="width:100%" onclick="placeOrder()">Place Order</button>
+                            <button class="btn btn-primary" id="btn-place-order" style="width:100%" onclick="placeOrder()">Place Order</button>
                         </div>
                     </div>
-                    
+
                     <div class="card">
                         <div class="card-header">
                             <span class="card-title">📋 Orders</span>
@@ -379,6 +384,7 @@
                                         <th>Price</th>
                                         <th>Amount</th>
                                         <th>Status</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="orders-table"></tbody>
@@ -386,7 +392,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="charts-section">
                     <div class="card">
                         <div class="card-header">
@@ -406,7 +412,15 @@
         let tradeType = 'buy';
         let marketData = {};
         let priceHistory = {};
-        
+        let placingOrder = false;
+        let ws = null;
+        let wsReconnectTimer = null;
+        let useSimulated = false;
+
+        const WS_URL = 'wss://ws3.indodax.com/ws/';
+        const WS_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJwdWJsaWMiLCJpYXQiOjE3NDYyMzg0MDAsImV4cCI6MTc3Nzc3NDQwMCwic3ViIjoicHVibGljIn0.3NlrJjVX5Q1s9m2tZKwQFT7xXNPN9GLQUJEN4rQIfyM';
+        const FILL_CHECK_INTERVAL = 3000;
+
         const PAIRS = [
             { id: 'btc_idr', name: 'Bitcoin', symbol: 'BTC', icon: '₿', base: 1000000000 },
             { id: 'eth_idr', name: 'Ethereum', symbol: 'ETH', icon: 'Ξ', base: 50000000 },
@@ -425,61 +439,193 @@
             { id: 'near_idr', name: 'NEAR', symbol: 'NEAR', icon: '⬡', base: 300000 }
         ];
 
+        const PAIR_MAP = Object.fromEntries(PAIRS.map(p => [p.id, p]));
+        const ASSET_ORDER = ['idr', 'usdt', 'btc', 'eth', 'bnb', 'sol', 'ltc', 'xrp', 'ada', 'dot', 'matic', 'avax', 'link', 'uni', 'near', 'doge'];
+
         window.init = async function() {
             try {
                 const wasm = await import('./pkg/paper_wasm.js');
                 await wasm.default();
                 const { PaperTrader } = wasm;
                 trader = new PaperTrader();
-                
+
                 const saved = localStorage.getItem('paper-trading-state');
-                if (saved) try { trader.load_state(saved); } catch(e) {}
-                
-                await fetchMarketData();
+                if (saved) {
+                    try { trader.load_state(saved); } catch(e) { /* ignore corrupt state */ }
+                }
+
                 renderPairSelectors();
-                
+                connectWebSocket();
+
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
-                document.getElementById('app').style.display = 'block';
-                
+
                 render();
-                setInterval(fetchMarketData, 5000);
-            } catch (e) { 
+                startFillChecks();
+            } catch (e) {
                 console.error(e);
-                document.getElementById('loading').innerHTML = '<div class="alert alert-error">WASM load failed: ' + e.message + '</div>'; 
+                document.getElementById('loading').innerHTML = '<div class="alert alert-error">WASM load failed: ' + e.message + '</div>';
             }
         };
 
-        async function fetchMarketData() {
-            updateSimulatedPrices();
-            renderCharts();
-            document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-            setTimeout(fetchMarketData, 3000);
+        function connectWebSocket() {
+            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+
+            try {
+                ws = new WebSocket(WS_URL);
+
+                ws.onopen = () => {
+                    console.log('WebSocket connected to Indodax');
+                    updateConnectionIndicator('live');
+                    const sub = JSON.stringify({
+                        method: 1,
+                        params: { channel: 'market:summary-24h', token: WS_TOKEN },
+                        id: 1
+                    });
+                    ws.send(sub);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.method === 0 && msg.data) {
+                            handleMarketData(msg.data);
+                        } else if (msg.method === 7) {
+                            ws.send(JSON.stringify({ method: 7, id: 2 }));
+                        }
+                    } catch(e) { console.warn('WS message parse error:', e); }
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket disconnected, reconnecting in 5s...');
+                    updateConnectionIndicator('reconnecting');
+                    wsReconnectTimer = setTimeout(connectWebSocket, 5000);
+                };
+
+                ws.onerror = (err) => {
+                    console.warn('WebSocket error, will retry...');
+                };
+            } catch(e) {
+                console.warn('WebSocket connection failed, using simulated prices');
+                fallbackToSimulated();
+            }
         }
-        
+
+        function updateConnectionIndicator(state) {
+            const indicator = document.querySelector('.sim-indicator');
+            if (!indicator) return;
+            if (state === 'live') {
+                indicator.innerHTML = '<span class="live-dot"></span> Live';
+                indicator.style.background = 'var(--success-dim)';
+                indicator.style.color = 'var(--success)';
+            } else {
+                indicator.innerHTML = '<span class="sim-dot"></span> Simulated';
+                indicator.style.background = 'var(--warning)';
+                indicator.style.color = '#000';
+            }
+        }
+
+        function fallbackToSimulated() {
+            useSimulated = true;
+            updateConnectionIndicator('simulated');
+            scheduleNextUpdate();
+        }
+
+        function scheduleNextUpdate() {
+            setTimeout(() => {
+                updateSimulatedPrices();
+                renderCharts();
+                document.getElementById('last-update').textContent = 'Simulated · ' + new Date().toLocaleTimeString();
+                scheduleNextUpdate();
+            }, 3000);
+        }
+
         function updateSimulatedPrices() {
             PAIRS.forEach(pair => {
                 const prevPrice = marketData[pair.id]?.last || pair.base;
-                const change = prevPrice * (Math.random() - 0.5) * 0.02;
-                const newPrice = prevPrice + change;
-                
+                const ct = prevPrice * (Math.random() - 0.5) * 0.02;
+                const newPrice = prevPrice + ct;
+
                 marketData[pair.id] = {
                     last: newPrice,
-                    high: Math.max(prevPrice * 1.01, newPrice * 1.01),
-                    low: Math.min(prevPrice * 0.99, newPrice * 0.99),
-                    vol: Math.random() * 100,
+                    high: Math.max((marketData[pair.id]?.high || prevPrice * 1.01), newPrice),
+                    low: Math.min((marketData[pair.id]?.low || prevPrice * 0.99), newPrice),
+                    vol: marketData[pair.id]?.vol || Math.random() * 100,
                     change: (newPrice - pair.base) / pair.base * 100
                 };
-                
+
                 if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
                 priceHistory[pair.id].push(newPrice);
                 if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
             });
         }
 
+        function normalizePair(raw) {
+            const known = PAIR_MAP[raw];
+            if (known) return raw;
+            const withUnderscore = raw.replace(/([a-z]+)(idr)$/, '$1_$2');
+            if (PAIR_MAP[withUnderscore]) return withUnderscore;
+            return raw;
+        }
+
+        function handleMarketData(data) {
+            let updated = 0;
+            const pairIds = new Set(PAIRS.map(p => p.id));
+
+            for (const [rawPair, info] of Object.entries(data)) {
+                const pairId = normalizePair(rawPair);
+                if (!pairIds.has(pairId)) continue;
+
+                const last = parseFloat(info.last) || 0;
+                const high = parseFloat(info.high) || last;
+                const low = parseFloat(info.low) || last;
+                const change = parseFloat(info.change) || 0;
+                const volBase = parseFloat(info.vol_base) || parseFloat(info.volume) || 0;
+
+                if (last > 0) {
+                    marketData[pairId] = { last, high, low, vol: volBase, change };
+
+                    if (!priceHistory[pairId]) priceHistory[pairId] = [];
+                    const prev = priceHistory[pairId];
+                    if (prev.length === 0 || Math.abs(prev[prev.length - 1] - last) > 0.001) {
+                        priceHistory[pairId].push(last);
+                        if (priceHistory[pairId].length > 50) priceHistory[pairId].shift();
+                    }
+                    updated++;
+                }
+            }
+
+            if (updated > 0) {
+                document.getElementById('last-update').textContent = 'Live · ' + new Date().toLocaleTimeString();
+                renderCharts();
+                if (trader) { checkOrderFills(); render(); }
+            }
+        }
+
+        function startFillChecks() {
+            setInterval(async () => {
+                if (trader) {
+                    await checkOrderFills();
+                    render();
+                }
+            }, FILL_CHECK_INTERVAL);
+        }
+
+        async function checkOrderFills() {
+            if (!trader) return;
+            const priceMap = {};
+            PAIRS.forEach(p => {
+                if (marketData[p.id]) priceMap[p.id] = marketData[p.id].last;
+            });
+            try {
+                trader.check_fills(priceMap);
+                saveState();
+            } catch(e) { /* non-critical */ }
+        }
+
         function renderPairSelectors() {
             const tradeSelect = document.getElementById('trade-pair-select');
-            tradeSelect.innerHTML = PAIRS.map(p => 
+            tradeSelect.innerHTML = PAIRS.map(p =>
                 `<button class="pair-btn ${p.id === currentPair ? 'active' : ''}" data-pair="${p.id}" onclick="setPair('${p.id}')">${p.icon} ${p.symbol}</button>`
             ).join('');
         }
@@ -489,12 +635,12 @@
             grid.innerHTML = PAIRS.map(pair => {
                 const data = marketData[pair.id];
                 if (!data) return '';
-                
+
                 const prices = priceHistory[pair.id] || [];
-                const chartSVG = generateChart(prices, data.last);
+                const chartSVG = generateChart(pair.id, prices, data.last);
                 const changeClass = data.change >= 0 ? 'positive' : 'negative';
                 const changeSign = data.change >= 0 ? '+' : '';
-                
+
                 return `
                     <div class="chart-card">
                         <div class="chart-header">
@@ -525,7 +671,7 @@
                                 <div class="mini-stat-value">${formatNumber(data.low)}</div>
                             </div>
                             <div class="mini-stat">
-                                <div class="mini-stat-label">Vol (BTC)</div>
+                                <div class="mini-stat-label">Vol</div>
                                 <div class="mini-stat-value">${data.vol?.toFixed(2) || 0}</div>
                             </div>
                         </div>
@@ -534,78 +680,137 @@
             }).join('');
         }
 
-        function generateChart(prices, currentPrice) {
+        function generateChart(pairId, prices, currentPrice) {
             if (prices.length < 2) {
                 return `<text x="200" y="75" fill="var(--text-muted)" text-anchor="middle">Loading...</text>`;
             }
-            
+
             const min = Math.min(...prices);
             const max = Math.max(...prices);
             const range = max - min || 1;
             const width = 400, height = 150, padding = 5;
-            
+
             const points = prices.map((p, i) => {
                 const x = (i / (prices.length - 1)) * (width - padding * 2) + padding;
                 const y = height - padding - ((p - min) / range) * (height - padding * 2);
                 return `${x},${y}`;
             }).join(' ');
-            
+
             const areaPoints = `${padding},${height - padding} ${points} ${width - padding},${height - padding}`;
             const color = currentPrice >= prices[0] ? 'var(--success)' : 'var(--danger)';
-            
+
             return `
                 <defs>
-                    <linearGradient id="grad-${prices.length}" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="grad-${pairId}" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stop-color="${color}" stop-opacity="0.3"/>
                         <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
                     </linearGradient>
                 </defs>
                 <rect x="0" y="0" width="${width}" height="${height}" fill="var(--code-bg)" rx="4"/>
-                <polygon fill="url(#grad-${prices.length})" points="${areaPoints}"/>
+                <polygon fill="url(#grad-${pairId})" points="${areaPoints}"/>
                 <polyline fill="none" stroke="${color}" stroke-width="2" points="${points}"/>
             `;
         }
 
-        function updateQuickPrices() {
-            const b = trader?.get_balances() || {};
-            document.getElementById('balances').innerHTML = PAIRS.slice(0, 6).map(p => {
-                const balance = b[p.id.replace('_idr', '').toUpperCase()] || 0;
-                return `
-                    <div class="balance-row">
-                        <span class="balance-currency"><span class="icon">${p.icon}</span> ${p.symbol}</span>
-                        <span class="balance-amount">${balance > 0 ? balance.toFixed(6) : '0.000000'}</span>
-                    </div>
-                `;
-            }).join('');
-            
-            const idr = b['IDR'] || 0;
-            document.getElementById('balances').innerHTML = `
-                <div class="balance-row" style="border: 2px solid var(--accent);">
-                    <span class="balance-currency"><span class="icon">🇮🇩</span> IDR</span>
-                    <span class="balance-amount">${formatNumber(idr)}</span>
-                </div>
-            ` + document.getElementById('balances').innerHTML;
-        }
-
         function render() {
             renderStats();
+            updateQuickPrices();
             renderOrders();
+        }
+
+        function updateQuickPrices() {
+            const b = trader?.get_balances() || {};
+            if (!b || Object.keys(b).length === 0) {
+                document.getElementById('balances').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:12px">No balances</div>';
+                return;
+            }
+
+            let html = '';
+
+            if (b['idr'] !== undefined) {
+                html += `<div class="balance-row" style="border: 2px solid var(--accent);">
+                    <span class="balance-currency"><span class="icon">🇮🇩</span> IDR</span>
+                    <span class="balance-amount">${formatNumber(b['idr'])}</span>
+                </div>`;
+            }
+
+            const sortedKeys = Object.keys(b)
+                .filter(k => k !== 'idr')
+                .sort((a, b) => {
+                    const ai = ASSET_ORDER.indexOf(a.toLowerCase());
+                    const bi = ASSET_ORDER.indexOf(b.toLowerCase());
+                    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                });
+
+            sortedKeys.forEach(key => {
+                const balance = b[key];
+                if (balance === undefined) return;
+                const pairId = key.toLowerCase() + '_idr';
+                const pairInfo = PAIR_MAP[pairId] || { icon: '', symbol: key.toUpperCase() };
+                html += `<div class="balance-row">
+                    <span class="balance-currency"><span class="icon">${pairInfo.icon}</span> ${pairInfo.symbol || key.toUpperCase()}</span>
+                    <span class="balance-amount">${balance > 0 ? balance.toFixed(6) : '0.000000'}</span>
+                </div>`;
+            });
+
+            document.getElementById('balances').innerHTML = html || '<div style="color:var(--text-muted);text-align:center;padding:12px">No balances</div>';
         }
 
         function renderStats() {
             if (!trader) return;
             const s = trader.get_status();
-            document.getElementById('stat-trades').textContent = s.trade_count || 0;
+            const orders = trader.get_orders() || [];
+
+            document.getElementById('stat-trades').textContent = s.total_orders || s.trade_count || 0;
             document.getElementById('stat-filled').textContent = s.filled_count || 0;
-            document.getElementById('stat-pnl').textContent = '0';
-            document.getElementById('stat-volume').textContent = s.trade_count || '0';
+
+            document.getElementById('stat-volume').textContent = Math.round(
+                orders.filter(o => o.status === 'filled').reduce((sum, o) => sum + (o.price * o.amount), 0)
+            );
+
+            computePnl();
+        }
+
+        function computePnl() {
+            if (!trader) return;
+            const b = trader.get_balances() || {};
+            const ib = trader.get_initial_balances();
+            if (!ib) { document.getElementById('stat-pnl').textContent = 'N/A'; return; }
+
+            let initialTotal = ib.idr || 0;
+            let currentTotal = b.idr || 0;
+
+            for (const key of Object.keys(ib)) {
+                if (key === 'idr') continue;
+                const pairId = key.toLowerCase() + '_idr';
+                const priceNow = marketData[pairId]?.last;
+                const initBalance = ib[key] || 0;
+                const curBalance = b[key] || 0;
+
+                if (priceNow && initBalance > 0) {
+                    initialTotal += initBalance * priceNow;
+                }
+                if (priceNow && curBalance > 0) {
+                    currentTotal += curBalance * priceNow;
+                }
+            }
+
+            const pnl = currentTotal - initialTotal;
+            const pct = initialTotal > 0 ? (pnl / initialTotal * 100) : 0;
+            const el = document.getElementById('stat-pnl');
+            el.textContent = formatNumber(pnl);
+            el.style.color = pnl >= 0 ? 'var(--success)' : 'var(--danger)';
+            el.title = (pnl >= 0 ? '+' : '') + pct.toFixed(2) + '%';
         }
 
         function renderOrders() {
             if (!trader) return;
-            const o = trader.get_orders();
-            document.getElementById('orders-table').innerHTML = o.length ? o.slice(0, 20).map(x => {
-                const pairInfo = PAIRS.find(p => p.id === x.pair) || { symbol: x.pair, icon: '?' };
+            const o = trader.get_orders() || [];
+            document.getElementById('orders-table').innerHTML = o.length ? o.slice(0, 50).map(x => {
+                const pairInfo = PAIR_MAP[x.pair] || { symbol: x.pair.split('_')[0]?.toUpperCase() || '?', icon: '' };
+                const cancelBtn = x.status === 'pending'
+                    ? `<button class="btn btn-danger btn-sm" onclick="cancelOrder(${x.id})">✕</button>`
+                    : '';
                 return `
                     <tr>
                         <td><span style="font-size:16px">${pairInfo.icon}</span> ${pairInfo.symbol}</td>
@@ -613,12 +818,13 @@
                         <td>${formatNumber(x.price)}</td>
                         <td>${x.amount?.toFixed(6) || '0'}</td>
                         <td class="status-${x.status}">${x.status}</td>
+                        <td>${cancelBtn}</td>
                     </tr>
                 `;
-            }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">No orders yet</td></tr>';
+            }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No orders yet</td></tr>';
         }
 
-function showAlert(m, t = 'success') {
+        function showAlert(m, t = 'success') {
             document.getElementById('alert').innerHTML = `<div class="alert alert-${t}">${m}</div>`;
             setTimeout(() => document.getElementById('alert').innerHTML = '', 5000);
         }
@@ -640,32 +846,62 @@ function showAlert(m, t = 'success') {
             }
         };
 
-        window.placeOrder = function() {
-            const p = parseFloat(document.getElementById('order-price').value);
-            const a = parseFloat(document.getElementById('order-amount').value);
-            if (!p || !a) return showAlert('Masukkan harga dan jumlah', 'error');
-            if (!trader) return showAlert('Trading tidak siap', 'error');
-            
+        window.placeOrder = async function() {
+            if (placingOrder) return;
+            const price = parseFloat(document.getElementById('order-price').value);
+            const amount = parseFloat(document.getElementById('order-amount').value);
+            if (!price || !amount) return showAlert('Please enter both price and amount', 'error');
+            if (!trader) return showAlert('Trading not ready', 'error');
+
+            placingOrder = true;
+            const btn = document.getElementById('btn-place-order');
+            btn.disabled = true;
+            btn.textContent = 'Placing...';
+
             try {
-                const pairSymbol = currentPair.split('_')[0].toUpperCase();
+                const side = tradeType === 'buy' ? 'Buy' : 'Sell';
                 let r;
                 if (tradeType === 'buy') {
-                    r = trader.buy(currentPair, p, a);
+                    r = trader.buy(currentPair, price, amount);
                 } else {
-                    r = trader.sell(currentPair, p, a);
+                    r = trader.sell(currentPair, price, amount);
                 }
-                
+
                 if (r && r.success) {
                     saveState();
                     render();
-                    showAlert(`✅ ${tradeType.toUpperCase()} ${a} ${pairSymbol} @ ${formatNumber(p)}`);
+                    const pairSymbol = currentPair.split('_')[0].toUpperCase();
+                    showAlert(`${side} ${amount} ${pairSymbol} @ ${formatNumber(price)} — order placed`);
+
+                    const prices = {};
+                    PAIRS.forEach(p => { if (marketData[p.id]) prices[p.id] = marketData[p.id].last; });
+                    try { trader.check_fills(prices); saveState(); render(); } catch(e) {}
+
                     document.getElementById('order-price').value = '';
                     document.getElementById('order-amount').value = '';
                 } else {
-                    showAlert('Order gagal: ' + (r?.message || 'Unknown error'), 'error');
+                    showAlert('Order failed: ' + (r?.message || 'Unknown error'), 'error');
                 }
             } catch (e) {
                 showAlert('Error: ' + e.toString(), 'error');
+            } finally {
+                placingOrder = false;
+                btn.disabled = false;
+                btn.textContent = 'Place Order';
+            }
+        };
+
+        window.cancelOrder = function(orderId) {
+            if (!trader) return;
+            try {
+                const result = trader.cancel_order(orderId);
+                if (result && result.success) {
+                    saveState();
+                    render();
+                    showAlert('Order #' + orderId + ' cancelled');
+                }
+            } catch(e) {
+                showAlert('Cancel failed: ' + e.toString(), 'error');
             }
         };
 
@@ -674,13 +910,17 @@ function showAlert(m, t = 'success') {
                 trader.reset();
                 localStorage.removeItem('paper-trading-state');
                 render();
-                updateQuickPrices();
                 showAlert('Trading data reset');
             }
         };
 
         function saveState() {
-            if (trader) localStorage.setItem('paper-trading-state', trader.save_state());
+            if (!trader) return;
+            try {
+                localStorage.setItem('paper-trading-state', trader.save_state());
+            } catch (e) {
+                console.warn('Failed to save state (localStorage may be full):', e);
+            }
         }
 
         function formatNumber(n) {

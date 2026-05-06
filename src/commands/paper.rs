@@ -326,27 +326,7 @@ fn paper_orders(state: &PaperState) -> Result<CommandOutput> {
 }
 
 fn paper_cancel(state: &mut PaperState, order_id: u64) -> Result<CommandOutput> {
-    if let Some(order) = state.orders.iter_mut().find(|o| o.id == order_id) {
-        if order.status == "filled" || order.status == "cancelled" {
-            return Err(anyhow::anyhow!(
-                "[PAPER] Order {} already {}",
-                order_id, order.status
-            ));
-        }
-
-        let base = order.pair.split('_').next().unwrap_or("btc");
-        let quote = order.pair.split('_').last().unwrap_or("idr");
-        let refund = order.price * order.remaining;
-        if order.side == "buy" {
-            *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
-        } else {
-            *state.balances.entry(base.to_string()).or_insert(0.0) += order.remaining;
-        }
-        order.status = "cancelled".to_string();
-        order.remaining = 0.0;
-    } else {
-        return Err(anyhow::anyhow!("[PAPER] Order {} not found", order_id));
-    }
+    refund_and_cancel(state, order_id)?;
 
     let data = serde_json::json!({
         "mode": "paper",
@@ -357,28 +337,7 @@ fn paper_cancel(state: &mut PaperState, order_id: u64) -> Result<CommandOutput> 
 }
 
 fn paper_cancel_all(state: &mut PaperState) -> Result<CommandOutput> {
-    let active_ids: Vec<u64> = state
-        .orders
-        .iter()
-        .filter(|o| o.status != "filled" && o.status != "cancelled")
-        .map(|o| o.id)
-        .collect();
-
-    let count = active_ids.len();
-    for id in &active_ids {
-        if let Some(order) = state.orders.iter_mut().find(|o| o.id == *id) {
-            let base = order.pair.split('_').next().unwrap_or("btc");
-            let quote = order.pair.split('_').last().unwrap_or("idr");
-            let refund = order.price * order.remaining;
-            if order.side == "buy" {
-                *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
-            } else {
-                *state.balances.entry(base.to_string()).or_insert(0.0) += order.remaining;
-            }
-            order.status = "cancelled".to_string();
-            order.remaining = 0.0;
-        }
-    }
+    let count = cancel_all_paper_orders(state);
 
     let data = serde_json::json!({
         "mode": "paper",
@@ -451,28 +410,7 @@ fn paper_status(state: &PaperState) -> Result<CommandOutput> {
 
 /// Cancel a paper order by ID (public wrapper for MCP tools).
 pub fn cancel_paper_order(state: &mut PaperState, order_id: u64) -> Result<()> {
-    if let Some(order) = state.orders.iter_mut().find(|o| o.id == order_id) {
-        if order.status == "filled" || order.status == "cancelled" {
-            return Err(anyhow::anyhow!(
-                "[PAPER] Order {} already {}",
-                order_id, order.status
-            ));
-        }
-
-        let base = order.pair.split('_').next().unwrap_or("btc");
-        let quote = order.pair.split('_').last().unwrap_or("idr");
-        let refund = order.price * order.remaining;
-        if order.side == "buy" {
-            *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
-        } else {
-            *state.balances.entry(base.to_string()).or_insert(0.0) += order.remaining;
-        }
-        order.status = "cancelled".to_string();
-        order.remaining = 0.0;
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!("[PAPER] Order {} not found", order_id))
-    }
+    refund_and_cancel(state, order_id)
 }
 
 /// Cancel all paper orders that can be cancelled (public wrapper for MCP tools).
@@ -487,20 +425,35 @@ pub fn cancel_all_paper_orders(state: &mut PaperState) -> usize {
 
     let count = active_ids.len();
     for id in &active_ids {
-        if let Some(order) = state.orders.iter_mut().find(|o| o.id == *id) {
-            let base = order.pair.split('_').next().unwrap_or("btc");
-            let quote = order.pair.split('_').last().unwrap_or("idr");
-            let refund = order.price * order.remaining;
-            if order.side == "buy" {
-                *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
-            } else {
-                *state.balances.entry(base.to_string()).or_insert(0.0) += order.remaining;
-            }
-            order.status = "cancelled".to_string();
-            order.remaining = 0.0;
-        }
+        let _ = refund_and_cancel(state, *id);
     }
     count
+}
+
+fn refund_and_cancel(state: &mut PaperState, order_id: u64) -> Result<()> {
+    let order = state.orders.iter().find(|o| o.id == order_id)
+        .ok_or_else(|| anyhow::anyhow!("[PAPER] Order {} not found", order_id))?;
+
+    if order.status == "filled" || order.status == "cancelled" {
+        return Err(anyhow::anyhow!("[PAPER] Order {} already {}", order_id, order.status));
+    }
+
+    let base = order.pair.split('_').next().unwrap_or("btc");
+    let quote = order.pair.split('_').last().unwrap_or("idr");
+    let refund = order.price * order.remaining;
+    let remaining = order.remaining;
+
+    if order.side == "buy" {
+        *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
+    } else {
+        *state.balances.entry(base.to_string()).or_insert(0.0) += remaining;
+    }
+
+    if let Some(order) = state.orders.iter_mut().find(|o| o.id == order_id) {
+        order.status = "cancelled".to_string();
+        order.remaining = 0.0;
+    }
+    Ok(())
 }
 
 /// Initialize paper trading state (public wrapper for MCP tools).
