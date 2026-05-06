@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indodax Paper Trading</title>
+    <style>
+        :root { --bg: #0d1117; --bg-elevated: #161b22; --border: #30363d; --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff; --accent-dim: #1f6feb; --success: #3fb950; --danger: #f85149; --code-bg: #21262d; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; }
+        .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+        header { text-align: center; padding: 40px 0; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+        h1 { font-size: 36px; font-weight: 800; margin-bottom: 8px; }
+        .subtitle { color: var(--text-muted); font-size: 16px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+        @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+        .card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+        .card h2 { font-size: 18px; margin-bottom: 16px; }
+        .balance-grid { display: grid; gap: 8px; }
+        .balance-row { display: flex; justify-content: space-between; padding: 8px 12px; background: var(--code-bg); border-radius: 6px; font-family: monospace; }
+        .balance-currency { color: var(--accent); font-weight: 600; }
+        .balance-amount { color: var(--success); }
+        .btn { display: inline-flex; padding: 10px 20px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; border: none; transition: all 0.2s; }
+        .btn-primary { background: var(--accent-dim); color: #fff; }
+        .btn-primary:hover { background: var(--accent); }
+        .btn-secondary { background: var(--code-bg); color: var(--text); border: 1px solid var(--border); }
+        .btn-row { margin-top: 16px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; font-size: 14px; margin-bottom: 6px; color: var(--text-muted); }
+        input { width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--code-bg); color: var(--text); font-size: 14px; }
+        .orders-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .orders-table th, .orders-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+        .orders-table th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+        .status-filled { color: var(--success); }
+        .side-buy { color: var(--success); }
+        .side-sell { color: var(--danger); }
+        .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+        .alert-success { background: rgba(63, 185, 80, 0.1); border: 1px solid var(--success); color: var(--success); }
+        .alert-error { background: rgba(248, 81, 73, 0.1); border: 1px solid var(--danger); color: var(--danger); }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .stat-box { background: var(--code-bg); padding: 16px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 24px; font-weight: 700; color: var(--accent); font-family: monospace; }
+        .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
+        .trade-type-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+        .trade-type-btn { flex: 1; padding: 10px; border: 2px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .trade-type-btn.active.buy { border-color: var(--success); background: rgba(63, 185, 80, 0.1); color: var(--success); }
+        .trade-type-btn.active.sell { border-color: var(--danger); background: rgba(248, 81, 73, 0.1); color: var(--danger); }
+        #loading { display: flex; align-items: center; justify-content: center; min-height: 200px; font-size: 18px; color: var(--text-muted); }
+        .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 12px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .pair-select { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+        .pair-btn { padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; }
+        .pair-btn.active { border-color: var(--accent); background: var(--accent-dim); color: #fff; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: var(--accent); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← Back to Indodax CLI</a>
+        <header>
+            <h1>🧪 Paper Trading</h1>
+            <p class="subtitle">Simulated trading — no real money</p>
+        </header>
+        <div id="loading"><div class="spinner"></div>Loading...</div>
+        <div id="app" style="display: none;">
+            <div id="alert"></div>
+            <div class="grid">
+                <div class="card">
+                    <h2>💰 Balances</h2>
+                    <div id="balances" class="balance-grid"></div>
+                    <div class="btn-row"><button class="btn btn-secondary" onclick="resetTrading()">Reset</button></div>
+                </div>
+                <div class="card">
+                    <h2>📊 Stats</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box"><div class="stat-value" id="stat-trades">0</div><div class="stat-label">Trades</div></div>
+                        <div class="stat-box"><div class="stat-value" id="stat-filled">0</div><div class="stat-label">Filled</div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="grid">
+                <div class="card">
+                    <h2>📈 Place Order</h2>
+                    <div class="trade-type-toggle">
+                        <button class="trade-type-btn buy active" id="btn-buy" onclick="setTradeType('buy')">Buy</button>
+                        <button class="trade-type-btn sell" id="btn-sell" onclick="setTradeType('sell')">Sell</button>
+                    </div>
+                    <div class="pair-select">
+                        <button class="pair-btn active" data-pair="btc_idr" onclick="setPair('btc_idr')">BTC/IDR</button>
+                        <button class="pair-btn" data-pair="eth_idr" onclick="setPair('eth_idr')">ETH/IDR</button>
+                        <button class="pair-btn" data-pair="usdt_idr" onclick="setPair('usdt_idr')">USDT/IDR</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Price</label>
+                        <input type="number" id="order-price" step="any" placeholder="500000000">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount</label>
+                        <input type="number" id="order-amount" step="any" placeholder="0.1">
+                    </div>
+                    <button class="btn btn-primary" style="width:100%" onclick="placeOrder()">Place Order</button>
+                </div>
+                <div class="card">
+                    <h2>Quick Prices</h2>
+                    <div id="quick-prices"></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>📋 Orders</h2>
+                <table class="orders-table">
+                    <thead><tr><th>ID</th><th>Pair</th><th>Side</th><th>Price</th><th>Amount</th><th>Total</th><th>Status</th></tr></thead>
+                    <tbody id="orders-table"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script type="module">
+        let trader = null, currentPair = 'btc_idr', tradeType = 'buy';
+        const QUICK_PRICES = {'btc_idr': 1050000000, 'eth_idr': 25000000, 'usdt_idr': 16500};
+        window.init = async function() {
+            try {
+                await import('./pkg/paper_wasm.js');
+                const { PaperTrader } = await import('./pkg/paper_wasm.js');
+                trader = new PaperTrader();
+                const saved = localStorage.getItem('paper-trading-state');
+                if (saved) try { trader.load_state(saved); } catch(e) {}
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+                render();
+            } catch (e) { document.getElementById('loading').innerHTML = '<div class="alert alert-error">WASM load failed</div>'; }
+        };
+        function render() { renderBalances(); renderStats(); renderOrders(); renderQuickPrices(); }
+        function renderBalances() {
+            const b = trader.get_balances();
+            document.getElementById('balances').innerHTML = Object.entries(b).map(([c,a]) => `<div class="balance-row"><span class="balance-currency">${c.toUpperCase()}</span><span class="balance-amount">${formatNumber(a)}</span></div>`).join('');
+        }
+        function renderStats() { const s = trader.get_status(); document.getElementById('stat-trades').textContent = s.trade_count; document.getElementById('stat-filled').textContent = s.filled_count; }
+        function renderOrders() {
+            const o = trader.get_orders();
+            document.getElementById('orders-table').innerHTML = o.length ? o.map(x => `<tr><td>${x.id}</td><td>${x.pair}</td><td class="side-${x.side}">${x.side.toUpperCase()}</td><td>${formatNumber(x.price)}</td><td>${formatNumber(x.amount)}</td><td>${formatNumber(x.price*x.amount)}</td><td class="status-filled">${x.status}</td></tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No orders</td></tr>';
+        }
+        function renderQuickPrices() { document.getElementById('quick-prices').innerHTML = Object.entries(QUICK_PRICES).map(([p,pr]) => `<button class="btn btn-secondary" style="margin:4px;font-size:12px" onclick="document.getElementById('order-price').value=${pr}">${p}: ${formatNumber(pr)}</button>`).join(''); }
+        function showAlert(m,t='success') { document.getElementById('alert').innerHTML = `<div class="alert alert-${t}">${m}</div>`; setTimeout(() => document.getElementById('alert').innerHTML = '', 5000); }
+        window.setTradeType = function(t) { tradeType = t; document.getElementById('btn-buy').className = `trade-type-btn buy ${t==='buy'?'active':''}`; document.getElementById('btn-sell').className = `trade-type-btn sell ${t==='sell'?'active':''}`; };
+        window.setPair = function(p) { currentPair = p; document.querySelectorAll('.pair-btn').forEach(b => b.classList.toggle('active', b.dataset.pair === p)); };
+        window.placeOrder = function() {
+            const p = parseFloat(document.getElementById('order-price').value), a = parseFloat(document.getElementById('order-amount').value);
+            if (!p || !a) return showAlert('Invalid input','error');
+            try { const r = tradeType === 'buy' ? trader.buy(currentPair, p, a) : trader.sell(currentPair, p, a); if (r.success) { saveState(); render(); showAlert(`${tradeType.toUpperCase()} ${a} ${currentPair} @ ${formatNumber(p)}`); document.getElementById('order-price').value = ''; document.getElementById('order-amount').value = ''; } } catch(e) { showAlert(e.toString(), 'error'); }
+        };
+        window.resetTrading = function() { if (confirm('Reset?')) { trader.reset(); localStorage.removeItem('paper-trading-state'); render(); showAlert('Reset'); } };
+        function saveState() { localStorage.setItem('paper-trading-state', trader.save_state()); }
+        function formatNumber(n) { return n >= 1000000 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : n >= 1 ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : n.toLocaleString('en-US', { maximumFractionDigits: 8 }); }
+        init();
+    </script>
+</body>
+</html>

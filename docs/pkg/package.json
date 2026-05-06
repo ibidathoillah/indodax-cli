@@ -1,0 +1,15 @@
+{
+  "name": "paper-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "paper_wasm_bg.wasm",
+    "paper_wasm.js",
+    "paper_wasm.d.ts"
+  ],
+  "main": "paper_wasm.js",
+  "types": "paper_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
