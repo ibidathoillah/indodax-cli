@@ -471,62 +471,35 @@
         };
 
         async function fetchMarketData() {
-            let allFailed = true;
-            const proxies = [
-                'https://api.allorigins.win/raw?url=',
-                'https://corsproxy.io/?',
-                ''
-            ];
-            
-            for (let i = 0; i < proxies.length; i++) {
-                const proxy = proxies[i];
-                try {
-                    const url = proxy + encodeURIComponent('https://indodax.com/api/ticker_all');
-                    console.log('Trying proxy:', proxy || 'direct');
-                    const response = await fetch(url);
-                    if (response.ok) {
-                        const data = await response.json();
-                        allFailed = false;
-                        PAIRS.forEach(pair => {
-                            const ticker = data.tickers[pair.id];
-                            if (ticker) {
-                                marketData[pair.id] = {
-                                    last: parseFloat(ticker.last),
-                                    high: parseFloat(ticker.high),
-                                    low: parseFloat(ticker.low),
-                                    vol: parseFloat(ticker.vol_btc),
-                                    change: parseFloat(ticker.change_24h)
-                                };
-                                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
-                                priceHistory[pair.id].push(marketData[pair.id].last);
-                                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
-                            }
-                        });
-                        document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-                        renderCharts();
-                        return;
-                    }
-                } catch(e) {
-                    console.log('Proxy failed:', proxy, e.message);
+            try {
+                const response = await fetch('https://indodax.com/api/ticker_all');
+                if (response.ok) {
+                    const data = await response.json();
+                    PAIRS.forEach(pair => {
+                        const ticker = data.tickers[pair.id];
+                        if (ticker) {
+                            marketData[pair.id] = {
+                                last: parseFloat(ticker.last),
+                                high: parseFloat(ticker.high),
+                                low: parseFloat(ticker.low),
+                                vol: parseFloat(ticker.vol_btc),
+                                change: parseFloat(ticker.change_24h)
+                            };
+                            if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
+                            priceHistory[pair.id].push(marketData[pair.id].last);
+                            if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
+                        }
+                    });
+                    document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    renderCharts();
+                    return;
                 }
+            } catch(e) {
+                console.log('API fetch failed:', e.message);
             }
             
-            console.log('All proxies failed, showing CORS notice');
+            console.log('Using simulated data');
             showCORSNotice();
-            PAIRS.forEach(pair => {
-                marketData[pair.id] = {
-                    last: pair.base * (1 + (Math.random() - 0.5) * 0.05),
-                    high: pair.base * 1.02,
-                    low: pair.base * 0.98,
-                    vol: Math.random() * 100,
-                    change: (Math.random() - 0.5) * 10
-                };
-                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
-                priceHistory[pair.id].push(marketData[pair.id].last);
-                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
-            });
-            document.getElementById('last-update').textContent = 'Simulated (API unavailable)';
-            renderCharts();
         }
 
         function renderPairSelectors() {
@@ -680,8 +653,25 @@
             if (corsNoticeShown) return;
             corsNoticeShown = true;
             
+            PAIRS.forEach(pair => {
+                marketData[pair.id] = {
+                    last: pair.base * (1 + (Math.random() - 0.5) * 0.05),
+                    high: pair.base * 1.02,
+                    low: pair.base * 0.98,
+                    vol: Math.random() * 100,
+                    change: (Math.random() - 0.5) * 10
+                };
+                if (!priceHistory[pair.id]) priceHistory[pair.id] = [];
+                priceHistory[pair.id].push(marketData[pair.id].last);
+                if (priceHistory[pair.id].length > 50) priceHistory[pair.id].shift();
+            });
+            
             document.getElementById('loading').style.display = 'none';
             document.getElementById('app').style.display = 'block';
+            document.getElementById('last-update').textContent = 'Simulated (API unavailable)';
+            renderCharts();
+            renderPairSelectors();
+            render();
             
             const noticeHTML = `
                 <div class="cors-notice" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;">
@@ -692,18 +682,12 @@
                             📦 Install Allow CORS
                         </a>
                         <p style="margin-top:16px;font-size:13px;color:var(--text-muted);">Setelah install, klik ikon "C" di toolbar browser (warna oranye) untuk mengaktifkan</p>
-                        <button onclick="this.parentElement.parentElement.remove();corsNoticeShown=false;showSimulatedPrices();" style="margin-top:20px;padding:12px 24px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:8px;cursor:pointer;font-size:14px;">Tutup - Gunakan Harga Simulasi</button>
+                        <button onclick="this.parentElement.parentElement.remove();location.reload();" style="margin-top:20px;padding:12px 24px;background:var(--success);border:none;color:#000;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">OK - Gunakan Data Simulasi</button>
                     </div>
                 </div>
             `;
             
             document.body.insertAdjacentHTML('beforeend', noticeHTML);
-        }
-        
-        function showSimulatedPrices() {
-            renderPairSelectors();
-            document.getElementById('app').style.display = 'block';
-            render();
         }
 
         window.setTradeType = function(t) {
