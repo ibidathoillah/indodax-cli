@@ -643,22 +643,29 @@ function showAlert(m, t = 'success') {
         window.placeOrder = function() {
             const p = parseFloat(document.getElementById('order-price').value);
             const a = parseFloat(document.getElementById('order-amount').value);
-            if (!p || !a) return showAlert('Please enter price and amount', 'error');
+            if (!p || !a) return showAlert('Masukkan harga dan jumlah', 'error');
+            if (!trader) return showAlert('Trading tidak siap', 'error');
             
             try {
-                const r = tradeType === 'buy' 
-                    ? trader.buy(currentPair, p, a) 
-                    : trader.sell(currentPair, p, a);
+                const pairSymbol = currentPair.split('_')[0].toUpperCase();
+                let r;
+                if (tradeType === 'buy') {
+                    r = trader.buy(currentPair, p, a);
+                } else {
+                    r = trader.sell(currentPair, p, a);
+                }
                 
-                if (r.success) {
+                if (r && r.success) {
                     saveState();
                     render();
-                    showAlert(`✅ ${tradeType.toUpperCase()} ${a} ${currentPair.split('_')[0].toUpperCase()} @ ${formatNumber(p)}`);
+                    showAlert(`✅ ${tradeType.toUpperCase()} ${a} ${pairSymbol} @ ${formatNumber(p)}`);
                     document.getElementById('order-price').value = '';
                     document.getElementById('order-amount').value = '';
+                } else {
+                    showAlert('Order gagal: ' + (r?.message || 'Unknown error'), 'error');
                 }
             } catch (e) {
-                showAlert('Error: ' + e.message, 'error');
+                showAlert('Error: ' + e.toString(), 'error');
             }
         };
 
