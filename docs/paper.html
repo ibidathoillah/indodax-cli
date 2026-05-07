@@ -416,11 +416,14 @@
         let ws = null;
         let wsReconnectTimer = null;
         let useSimulated = false;
+        let wsFailCount = 0;
+        let wsOpenTime = 0;
+        const WS_MAX_FAILURES = 3;
 
         const CORS_PROXY = 'https://corsproxy.io/?key=47986306&url=';
         const INDO_TICKER_ALL = 'https://indodax.com/api/ticker_all';
         const WS_URL = 'wss://ws3.indodax.com/ws/';
-        const WS_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJwdWJsaWMiLCJpYXQiOjE3NDYyMzg0MDAsImV4cCI6MTc3Nzc3NDQwMCwic3ViIjoicHVibGljIn0.3NlrJjVX5Q1s9m2tZKwQFT7xXNPN9GLQUJEN4rQIfyM';
+        const WS_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE5NDY2MTg0MTV9.UR1lBM6Eqh0yWz-PVirw1uPCxe60FdchR8eNVdsskeo';
         const FILL_CHECK_INTERVAL = 3000;
         const API_POLL_INTERVAL = 5000;
         const SIMULATED_FALLBACK_MS = 8000;
@@ -514,33 +517,57 @@
 
         function connectWebSocket() {
             if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            if (wsFailCount >= WS_MAX_FAILURES) {
+                console.log('WebSocket abandoned after ' + WS_MAX_FAILURES + ' failures, using API polling');
+                return;
+            }
 
             try {
                 ws = new WebSocket(WS_URL);
+                wsOpenTime = Date.now();
+                let wsAuthed = false;
 
                 ws.onopen = () => {
                     console.log('WebSocket connected to Indodax');
                     updateConnectionIndicator('live');
-                    const sub = JSON.stringify({
-                        method: 1,
-                        params: { channel: 'market:summary-24h', token: WS_TOKEN },
+                    ws.send(JSON.stringify({
+                        params: { token: WS_TOKEN },
                         id: 1
-                    });
-                    ws.send(sub);
+                    }));
                 };
 
                 ws.onmessage = (event) => {
                     try {
                         const msg = JSON.parse(event.data);
-                        if (msg.method === 0 && msg.data) {
-                            handleMarketData(msg.data);
-                        } else if (msg.method === 7) {
-                            ws.send(JSON.stringify({ method: 7, id: 2 }));
+                        if (msg.id === 1 && msg.result) {
+                            wsAuthed = true;
+                            wsFailCount = 0;
+                            console.log('WebSocket authenticated, subscribing...');
+                            ws.send(JSON.stringify({
+                                method: 1,
+                                params: { channel: 'market:summary-24h' },
+                                id: 2
+                            }));
+                        } else if (msg.result && msg.result.data) {
+                            handleWsMarketData(msg.result.data);
+                            wsFailCount = 0;
+                        } else if (msg.method === 7 || msg.id === 7) {
+                            ws.send(JSON.stringify({ method: 7, id: 3 }));
                         }
                     } catch(e) { console.warn('WS message parse error:', e); }
                 };
 
                 ws.onclose = () => {
+                    const aliveMs = Date.now() - wsOpenTime;
+                    if (aliveMs < 3000) {
+                        wsFailCount++;
+                        console.log('WebSocket disconnected (alive ' + aliveMs + 'ms), failures: ' + wsFailCount + '/' + WS_MAX_FAILURES);
+                    }
+                    if (wsFailCount >= WS_MAX_FAILURES) {
+                        console.log('WebSocket abandoned, using API polling');
+                        updateConnectionIndicator('reconnecting');
+                        return;
+                    }
                     console.log('WebSocket disconnected, reconnecting in 5s...');
                     updateConnectionIndicator('reconnecting');
                     wsReconnectTimer = setTimeout(connectWebSocket, 5000);
@@ -550,8 +577,30 @@
                     console.warn('WebSocket error, will retry...');
                 };
             } catch(e) {
+                wsFailCount++;
                 console.warn('WebSocket connection failed, using simulated prices');
+                if (wsFailCount >= WS_MAX_FAILURES) return;
                 fallbackToSimulated();
+            }
+        }
+
+        function handleWsMarketData(data) {
+            if (!data || !data.data || !Array.isArray(data.data)) return;
+            const tickers = {};
+            for (const row of data.data) {
+                const rawPair = row[0];
+                const last = parseFloat(row[2]) || 0;
+                const low = parseFloat(row[3]) || last;
+                const high = parseFloat(row[4]) || last;
+                const price24h = parseFloat(row[5]) || last;
+                const volBase = parseFloat(row[7]) || 0;
+                const change = price24h > 0 ? ((last - price24h) / price24h * 100) : 0;
+                if (last > 0) {
+                    tickers[rawPair] = { last, high, low, vol_base: volBase, change };
+                }
+            }
+            if (Object.keys(tickers).length > 0) {
+                handleMarketData(tickers);
             }
         }
 
