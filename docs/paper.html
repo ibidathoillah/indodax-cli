@@ -1165,13 +1165,13 @@
         // Add event listeners for buttons that need access to module scope
         document.addEventListener('DOMContentLoaded', function() {
             const btnTest = document.getElementById('btn-test-balances');
-            if (btnTest) btnTest.addEventListener('click', testBalances);
+            if (btnTest) { btnTest.addEventListener('click', testBalances); }
 
             const btnInit1 = document.getElementById('btn-init-trader');
-            if (btnInit1) btnInit1.addEventListener('click', reinitTrader);
+            if (btnInit1) { btnInit1.addEventListener('click', reinitTrader); }
 
             const btnInit2 = document.getElementById('btn-init-balances');
-            if (btnInit2) btnInit2.addEventListener('click', reinitTrader);
+            if (btnInit2) { btnInit2.addEventListener('click', reinitTrader); }
         });
 
         init();
