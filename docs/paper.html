@@ -303,7 +303,7 @@
                     <span class="sim-dot"></span>
                     Simulated
                 </div>
-                <button class="btn btn-secondary" onclick="resetTrading()">↻ Reset</button>
+                <button class="btn btn-secondary" id="btn-reset">↻ Reset</button>
                 <a href="index.html" class="btn btn-secondary">← Back</a>
             </div>
         </header>
@@ -344,7 +344,7 @@
                                 <label>Amount</label>
                                 <input type="number" id="topup-amount" step="any" placeholder="0" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);">
                             </div>
-                            <button class="btn btn-primary" style="width:100%" onclick="topupBalance()">Top Up</button>
+                            <button class="btn btn-primary" id="btn-topup" style="width:100%">Top Up</button>
                         </div>
                     </div>
 
@@ -378,8 +378,8 @@
                         </div>
                         <div class="trade-form">
                             <div class="trade-type-toggle">
-                                <button class="trade-type-btn buy active" id="btn-buy" onclick="setTradeType('buy')">Buy ↑</button>
-                                <button class="trade-type-btn sell" id="btn-sell" onclick="setTradeType('sell')">Sell ↓</button>
+                                <button class="trade-type-btn buy active" id="btn-buy">Buy ↑</button>
+                                <button class="trade-type-btn sell" id="btn-sell">Sell ↓</button>
                             </div>
                             <div class="pair-select" id="trade-pair-select"></div>
                             <div class="form-group">
@@ -390,7 +390,7 @@
                                 <label>Amount</label>
                                 <input type="number" id="order-amount" step="any" placeholder="0">
                             </div>
-                            <button class="btn btn-primary" id="btn-place-order" style="width:100%" onclick="placeOrder()">Place Order</button>
+                                <button class="btn btn-primary" id="btn-place-order" style="width:100%">Place Order</button>
                         </div>
                     </div>
 
@@ -428,8 +428,8 @@
             </div>
         </div>
     </div>
-
     <script type="module">
+
         let trader = null;
         let currentPair = 'btc_idr';
         let tradeType = 'buy';
@@ -770,8 +770,15 @@
         function renderPairSelectors() {
             const tradeSelect = document.getElementById('trade-pair-select');
             tradeSelect.innerHTML = PAIRS.map(p =>
-                `<button class="pair-btn ${p.id === currentPair ? 'active' : ''}" data-pair="${p.id}" onclick="setPair('${p.id}')">${p.icon} ${p.symbol}</button>`
+                `<button class="pair-btn ${p.id === currentPair ? 'active' : ''}" data-pair="${p.id}">${p.icon} ${p.symbol}</button>`
             ).join('');
+            // Add event delegation
+            tradeSelect.querySelectorAll('[data-pair]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const pairId = (e.target as HTMLElement).dataset.pair;
+                    if (pairId) setPair(pairId);
+                });
+            });
         }
 
         function renderCharts() {
@@ -963,7 +970,7 @@
             document.getElementById('orders-table').innerHTML = o.length ? o.slice(0, 50).map(x => {
                 const pairInfo = PAIR_MAP[x.pair] || { symbol: x.pair.split('_')[0]?.toUpperCase() || '?', icon: '' };
                 const cancelBtn = x.status === 'pending'
-                    ? `<button class="btn btn-danger btn-sm" onclick="cancelOrder(${x.id})">✕</button>`
+                    ? `<button class="btn btn-danger btn-sm" data-order-id="${x.id}">✕</button>`
                     : '';
                 return `
                     <tr>
@@ -1172,6 +1179,23 @@
 
             const btnInit2 = document.getElementById('btn-init-balances');
             if (btnInit2) { btnInit2.addEventListener('click', reinitTrader); }
+
+            const btnReset = document.getElementById('btn-reset');
+            if (btnReset) { btnReset.addEventListener('click', resetTrading); }
+
+            const btnTopup = document.getElementById('btn-topup');
+            if (btnTopup) { btnTopup.addEventListener('click', topupBalance); }
+
+            // Event delegation for cancel buttons
+            const ordersTable = document.getElementById('orders-table');
+            if (ordersTable) {
+                ordersTable.addEventListener('click', function(e) {
+                    const target = e.target as HTMLElement;
+                    if (target && target.dataset && target.dataset.orderId) {
+                        cancelOrder(parseInt(target.dataset.orderId));
+                    }
+                });
+            }
         });
 
         init();
