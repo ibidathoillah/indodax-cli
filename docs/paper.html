@@ -1030,18 +1030,26 @@
         };
 
         function topupBalance() {
-            if (!trader) return;
+            if (!trader) {
+                showAlert('Trader not initialized', 'error');
+                return;
+            }
             const currency = document.getElementById('topup-currency').value;
             const amount = parseFloat(document.getElementById('topup-amount').value);
             if (!currency || isNaN(amount) || amount <= 0) {
                 showAlert('Please enter a valid currency and amount', 'error');
                 return;
             }
-            trader.topup(currency, amount);
-            saveState();
-            render();
-            showAlert(`Added ${amount} to ${currency.toUpperCase()} balance`);
-            document.getElementById('topup-amount').value = '';
+            try {
+                trader.topup(currency, amount);
+                saveState();
+                render();
+                showAlert(`Added ${amount} to ${currency.toUpperCase()} balance`);
+                document.getElementById('topup-amount').value = '';
+            } catch (e) {
+                console.error('Topup error:', e);
+                showAlert('Topup failed: ' + e.message, 'error');
+            }
         };
 
         function saveState() {
