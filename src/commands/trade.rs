@@ -82,6 +82,22 @@ async fn place_buy_order(
     idr_amount: f64,
     price: Option<f64>,
 ) -> Result<CommandOutput> {
+    let info: serde_json::Value =
+        client.private_post_v1("getInfo", &HashMap::new()).await?;
+
+    let idr_balance = info["balance"]["idr"]
+        .as_str()
+        .and_then(|s| s.parse::<f64>().ok())
+        .or_else(|| info["balance"]["idr"].as_f64())
+        .unwrap_or(0.0);
+
+    if idr_balance < idr_amount {
+        return Err(anyhow::anyhow!(
+            "Insufficient IDR balance. Need {:.2}, have {:.2}",
+            idr_amount, idr_balance
+        ));
+    }
+
     let mut params = HashMap::new();
     params.insert("pair".to_string(), pair.to_string());
     params.insert("type".to_string(), "buy".to_string());
@@ -121,13 +137,29 @@ async fn place_sell_order(
     if base_currency.is_empty() {
         return Err(anyhow::anyhow!("Invalid pair format: {}", pair));
     }
-    
+
+    let info: serde_json::Value =
+        client.private_post_v1("getInfo", &HashMap::new()).await?;
+
+    let base_balance = info["balance"][base_currency]
+        .as_str()
+        .and_then(|s| s.parse::<f64>().ok())
+        .or_else(|| info["balance"][base_currency].as_f64())
+        .unwrap_or(0.0);
+
+    if base_balance < amount {
+        return Err(anyhow::anyhow!(
+            "Insufficient {} balance. Need {:.8}, have {:.8}",
+            base_currency.to_uppercase(), amount, base_balance
+        ));
+    }
+
     let mut params = HashMap::new();
     params.insert("pair".to_string(), pair.to_string());
     params.insert("type".to_string(), "sell".to_string());
     params.insert("price".to_string(), price.to_string());
     params.insert(base_currency.to_string(), amount.to_string());
-    
+
     if order_type == "market" {
         params.insert("order_type".to_string(), "market".to_string());
     }
