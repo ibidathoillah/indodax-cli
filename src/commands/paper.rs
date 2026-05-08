@@ -65,8 +65,13 @@ impl PaperState {
 
 #[derive(Debug, clap::Subcommand)]
 pub enum PaperCommand {
-    #[command(name = "init", about = "Initialize paper trading with default balances")]
-    Init,
+    #[command(name = "init", about = "Initialize paper trading with custom or default balances")]
+    Init {
+        #[arg(long, help = "Initial IDR balance (default: 100000000)")]
+        idr: Option<f64>,
+        #[arg(long, help = "Initial BTC balance (default: 1.0)")]
+        btc: Option<f64>,
+    },
 
     #[command(name = "reset", about = "Reset paper trading state")]
     Reset,
@@ -128,7 +133,7 @@ fn dispatch_paper(
     cmd: &PaperCommand,
 ) -> Result<CommandOutput> {
     match cmd {
-        PaperCommand::Init => paper_init(state),
+        PaperCommand::Init { idr, btc } => paper_init(state, *idr, *btc),
         PaperCommand::Reset => paper_reset(state),
         PaperCommand::Balance => paper_balance(state),
         PaperCommand::Buy { pair, price, amount } => {
@@ -145,15 +150,20 @@ fn dispatch_paper(
     }
 }
 
-fn paper_init(state: &mut PaperState) -> Result<CommandOutput> {
-    *state = PaperState::default();
+fn paper_init(state: &mut PaperState, idr: Option<f64>, btc: Option<f64>) -> Result<CommandOutput> {
+    let mut balances = HashMap::new();
+    balances.insert("idr".into(), idr.unwrap_or(DEFAULT_BALANCE_IDR));
+    balances.insert("btc".into(), btc.unwrap_or(DEFAULT_BALANCE_BTC));
+    *state = PaperState {
+        balances,
+        orders: Vec::new(),
+        next_order_id: 1,
+        trade_count: 0,
+    };
     let data = serde_json::json!({
         "mode": "paper",
         "status": "initialized",
-        "default_balances": {
-            "idr": DEFAULT_BALANCE_IDR,
-            "btc": DEFAULT_BALANCE_BTC,
-        }
+        "balances": state.balances,
     });
     Ok(CommandOutput::json(data).with_addendum("[PAPER] Trading initialized with virtual balances"))
 }
