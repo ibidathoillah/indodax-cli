@@ -1031,10 +1031,10 @@
 
         function topupBalance() {
             if (!trader) {
-                showAlert('Trader not initialized', 'error');
+                showAlert('Trader not initialized. Please refresh the page.', 'error');
                 return;
             }
-            const currency = document.getElementById('topup-currency').value;
+            const currency = document.getElementById('topup-currency').value.toLowerCase();
             const amount = parseFloat(document.getElementById('topup-amount').value);
             if (!currency || isNaN(amount) || amount <= 0) {
                 showAlert('Please enter a valid currency and amount', 'error');
@@ -1042,13 +1042,15 @@
             }
             try {
                 trader.topup(currency, amount);
+                const balances = trader.get_balances();
+                console.log('Topup successful. New balances:', JSON.stringify(balances));
                 saveState();
                 render();
-                showAlert(`Added ${amount} to ${currency.toUpperCase()} balance`);
+                showAlert(`Added ${amount} to ${currency.toUpperCase()} balance. New balance: ${balances[currency] ? balances[currency].toFixed(2) : 'N/A'}`);
                 document.getElementById('topup-amount').value = '';
             } catch (e) {
                 console.error('Topup error:', e);
-                showAlert('Topup failed: ' + e.message, 'error');
+                showAlert('Topup failed: ' + (e.message || e), 'error');
             }
         };
 
