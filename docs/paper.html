@@ -508,7 +508,7 @@
                 console.log('Final balances:', JSON.stringify(balances));
                 if (!balances || Object.keys(balances).length === 0) {
                     console.error('ERROR: No balances available!');
-                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);padding:12px">Error: No balances. <button onclick="trader.init();render();" style="padding:5px 10px;margin-top:5px;cursor:pointer;">Initialize</button></div>';
+                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);padding:12px">Error: No balances. <button onclick="reinitTrader()" style="padding:5px 10px;margin-top:5px;cursor:pointer;">Initialize</button></div>';
                 }
 
                 renderPairSelectors();
@@ -873,7 +873,7 @@
                 trader.init();
                 const b2 = trader.get_balances();
                 if (!b2 || Object.keys(b2).length === 0) {
-                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);text-align:center;padding:12px">No balances. <button onclick="trader.init();render();">Initialize</button></div>';
+                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);text-align:center;padding:12px">No balances. <button onclick="reinitTrader()">Initialize</button></div>';
                     return;
                 }
             }
@@ -1041,6 +1041,22 @@
                 placingOrder = false;
                 btn.disabled = false;
                 btn.textContent = 'Place Order';
+            }
+        };
+
+        window.reinitTrader = function() {
+            if (!trader) {
+                showAlert('Trader not initialized', 'error');
+                return;
+            }
+            try {
+                trader.init();
+                saveState();
+                render();
+                showAlert('Trader reinitialized with default balances');
+            } catch(e) {
+                console.error('Reinit error:', e);
+                showAlert('Failed to reinitialize: ' + e, 'error');
             }
         };
 
