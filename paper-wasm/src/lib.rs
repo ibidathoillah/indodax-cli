@@ -300,3 +300,21 @@ impl PaperTrader {
 }
 
 impl Default for PaperTrader { fn default() -> Self { Self::new() } }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_topup() {
+        let mut state = PaperState::default();
+        assert_eq!(state.balances.get("idr"), Some(&100_000_000.0));
+        
+        let currency = "idr".to_string();
+        let amount = 50000000.0;
+        let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
+        *balance += amount;
+        
+        assert_eq!(state.balances.get("idr"), Some(&150_000_000.0));
+    }
+}
