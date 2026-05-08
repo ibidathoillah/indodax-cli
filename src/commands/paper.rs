@@ -76,6 +76,14 @@ pub enum PaperCommand {
     #[command(name = "reset", about = "Reset paper trading state")]
     Reset,
 
+    #[command(name = "topup", about = "Add balance to a currency")]
+    Topup {
+        #[arg(long, help = "Currency to topup (e.g. idr, btc)")]
+        currency: String,
+        #[arg(long, help = "Amount to add")]
+        amount: f64,
+    },
+
     #[command(name = "balance", about = "Show paper trading balances")]
     Balance,
 
@@ -135,6 +143,7 @@ fn dispatch_paper(
     match cmd {
         PaperCommand::Init { idr, btc } => paper_init(state, *idr, *btc),
         PaperCommand::Reset => paper_reset(state),
+        PaperCommand::Topup { currency, amount } => paper_topup(state, currency, *amount),
         PaperCommand::Balance => paper_balance(state),
         PaperCommand::Buy { pair, price, amount } => {
             place_paper_order(state, pair, "buy", *price, *amount)
@@ -175,6 +184,21 @@ fn paper_reset(state: &mut PaperState) -> Result<CommandOutput> {
         "status": "reset"
     });
     Ok(CommandOutput::json(data).with_addendum("[PAPER] Trading state reset"))
+}
+
+fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<CommandOutput> {
+    let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
+    *balance += amount;
+    let data = serde_json::json!({
+        "mode": "paper",
+        "currency": currency.to_uppercase(),
+        "amount_added": amount,
+        "new_balance": balance,
+    });
+    Ok(CommandOutput::json(data).with_addendum(format!(
+        "[PAPER] Added {:.2} to {} balance. New balance: {:.2}",
+        amount, currency.to_uppercase(), balance
+    )))
 }
 
 fn paper_balance(state: &PaperState) -> Result<CommandOutput> {

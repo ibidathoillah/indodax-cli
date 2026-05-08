@@ -327,6 +327,28 @@
 
                     <div class="card">
                         <div class="card-header">
+                            <span class="card-title">💳 Top Up Balance</span>
+                        </div>
+                        <div class="trade-form">
+                            <div class="form-group">
+                                <label>Currency</label>
+                                <select id="topup-currency" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);">
+                                    <option value="idr">IDR</option>
+                                    <option value="btc">BTC</option>
+                                    <option value="eth">ETH</option>
+                                    <option value="usdt">USDT</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Amount</label>
+                                <input type="number" id="topup-amount" step="any" placeholder="0" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);">
+                            </div>
+                            <button class="btn btn-primary" style="width:100%" onclick="topupBalance()">Top Up</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
                             <span class="card-title">📊 Statistics</span>
                         </div>
                         <div class="stat-grid">
@@ -1005,6 +1027,21 @@
                 render();
                 showAlert('Trading data reset');
             }
+        };
+
+        function topupBalance() {
+            if (!trader) return;
+            const currency = document.getElementById('topup-currency').value;
+            const amount = parseFloat(document.getElementById('topup-amount').value);
+            if (!currency || isNaN(amount) || amount <= 0) {
+                showAlert('Please enter a valid currency and amount', 'error');
+                return;
+            }
+            trader.topup(currency, amount);
+            saveState();
+            render();
+            showAlert(`Added ${amount} to ${currency.toUpperCase()} balance`);
+            document.getElementById('topup-amount').value = '';
         };
 
         function saveState() {

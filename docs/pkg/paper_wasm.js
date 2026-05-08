@@ -146,6 +146,17 @@ export class PaperTrader {
         }
         return takeFromExternrefTable0(ret[0]);
     }
+    /**
+     * @param {string} currency
+     * @param {number} amount
+     * @returns {any}
+     */
+    topup(currency, amount) {
+        const ptr0 = passStringToWasm0(currency, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.papertrader_topup(this.__wbg_ptr, ptr0, len0, amount);
+        return ret;
+    }
 }
 if (Symbol.dispose) PaperTrader.prototype[Symbol.dispose] = PaperTrader.prototype.free;
 function __wbg_get_imports() {

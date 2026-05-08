@@ -15,6 +15,7 @@ export const papertrader_load_state: (a: number, b: number, c: number) => [numbe
 export const papertrader_new: () => number;
 export const papertrader_save_state: (a: number) => [number, number];
 export const papertrader_sell: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+export const papertrader_topup: (a: number, b: number, c: number, d: number) => any;
 export const papertrader_reset: (a: number) => any;
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

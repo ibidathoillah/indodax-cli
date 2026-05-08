@@ -18,6 +18,7 @@ export class PaperTrader {
     reset(): any;
     save_state(): string;
     sell(pair: string, price: number, amount: number): any;
+    topup(currency: string, amount: number): any;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -38,6 +39,7 @@ export interface InitOutput {
     readonly papertrader_new: () => number;
     readonly papertrader_save_state: (a: number) => [number, number];
     readonly papertrader_sell: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+    readonly papertrader_topup: (a: number, b: number, c: number, d: number) => any;
     readonly papertrader_reset: (a: number) => any;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

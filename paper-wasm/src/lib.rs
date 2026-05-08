@@ -64,6 +64,13 @@ impl PaperTrader {
     }
 
     #[wasm_bindgen]
+    pub fn topup(&mut self, currency: &str, amount: f64) -> JsValue {
+        let balance = self.state.balances.entry(currency.to_lowercase()).or_insert(0.0);
+        *balance += amount;
+        self.get_state_js()
+    }
+
+    #[wasm_bindgen]
     pub fn get_balances(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.state.balances).unwrap_or(JsValue::NULL)
     }
