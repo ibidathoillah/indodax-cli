@@ -862,10 +862,20 @@
         }
 
         function updateQuickPrices() {
-            const b = trader?.get_balances() || {};
-            if (!b || Object.keys(b).length === 0) {
-                document.getElementById('balances').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:12px">No balances</div>';
+            if (!trader) {
+                document.getElementById('balances').innerHTML = '<div style="color:var(--error);text-align:center;padding:12px">Trader not initialized</div>';
                 return;
+            }
+            const b = trader.get_balances();
+            console.log('updateQuickPrices - balances:', JSON.stringify(b));
+            if (!b || (typeof b === 'object' && Object.keys(b).length === 0)) {
+                console.warn('No balances, calling init()');
+                trader.init();
+                const b2 = trader.get_balances();
+                if (!b2 || Object.keys(b2).length === 0) {
+                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);text-align:center;padding:12px">No balances. <button onclick="trader.init();render();">Initialize</button></div>';
+                    return;
+                }
             }
 
             let html = '';
