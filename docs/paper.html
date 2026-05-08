@@ -330,7 +330,7 @@
                             <span class="card-title">💳 Top Up Balance</span>
                         </div>
                         <div class="trade-form">
-                            <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="testBalances()">Test Balances</button>
+                            <button id="btn-test-balances" class="btn btn-secondary" style="width:100%;margin-bottom:8px">Test Balances</button>
                             <div class="form-group">
                                 <label>Currency</label>
                                 <select id="topup-currency" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);">
@@ -509,7 +509,7 @@
                 console.log('Final balances:', JSON.stringify(balances));
                 if (!balances || Object.keys(balances).length === 0) {
                     console.error('ERROR: No balances available!');
-                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);padding:12px">Error: No balances. <button onclick="reinitTrader()" style="padding:5px 10px;margin-top:5px;cursor:pointer;">Initialize</button></div>';
+                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);padding:12px">Error: No balances. <button id="btn-init-trader" style="padding:5px 10px;margin-top:5px;cursor:pointer;">Initialize</button></div>';
                 }
 
                 renderPairSelectors();
@@ -874,7 +874,7 @@
                 trader.init();
                 const b2 = trader.get_balances();
                 if (!b2 || Object.keys(b2).length === 0) {
-                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);text-align:center;padding:12px">No balances. <button onclick="reinitTrader()">Initialize</button></div>';
+                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);text-align:center;padding:12px">No balances. <button id="btn-init-balances">Initialize</button></div>';
                     return;
                 }
             }
@@ -1161,6 +1161,18 @@
             if (n >= 1) return n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
             return n.toLocaleString('id-ID', { maximumFractionDigits: 6 });
         }
+
+        // Add event listeners for buttons that need access to module scope
+        document.addEventListener('DOMContentLoaded', function() {
+            const btnTest = document.getElementById('btn-test-balances');
+            if (btnTest) btnTest.addEventListener('click', testBalances);
+
+            const btnInit1 = document.getElementById('btn-init-trader');
+            if (btnInit1) btnInit1.addEventListener('click', reinitTrader);
+
+            const btnInit2 = document.getElementById('btn-init-balances');
+            if (btnInit2) btnInit2.addEventListener('click', reinitTrader);
+        });
 
         init();
     </script>
