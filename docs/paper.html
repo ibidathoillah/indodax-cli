@@ -1041,12 +1041,17 @@
                 return;
             }
             try {
-                trader.topup(currency, amount);
+                const result = trader.topup(currency, amount);
+                console.log('Topup returned:', JSON.stringify(result));
                 const balances = trader.get_balances();
-                console.log('Topup successful. New balances:', JSON.stringify(balances));
+                console.log('Balances after topup:', JSON.stringify(balances));
+                if (balances && balances[currency]) {
+                    showAlert(`Added ${amount} to ${currency.toUpperCase()}. New balance: ${parseFloat(balances[currency]).toFixed(2)}`);
+                } else {
+                    showAlert(`Added ${amount} to ${currency.toUpperCase()}. Check balances above.`);
+                }
                 saveState();
                 render();
-                showAlert(`Added ${amount} to ${currency.toUpperCase()} balance. New balance: ${balances[currency] ? balances[currency].toFixed(2) : 'N/A'}`);
                 document.getElementById('topup-amount').value = '';
             } catch (e) {
                 console.error('Topup error:', e);
