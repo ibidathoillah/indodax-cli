@@ -325,11 +325,12 @@
                         <div id="balances" class="balance-grid"></div>
                     </div>
 
-                    <div class="card">
+                     <div class="card">
                         <div class="card-header">
                             <span class="card-title">💳 Top Up Balance</span>
                         </div>
                         <div class="trade-form">
+                            <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="testBalances()">Test Balances</button>
                             <div class="form-group">
                                 <label>Currency</label>
                                 <select id="topup-currency" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);">
@@ -1057,6 +1058,36 @@
             } catch(e) {
                 console.error('Reinit error:', e);
                 showAlert('Failed to reinitialize: ' + e, 'error');
+            }
+        };
+
+        window.testBalances = function() {
+            if (!trader) {
+                showAlert('Trader not initialized', 'error');
+                return;
+            }
+            try {
+                const balances = trader.get_balances();
+                console.log('Balances:', JSON.stringify(balances));
+                if (balances && typeof balances === 'object') {
+                    const keys = Object.keys(balances);
+                    if (keys.length > 0) {
+                        showAlert('Balances: ' + JSON.stringify(balances).substring(0, 100));
+                    } else {
+                        showAlert('No balances found. Calling init()...', 'error');
+                        trader.init();
+                        setTimeout(() => {
+                            const b2 = trader.get_balances();
+                            showAlert('After init: ' + JSON.stringify(b2).substring(0, 100));
+                            render();
+                        }, 500);
+                    }
+                } else {
+                    showAlert('Invalid balances object', 'error');
+                }
+            } catch(e) {
+                console.error('Test error:', e);
+                showAlert('Error: ' + e, 'error');
             }
         };
 
