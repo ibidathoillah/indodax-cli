@@ -478,9 +478,37 @@
                 const { PaperTrader } = wasm;
                 trader = new PaperTrader();
 
+                // Verify trader has default balances
+                let balances = trader.get_balances();
+                console.log('Initial balances after constructor:', JSON.stringify(balances));
+
+                // If no balances, call init to set defaults
+                if (!balances || Object.keys(balances).length === 0) {
+                    console.log('No balances found, calling init()');
+                    trader.init();
+                    balances = trader.get_balances();
+                    console.log('Balances after init:', JSON.stringify(balances));
+                }
+
                 const saved = localStorage.getItem('paper-trading-state');
                 if (saved) {
-                    try { trader.load_state(saved); } catch(e) { /* ignore corrupt state */ }
+                    try {
+                        console.log('Loading saved state:', saved.substring(0, 100) + '...');
+                        trader.load_state(saved);
+                        balances = trader.get_balances();
+                        console.log('Balances after load:', JSON.stringify(balances));
+                    } catch(e) {
+                        console.warn('Failed to load saved state, using defaults:', e);
+                        trader.init();
+                    }
+                }
+
+                // Final check
+                balances = trader.get_balances();
+                console.log('Final balances:', JSON.stringify(balances));
+                if (!balances || Object.keys(balances).length === 0) {
+                    console.error('ERROR: No balances available!');
+                    document.getElementById('balances').innerHTML = '<div style="color:var(--error);padding:12px">Error: No balances. <button onclick="trader.init();render();" style="padding:5px 10px;margin-top:5px;cursor:pointer;">Initialize</button></div>';
                 }
 
                 renderPairSelectors();
