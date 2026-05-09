@@ -1,0 +1,28 @@
+{
+  "name": "indodax-cli",
+  "version": "0.1.2",
+  "description": "Command-line interface for the Indodax cryptocurrency exchange",
+  "bin": {
+    "indodax": "./bin/indodax"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ibidathoillah/indodax-cli.git"
+  },
+  "keywords": [
+    "indodax",
+    "crypto",
+    "cli",
+    "trading",
+    "bitcoin"
+  ],
+  "author": "Ibida Thoillah",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ibidathoillah/indodax-cli/issues"
+  },
+  "homepage": "https://github.com/ibidathoillah/indodax-cli#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}

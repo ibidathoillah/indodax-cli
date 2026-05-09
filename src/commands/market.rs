@@ -131,8 +131,8 @@ async fn ticker_all(client: &IndodaxClient) -> Result<CommandOutput> {
                     helpers::value_to_string(&val["low"]),
                     helpers::value_to_string(&val["buy"]),
                     helpers::value_to_string(&val["sell"]),
-                    helpers::value_to_string(&first_of(&val, &["vol_btc", "vol_base"])),
-                    helpers::value_to_string(&first_of(&val, &["vol_idr", "vol_traded"])),
+                    helpers::value_to_string(first_of(val, &["vol_btc", "vol_base"])),
+                    helpers::value_to_string(first_of(val, &["vol_idr", "vol_traded"])),
                 ]);
             }
         }
@@ -160,8 +160,8 @@ async fn summaries(client: &IndodaxClient) -> Result<CommandOutput> {
                     helpers::value_to_string(&val["last"]),
                     helpers::value_to_string(&val["high"]),
                     helpers::value_to_string(&val["low"]),
-                    helpers::value_to_string(&first_of(&val, &["vol_btc", "vol_base"])),
-                    helpers::value_to_string(&first_of(&val, &["vol_idr", "vol_traded"])),
+                    helpers::value_to_string(first_of(val, &["vol_btc", "vol_base"])),
+                    helpers::value_to_string(first_of(val, &["vol_idr", "vol_traded"])),
                 ]);
             }
         }

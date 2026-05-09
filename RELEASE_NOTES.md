@@ -1,8 +1,18 @@
-## 🚀 Welcome to Indodax CLI v0.1.1
+## 🚀 Welcome to Indodax CLI v0.1.2
 
-The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange. This initial release provides everything you need to manage your portfolio, execute trades, and integrate with AI agents.
+The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### ✨ Highlights
+### 🆕 What's New in v0.1.2
+
+- **🐛 Bug Fixes**:
+  - Fixed compilation errors in `paper` trading tests.
+  - Resolved several Clippy linting warnings for better code quality and performance.
+  - Fixed a critical bug in the `trade buy` command where orders were incorrectly rejected due to minimum amount constraints (switched to native `idr` parameter).
+- **⚡ Performance & Quality**:
+  - Optimized various data transformation pipelines in `account` and `market` commands.
+  - Improved code structure and safety in internal helper functions.
+
+### ✨ Highlights from v0.1.1
 
 - **🤖 AI Agent Integration (MCP)**: Built-in Model Context Protocol server. Seamlessly connect your Indodax account to **Claude Desktop, ChatGPT, Cursor, or Gemini CLI**.
 - **🔥 Real-Time WebSocket Streams**: Live data for tickers, trades, order books, and private order updates.

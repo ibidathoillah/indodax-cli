@@ -23,7 +23,7 @@ pub fn render(output: &CommandOutput) -> String {
         );
 
     for row in &output.rows {
-        table.add_row(row.iter().map(|c| Cell::new(c)).collect::<Vec<_>>());
+        table.add_row(row.iter().map(Cell::new).collect::<Vec<_>>());
     }
 
     let mut result = table.to_string();

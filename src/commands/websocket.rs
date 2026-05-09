@@ -64,7 +64,7 @@ async fn ws_connect_and_listen(
         "id": 1
     });
     ws_stream
-        .send(Message::Text(auth_msg.to_string().into()))
+        .send(Message::Text(auth_msg.to_string()))
         .await?;
 
     let mut authed = false;
@@ -89,7 +89,7 @@ async fn ws_connect_and_listen(
                             "id": 2
                         });
                         ws_stream
-                            .send(Message::Text(sub_msg.to_string().into()))
+                            .send(Message::Text(sub_msg.to_string()))
                             .await?;
                     }
                     continue;
@@ -179,9 +179,9 @@ async fn ws_book(pair: &str) -> Result<CommandOutput> {
         let data = &val["result"]["data"]["data"];
         if let serde_json::Value::Array(asks) = &data["ask"] {
             if let Some(best) = asks.last() {
-                let price = helpers::value_to_string(&best.get("price").unwrap_or(&serde_json::Value::Null));
+                let price = helpers::value_to_string(best.get("price").unwrap_or(&serde_json::Value::Null));
                 let amount = helpers::value_to_string(
-                    &best.get("btc_volume")
+                    best.get("btc_volume")
                         .or_else(|| best.get("volume"))
                         .or_else(|| best.get("amount"))
                         .unwrap_or(&serde_json::Value::Null),
@@ -191,9 +191,9 @@ async fn ws_book(pair: &str) -> Result<CommandOutput> {
         }
         if let serde_json::Value::Array(bids) = &data["bid"] {
             if let Some(best) = bids.first() {
-                let price = helpers::value_to_string(&best.get("price").unwrap_or(&serde_json::Value::Null));
+                let price = helpers::value_to_string(best.get("price").unwrap_or(&serde_json::Value::Null));
                 let amount = helpers::value_to_string(
-                    &best.get("btc_volume")
+                    best.get("btc_volume")
                         .or_else(|| best.get("volume"))
                         .or_else(|| best.get("amount"))
                         .unwrap_or(&serde_json::Value::Null),

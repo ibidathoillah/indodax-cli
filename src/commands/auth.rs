@@ -127,8 +127,8 @@ pub async fn execute(
             let headers = vec!["Field".into(), "Value".into()];
             let rows = vec![
                 vec!["Status".into(), "OK - Credentials valid".into()],
-                vec!["Name".into(), helpers::value_to_string(&result.get("name").unwrap_or(&serde_json::Value::Null))],
-                vec!["Server Time".into(), helpers::value_to_string(&result.get("server_time").unwrap_or(&serde_json::Value::Null))],
+                vec!["Name".into(), helpers::value_to_string(result.get("name").unwrap_or(&serde_json::Value::Null))],
+                vec!["Server Time".into(), helpers::value_to_string(result.get("server_time").unwrap_or(&serde_json::Value::Null))],
                 vec!["Balances (non-zero)".into(), bal_summary],
             ];
 

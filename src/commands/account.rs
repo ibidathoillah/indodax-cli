@@ -75,11 +75,11 @@ async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
         "Field".into(), "Value".into(),
     ];
     let mut rows: Vec<Vec<String>> = vec![
-        vec!["Name".into(), helpers::value_to_string(&data.get("name").unwrap_or(&serde_json::Value::Null))],
-        vec!["User ID".into(), helpers::value_to_string(&data.get("user_id").unwrap_or(&serde_json::Value::Null))],
+        vec!["Name".into(), helpers::value_to_string(data.get("name").unwrap_or(&serde_json::Value::Null))],
+        vec!["User ID".into(), helpers::value_to_string(data.get("user_id").unwrap_or(&serde_json::Value::Null))],
         vec!["Server Time".into(), helpers::format_timestamp(data["server_time"].as_u64().unwrap_or(0), true)],
-        vec!["Vip Level".into(), helpers::value_to_string(&data.get("vip_level").unwrap_or(&serde_json::Value::Null))],
-        vec!["Verified".into(), helpers::value_to_string(&data.get("verified_user").unwrap_or(&serde_json::Value::Null))],
+        vec!["Vip Level".into(), helpers::value_to_string(data.get("vip_level").unwrap_or(&serde_json::Value::Null))],
+        vec!["Verified".into(), helpers::value_to_string(data.get("verified_user").unwrap_or(&serde_json::Value::Null))],
     ];
 
     let balance = &data["balance"];
@@ -105,11 +105,11 @@ async fn balance(client: &IndodaxClient) -> Result<CommandOutput> {
     if let serde_json::Value::Object(bal_map) = balance {
         let mut entries: Vec<(String, f64)> = bal_map
             .iter()
-            .filter_map(|(k, v)| {
+            .map(|(k, v)| {
                 let val = v.as_str().and_then(|s| s.parse::<f64>().ok())
                     .or_else(|| v.as_f64())
                     .unwrap_or(0.0);
-                Some((k.clone(), val))
+                (k.clone(), val)
             })
             .collect();
         entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -142,10 +142,10 @@ async fn open_orders(
     if let serde_json::Value::Object(orders_map) = orders {
         for (order_id, order_val) in orders_map {
             let pair = helpers::value_to_string(
-                &priv_get(order_val, &["pair", "market", "symbol"]),
+                priv_get(order_val, &["pair", "market", "symbol"]),
             );
             let order_type = helpers::value_to_string(
-                &priv_get(order_val, &["type", "order_type"]),
+                priv_get(order_val, &["type", "order_type"]),
             );
             let side = if order_type.contains("sell") || order_type.contains("SELL") {
                 "SELL"
@@ -154,12 +154,12 @@ async fn open_orders(
             };
 
             let remaining = helpers::value_to_string(
-                &priv_get(order_val, &["remaining", "remain_volume", "remaining_volume"]),
+                priv_get(order_val, &["remaining", "remain_volume", "remaining_volume"]),
             );
             let base_amount = order_val.get("order_btc")
                 .or_else(|| order_val.get("order_base"))
                 .or_else(|| order_val.get("amount"))
-                .map(|v| helpers::value_to_string(v))
+                .map(helpers::value_to_string)
                 .unwrap_or_default();
 
             let time_val = order_val.get("submit_time")
@@ -181,7 +181,7 @@ async fn open_orders(
                 order_type,
                 side.into(),
                 helpers::value_to_string(
-                    &priv_get(order_val, &["price", "order_price"]),
+                    priv_get(order_val, &["price", "order_price"]),
                 ),
                 base_amount,
                 remaining,
@@ -223,14 +223,14 @@ async fn order_history(
     if let serde_json::Value::Array(arr) = &data {
         for order in arr.iter().take(limit as usize) {
             rows.push(vec![
-                helpers::value_to_string(&priv_get(order, &["orderId", "order_id"])),
-                helpers::value_to_string(&priv_get(order, &["symbol", "pair"])),
-                helpers::value_to_string(&priv_get(order, &["side", "order_side"])),
-                helpers::value_to_string(&priv_get(order, &["type", "order_type"])),
-                helpers::value_to_string(&priv_get(order, &["price", "order_price"])),
-                helpers::value_to_string(&priv_get(order, &["origQty", "orig_qty", "qty"])),
-                helpers::value_to_string(&priv_get(order, &["status", "order_status"])),
-                helpers::value_to_string(&priv_get(order, &["time", "created_at"])),
+                helpers::value_to_string(priv_get(order, &["orderId", "order_id"])),
+                helpers::value_to_string(priv_get(order, &["symbol", "pair"])),
+                helpers::value_to_string(priv_get(order, &["side", "order_side"])),
+                helpers::value_to_string(priv_get(order, &["type", "order_type"])),
+                helpers::value_to_string(priv_get(order, &["price", "order_price"])),
+                helpers::value_to_string(priv_get(order, &["origQty", "orig_qty", "qty"])),
+                helpers::value_to_string(priv_get(order, &["status", "order_status"])),
+                helpers::value_to_string(priv_get(order, &["time", "created_at"])),
             ]);
         }
     }
@@ -265,14 +265,14 @@ async fn trade_history(
     if let serde_json::Value::Array(arr) = &data {
         for trade in arr.iter().take(limit as usize) {
             rows.push(vec![
-                helpers::value_to_string(&priv_get(trade, &["id", "tradeId", "trade_id"])),
-                helpers::value_to_string(&priv_get(trade, &["orderId", "order_id"])),
-                helpers::value_to_string(&priv_get(trade, &["symbol", "pair"])),
-                helpers::value_to_string(&priv_get(trade, &["side"])),
-                helpers::value_to_string(&priv_get(trade, &["price"])),
-                helpers::value_to_string(&priv_get(trade, &["qty", "quantity"])),
-                helpers::value_to_string(&priv_get(trade, &["commission", "fee"])),
-                helpers::value_to_string(&priv_get(trade, &["time", "timestamp"])),
+                helpers::value_to_string(priv_get(trade, &["id", "tradeId", "trade_id"])),
+                helpers::value_to_string(priv_get(trade, &["orderId", "order_id"])),
+                helpers::value_to_string(priv_get(trade, &["symbol", "pair"])),
+                helpers::value_to_string(priv_get(trade, &["side"])),
+                helpers::value_to_string(priv_get(trade, &["price"])),
+                helpers::value_to_string(priv_get(trade, &["qty", "quantity"])),
+                helpers::value_to_string(priv_get(trade, &["commission", "fee"])),
+                helpers::value_to_string(priv_get(trade, &["time", "timestamp"])),
             ]);
         }
     }
@@ -295,34 +295,32 @@ async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
         .or_else(|| data.get("deposit"))
         .or_else(|| data.get("transactions"));
 
-    if let Some(list) = trans_list {
-        if let serde_json::Value::Object(map) = list {
-            for (id, entry) in map {
-                let tx_type = if id.contains("withdraw") || entry.get("withdraw_id").is_some() {
-                    "WITHDRAW"
-                } else {
-                    "DEPOSIT"
-                };
-                rows.push(vec![
-                    id.clone(),
-                    tx_type.into(),
-                    helpers::value_to_string(
-                        &priv_get(entry, &["currency", "asset", "coin"]),
-                    ),
-                    helpers::value_to_string(
-                        &priv_get(entry, &["amount", "value"]),
-                    ),
-                    helpers::value_to_string(
-                        &priv_get(entry, &["fee", "withdraw_fee"]),
-                    ),
-                    helpers::value_to_string(
-                        &priv_get(entry, &["status", "state"]),
-                    ),
-                    helpers::value_to_string(
-                        &priv_get(entry, &["submit_time", "timestamp", "time", "submitted"]),
-                    ),
-                ]);
-            }
+    if let Some(serde_json::Value::Object(map)) = trans_list {
+        for (id, entry) in map {
+            let tx_type = if id.contains("withdraw") || entry.get("withdraw_id").is_some() {
+                "WITHDRAW"
+            } else {
+                "DEPOSIT"
+            };
+            rows.push(vec![
+                id.clone(),
+                tx_type.into(),
+                helpers::value_to_string(
+                    priv_get(entry, &["currency", "asset", "coin"]),
+                ),
+                helpers::value_to_string(
+                    priv_get(entry, &["amount", "value"]),
+                ),
+                helpers::value_to_string(
+                    priv_get(entry, &["fee", "withdraw_fee"]),
+                ),
+                helpers::value_to_string(
+                    priv_get(entry, &["status", "state"]),
+                ),
+                helpers::value_to_string(
+                    priv_get(entry, &["submit_time", "timestamp", "time", "submitted"]),
+                ),
+            ]);
         }
     }
 

@@ -27,7 +27,26 @@ Track markets, execute trades, manage your portfolio, and stream real-time data 
 
 ## 📦 Installation
 
-### Install from Source (requires [Rust](https://rustup.rs/))
+### From Cargo (Crates.io)
+
+```bash
+cargo install indodax-cli
+```
+
+### From NPM
+
+```bash
+npm install -g indodax-cli
+```
+
+### From Docker
+
+```bash
+docker pull ibidathoillah/indodax-cli:latest
+docker run -it --rm -v ~/.config/indodax:/root/.config/indodax ibidathoillah/indodax-cli account balance
+```
+
+### From Source (requires [Rust](https://rustup.rs/))
 
 ```bash
 git clone https://github.com/ibidathoillah/indodax-cli.git
@@ -35,12 +54,14 @@ cd indodax-cli
 cargo install --path .
 ```
 
-### Build Locally
+---
 
-```bash
-cargo build --release
-./target/release/indodax --help
-```
+## 🚀 Recent Highlights (v0.1.2)
+
+- **🐛 Fixed `trade buy` Bug**: Switched to the native `idr` parameter for buy orders, resolving the "Minimum order 10,000 IDR" error caused by client-side rounding issues.
+- **⚡ Performance Optimizations**: Cleaned up code with Clippy and optimized internal data transformation pipelines.
+- **🧪 Stable Paper Trading**: Fixed initialization issues and stabilized the simulated trading environment.
+- **📦 Multi-Platform Support**: Now distributed via Crates.io, NPM, and Docker Hub for easier installation.
 
 ---
 
@@ -300,9 +321,12 @@ Test your strategies without risking real funds. Paper trading provides a simula
 # Initialize with default balances (100M IDR, 1 BTC)
 indodax paper init
 
-# Place simulated orders
+# Or with custom balances
+indodax paper init --idr 50000000 --btc 0.5
+
+# Place simulated orders (uses --amount for base currency)
 indodax paper buy --pair btc_idr --price 500000000 --amount 0.1
-indodax paper sell --pair btc_idr --price 600000000 --amount 0.05
+indodax paper sell --pair btc_idr --price 1000000000 --amount 0.05
 
 # Check balances and status
 indodax paper balance

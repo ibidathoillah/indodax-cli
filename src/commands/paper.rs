@@ -225,7 +225,7 @@ pub fn place_paper_order(
     amount: f64,
 ) -> Result<CommandOutput> {
     let base = pair.split('_').next().unwrap_or(pair);
-    let quote = pair.split('_').last().unwrap_or("idr");
+    let quote = pair.split('_').next_back().unwrap_or("idr");
     let total_cost = price * amount;
 
     if side == "buy" {
@@ -473,7 +473,7 @@ fn refund_and_cancel(state: &mut PaperState, order_id: u64) -> Result<()> {
     }
 
     let base = order.pair.split('_').next().unwrap_or("btc");
-    let quote = order.pair.split('_').last().unwrap_or("idr");
+    let quote = order.pair.split('_').next_back().unwrap_or("idr");
     let refund = order.price * order.remaining;
     let remaining = order.remaining;
 
@@ -560,7 +560,7 @@ mod tests {
         state.balances.insert("eth".into(), 100.0);
         state.next_order_id = 99;
         
-        let output = paper_init(&mut state).unwrap();
+        let output = paper_init(&mut state, None, None).unwrap();
         assert_eq!(state.balances.get("idr"), Some(&100_000_000.0));
         assert_eq!(state.balances.get("btc"), Some(&1.0));
         assert_eq!(state.next_order_id, 1);
@@ -773,7 +773,7 @@ mod tests {
     #[test]
     fn test_dispatch_paper_init() {
         let mut state = PaperState::default();
-        let cmd = PaperCommand::Init;
+        let cmd = PaperCommand::Init { idr: None, btc: None };
         let result = dispatch_paper(&mut state, &cmd);
         assert!(result.is_ok());
     }
