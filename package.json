@@ -5,6 +5,9 @@
   "bin": {
     "indodax": "./bin/indodax"
   },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ibidathoillah/indodax-cli.git"
