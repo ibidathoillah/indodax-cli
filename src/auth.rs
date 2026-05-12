@@ -2,12 +2,14 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 pub struct Signer {
     api_key: String,
     secret_key: String,
+    last_nonce: AtomicU64,
 }
 
 impl Signer {
@@ -15,6 +17,7 @@ impl Signer {
         Self {
             api_key: api_key.to_string(),
             secret_key: secret_key.to_string(),
+            last_nonce: AtomicU64::new(0),
         }
     }
 
@@ -27,34 +30,32 @@ impl Signer {
     }
 
     fn next_nonce(&self) -> u64 {
-        SystemTime::now()
+        let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let prev = self.last_nonce.load(Ordering::Relaxed);
+        let next = if now > prev { now } else { prev + 1 };
+        self.last_nonce.store(next, Ordering::Relaxed);
+        next
     }
 
     pub fn now_millis() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64
     }
 
-    pub fn sign_v1(&self, payload: &str, _use_timestamp: bool) -> (String, String) {
+    pub fn sign_v1(&self, payload: &str) -> (String, String) {
         let signature = self.hmac_sha512(payload, &self.secret_key);
         let encoded_sign = hex::encode(signature);
 
         (payload.to_string(), encoded_sign)
     }
 
-    pub fn sign_v2(&self, query_string: &str, timestamp: u64) -> String {
-        let payload = format!("{}&timestamp={}&recvWindow=10000", query_string, timestamp);
-        let signature = self.hmac_sha512(&payload, &self.secret_key);
-        BASE64.encode(&signature)
-    }
-
-    pub fn sign_ws_auth(&self, body: &str) -> String {
-        let signature = self.hmac_sha512(body, &self.secret_key);
+    pub fn sign_v2(&self, query_string: &str, _timestamp: u64) -> String {
+        let signature = self.hmac_sha512(query_string, &self.secret_key);
         BASE64.encode(&signature)
     }
 
@@ -111,7 +112,7 @@ mod tests {
     #[test]
     fn test_signer_sign_v1() {
         let signer = Signer::new("key", "secret");
-        let (payload, signature) = signer.sign_v1("method=test&nonce=123", false);
+        let (payload, signature) = signer.sign_v1("method=test&nonce=123");
         assert_eq!(payload, "method=test&nonce=123");
         assert!(!signature.is_empty());
         // Signature should be hex encoded
@@ -122,8 +123,8 @@ mod tests {
     fn test_signer_sign_v1_different_secrets() {
         let signer1 = Signer::new("key", "secret1");
         let signer2 = Signer::new("key", "secret2");
-        let (_payload, sig1) = signer1.sign_v1("test", false);
-        let (_payload2, sig2) = signer2.sign_v1("test", false);
+        let (_payload, sig1) = signer1.sign_v1("test");
+        let (_payload2, sig2) = signer2.sign_v1("test");
         assert_ne!(sig1, sig2);
     }
 
@@ -151,23 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn test_signer_sign_ws_auth() {
-        let signer = Signer::new("key", "secret");
-        let signature = signer.sign_ws_auth("body_data");
-        assert!(!signature.is_empty());
-        // Signature should be base64 encoded
-        assert!(BASE64.decode(&signature).is_ok());
-    }
-
-    #[test]
-    fn test_signer_sign_ws_auth_different_bodies() {
-        let signer = Signer::new("key", "secret");
-        let sig1 = signer.sign_ws_auth("body1");
-        let sig2 = signer.sign_ws_auth("body2");
-        assert_ne!(sig1, sig2);
-    }
-
-    #[test]
     fn test_hmac_sha512_output_length() {
         let signer = Signer::new("key", "secret");
         let result = signer.hmac_sha512("test data", "secret");
@@ -178,8 +162,8 @@ mod tests {
     #[test]
     fn test_signer_multiple_signatures_different() {
         let signer = Signer::new("key", "secret");
-        let (_, sig1) = signer.sign_v1("payload1", false);
-        let (_, sig2) = signer.sign_v1("payload2", false);
+        let (_, sig1) = signer.sign_v1("payload1");
+        let (_, sig2) = signer.sign_v1("payload2");
         assert_ne!(sig1, sig2);
     }
 }

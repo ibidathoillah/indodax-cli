@@ -1,20 +1,86 @@
 use crate::auth::Signer;
 use crate::errors::{ErrorCategory, IndodaxError};
-use crate::telemetry;
 use reqwest::{Client, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, BTreeMap};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::sync::Mutex;
+
+use std::time::{Duration, Instant};
 
 const PUBLIC_BASE_URL: &str = "https://indodax.com";
 const PRIVATE_V1_URL: &str = "https://indodax.com/tapi";
 const PRIVATE_V2_BASE: &str = "https://tapi.indodax.com";
+const WS_TOKEN_URL: &str = "https://indodax.com/api/private_ws/v1/generate_token";
 const MAX_RETRIES: u32 = 3;
+
+/// Token-bucket rate limiter for proactive 429 avoidance.
+#[derive(Debug)]
+struct RateLimiter {
+    capacity: u64,
+    tokens: AtomicU64,
+    refill_per_sec: u64,
+    last_refill: Mutex<Instant>,
+}
+
+impl RateLimiter {
+    fn new(capacity: u64, refill_per_sec: u64) -> Self {
+        Self {
+            capacity,
+            tokens: AtomicU64::new(capacity),
+            refill_per_sec,
+            last_refill: Mutex::new(Instant::now()),
+        }
+    }
+
+    fn from_env() -> Self {
+        let rps = std::env::var("INDODAX_RATE_LIMIT")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(10);
+        Self::new(rps, rps)
+    }
+
+    async fn acquire(&self) {
+        loop {
+            let current = self.tokens.load(Ordering::Relaxed);
+            if current == 0 {
+                let wait = {
+                    let mut last = self.last_refill.lock().await;
+                    let elapsed = last.elapsed();
+                    let elapsed_secs = elapsed.as_secs();
+                    if elapsed_secs > 0 {
+                        let add = self.refill_per_sec.saturating_mul(elapsed_secs);
+                        let new_tokens = self.tokens.load(Ordering::Relaxed).saturating_add(add).min(self.capacity);
+                        self.tokens.store(new_tokens, Ordering::Relaxed);
+                        *last = Instant::now();
+                    }
+                    let elapsed_ms = elapsed.as_millis() as u64;
+                    if elapsed_ms < 1000 {
+                        Duration::from_millis(1000 - elapsed_ms)
+                    } else {
+                        Duration::from_millis(50)
+                    }
+                };
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+            if self
+                .tokens
+                .compare_exchange(current, current - 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                break;
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct IndodaxClient {
     http: Client,
     signer: Option<Signer>,
+    rate_limiter: RateLimiter,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -36,17 +102,25 @@ pub struct IndodaxV2Response<T> {
 impl IndodaxClient {
     pub fn new(signer: Option<Signer>) -> Self {
         let http = Client::builder()
-            .user_agent(telemetry::user_agent())
+            .user_agent(format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(30))
             .pool_max_idle_per_host(2)
             .build()
             .expect("Failed to create HTTP client");
 
-        Self { http, signer }
+        Self {
+            http,
+            signer,
+            rate_limiter: RateLimiter::from_env(),
+        }
     }
 
     pub fn signer(&self) -> Option<&Signer> {
         self.signer.as_ref()
+    }
+
+    pub fn http_client(&self) -> &Client {
+        &self.http
     }
 
     pub async fn public_get<T: DeserializeOwned>(
@@ -56,6 +130,91 @@ impl IndodaxClient {
         let url = format!("{}{}", PUBLIC_BASE_URL, path);
         let resp = self.retry_get(&url).await?;
         self.handle_response(resp).await
+    }
+
+    pub async fn countdown_cancel_all(
+        &self,
+        pair: Option<&str>,
+        countdown_time: u64,
+    ) -> Result<serde_json::Value, IndodaxError> {
+        let signer = self.signer.as_ref().ok_or_else(|| {
+            IndodaxError::Config("API credentials required for countdown cancel all".into())
+        })?;
+
+        let mut body_parts: Vec<String> = vec![
+            format!("countdownTime={}", countdown_time),
+        ];
+        if let Some(p) = pair {
+            body_parts.push(format!("pair={}", p));
+        }
+
+        let body = body_parts.join("&");
+        let (payload, signature) = signer.sign_v1(&body);
+
+        let resp = self
+            .http
+            .post(format!("{}/countdownCancelAll", PRIVATE_V1_URL))
+            .header("Key", signer.api_key())
+            .header("Sign", &signature)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(payload)
+            .send()
+            .await?;
+
+        let body_text = resp.text().await?;
+        let data: serde_json::Value = serde_json::from_str(&body_text)?;
+
+        if let Some(success) = data.get("success").and_then(|v| v.as_i64()) {
+            if success == 1 {
+                Ok(data)
+            } else {
+                let error_msg = data
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error");
+                let error_code = data
+                    .get("error_code")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let category = match error_code.as_deref() {
+                    Some("invalid_credentials") => ErrorCategory::Authentication,
+                    Some("rate_limit") => ErrorCategory::RateLimit,
+                    Some(c) if c.contains("invalid") => ErrorCategory::Validation,
+                    _ => ErrorCategory::Unknown,
+                };
+                Err(IndodaxError::api(error_msg, category, error_code))
+            }
+        } else {
+            Ok(data)
+        }
+    }
+
+    pub async fn generate_ws_token(&self) -> Result<String, IndodaxError> {
+        let signer = self.signer.as_ref().ok_or_else(|| {
+            IndodaxError::Config("API credentials required for WebSocket token generation".into())
+        })?;
+
+        let nonce = signer.next_nonce_str();
+        let (_, signature) = signer.sign_v1(&nonce);
+
+        let resp = self
+            .http
+            .post(WS_TOKEN_URL)
+            .header("Key", signer.api_key())
+            .header("Sign", &signature)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(format!("nonce={}", nonce))
+            .send()
+            .await?;
+
+        let body_text = resp.text().await?;
+        let val: serde_json::Value = serde_json::from_str(&body_text)?;
+
+        val.get("token")
+            .and_then(|t| t.as_str())
+            .map(|t| t.to_string())
+            .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()).map(|t| t.to_string()))
+            .ok_or_else(|| IndodaxError::WsToken(format!("No token in response: {}", body_text)))
     }
 
     pub async fn public_get_v2<T: DeserializeOwned>(
@@ -86,7 +245,7 @@ impl IndodaxClient {
         full_params.insert("nonce".into(), signer.next_nonce_str());
 
         let body = serde_urlencoded_str(&full_params);
-        let (_, signature) = signer.sign_v1(&body, false);
+        let (_, signature) = signer.sign_v1(&body);
 
         let resp = self
             .retry_post(PRIVATE_V1_URL, &body, signer.api_key(), &signature)
@@ -169,7 +328,7 @@ impl IndodaxClient {
 
     async fn retry_get(&self, url: &str) -> Result<Response, IndodaxError> {
         let req = self.http.get(url);
-        self.send_with_retry(req, true).await
+        self.send_with_retry(req).await
     }
 
     async fn retry_get_with_params(
@@ -178,7 +337,7 @@ impl IndodaxClient {
         params: &[(&str, &str)],
     ) -> Result<Response, IndodaxError> {
         let req = self.http.get(url).query(params);
-        self.send_with_retry(req, true).await
+        self.send_with_retry(req).await
     }
 
     async fn retry_post(
@@ -195,14 +354,14 @@ impl IndodaxClient {
             .header("Sign", signature)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body.to_string());
-        self.send_with_retry(req, false).await
+        self.send_with_retry(req).await
     }
 
     async fn send_with_retry(
         &self,
         builder: RequestBuilder,
-        _is_get: bool,
     ) -> Result<Response, IndodaxError> {
+        self.rate_limiter.acquire().await;
         let mut last_err = None;
 
         for attempt in 0..=MAX_RETRIES {
@@ -438,5 +597,68 @@ mod tests {
         };
         let debug_str = format!("{:?}", resp);
         assert!(debug_str.contains("data"));
+    }
+
+    #[test]
+    fn test_rate_limiter_from_env_default() {
+        // Without env var, should default to 10
+        let rl = RateLimiter::from_env();
+        assert_eq!(rl.capacity, 10);
+        assert_eq!(rl.refill_per_sec, 10);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_acquire_single() {
+        let rl = RateLimiter::new(5, 5);
+        // Acquire should succeed without blocking (tokens available)
+        rl.acquire().await;
+        // After acquiring 1, 4 tokens should remain
+        assert_eq!(rl.tokens.load(Ordering::Relaxed), 4);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_token_exhaustion_refills() {
+        let rl = RateLimiter::new(3, 10);
+        // Use all 3 tokens
+        rl.acquire().await;
+        rl.acquire().await;
+        rl.acquire().await;
+        assert_eq!(rl.tokens.load(Ordering::Relaxed), 0);
+
+        // Trigger a refill by advancing last_refill time
+        let mut last = rl.last_refill.lock().await;
+        *last = Instant::now() - Duration::from_secs(1);
+        drop(last);
+
+        // Next acquire should refill first
+        rl.acquire().await;
+        // Should have refilled 10 - 1 = 9 tokens remaining (capped at capacity 3)
+        assert_eq!(rl.tokens.load(Ordering::Relaxed), 2);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_refill_capped_at_capacity() {
+        let rl = RateLimiter::new(5, 100);
+        // Drain all tokens
+        for _ in 0..5 {
+            rl.acquire().await;
+        }
+        assert_eq!(rl.tokens.load(Ordering::Relaxed), 0);
+
+        // Advance time by 10 seconds
+        let mut last = rl.last_refill.lock().await;
+        *last = Instant::now() - Duration::from_secs(10);
+        drop(last);
+
+        // Acquire triggers refill, should cap at capacity (5), then decrement to 4
+        rl.acquire().await;
+        assert_eq!(rl.tokens.load(Ordering::Relaxed), 4);
+    }
+
+    #[test]
+    fn test_rate_limiter_new_custom() {
+        let rl = RateLimiter::new(25, 25);
+        assert_eq!(rl.capacity, 25);
+        assert_eq!(rl.refill_per_sec, 25);
     }
 }

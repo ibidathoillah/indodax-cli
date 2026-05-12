@@ -1,7 +1,14 @@
 use super::CommandOutput;
 
 pub fn render(output: &CommandOutput) -> String {
-    serde_json::to_string_pretty(&output.data).unwrap_or_else(|_| "{}".into())
+    let mut envelope = serde_json::json!({
+        "success": true,
+        "data": output.data,
+    });
+    if let Some(ref addendum) = output.addendum {
+        envelope["addendum"] = serde_json::Value::String(addendum.clone());
+    }
+    serde_json::to_string_pretty(&envelope).unwrap_or_else(|_| "{}".into())
 }
 
 #[cfg(test)]
@@ -20,8 +27,8 @@ mod tests {
         };
         
         let rendered = render(&output);
-        assert!(rendered.contains("key"));
-        assert!(rendered.contains("value"));
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["data"]["key"], "value");
     }
 
     #[test]
@@ -35,9 +42,9 @@ mod tests {
         };
         
         let rendered = render(&output);
-        assert!(rendered.contains("nested"));
-        assert!(rendered.contains("a"));
-        assert!(rendered.contains("b"));
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["data"]["nested"]["a"], 1);
+        assert_eq!(parsed["data"]["nested"]["b"], 2);
     }
 
     #[test]
@@ -51,9 +58,10 @@ mod tests {
         };
         
         let rendered = render(&output);
-        assert!(rendered.contains("1"));
-        assert!(rendered.contains("2"));
-        assert!(rendered.contains("3"));
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["data"][0], 1);
+        assert_eq!(parsed["data"][1], 2);
+        assert_eq!(parsed["data"][2], 3);
     }
 
     #[test]
@@ -67,7 +75,8 @@ mod tests {
         };
         
         let rendered = render(&output);
-        assert_eq!(rendered.trim(), "{}");
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["data"], json!({}));
     }
 
     #[test]
@@ -81,13 +90,14 @@ mod tests {
         };
         
         let rendered = render(&output);
-        assert!(rendered.contains("null"));
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert!(parsed["data"].is_null());
     }
 
     #[test]
     fn test_render_with_special_chars() {
         let output = CommandOutput {
-            data: json!({"message": "hello\nworld\t!"}),
+            data: json!({"msg": "hello\nworld\t!"}),
             headers: vec![],
             rows: vec![],
             format: super::super::OutputFormat::Json,
@@ -95,7 +105,23 @@ mod tests {
         };
         
         let rendered = render(&output);
-        assert!(rendered.contains("hello"));
-        assert!(rendered.contains("world"));
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["data"]["msg"], "hello\nworld\t!");
+    }
+
+    #[test]
+    fn test_render_with_addendum() {
+        let output = CommandOutput {
+            data: json!({"key": "value"}),
+            headers: vec![],
+            rows: vec![],
+            format: super::super::OutputFormat::Json,
+            addendum: Some("Extra message".into()),
+        };
+        
+        let rendered = render(&output);
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["data"]["key"], "value");
+        assert_eq!(parsed["addendum"], "Extra message");
     }
 }

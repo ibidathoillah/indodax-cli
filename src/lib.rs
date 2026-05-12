@@ -8,9 +8,9 @@ pub mod config;
 pub mod errors;
 pub mod mcp;
 pub mod output;
-pub mod telemetry;
 
 use client::IndodaxClient;
+use errors::IndodaxError;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -99,21 +99,32 @@ pub async fn dispatch(
     cli: Cli,
     client: &IndodaxClient,
     config: &mut config::IndodaxConfig,
-) -> Result<CommandOutput, anyhow::Error> {
+) -> Result<CommandOutput, IndodaxError> {
     let output = match cli.command {
-        Command::Market { cmd } => commands::market::execute(client, &cmd).await?,
-        Command::Account { cmd } => commands::account::execute(client, &cmd).await?,
-        Command::Trade { cmd } => commands::trade::execute(client, &cmd).await?,
-        Command::Funding { cmd } => commands::funding::execute(client, config, &cmd).await?,
-        Command::Ws { cmd } => commands::websocket::execute(client, &cmd).await?,
-        Command::Paper { cmd } => commands::paper::execute(config, &cmd).await?,
-        Command::Auth { cmd } => commands::auth::execute(client, config, &cmd).await?,
+        Command::Market { cmd } => commands::market::execute(client, &cmd).await
+            .map_err(|e| map_anyhow_error(e))?,
+        Command::Account { cmd } => commands::account::execute(client, &cmd).await
+            .map_err(|e| map_anyhow_error(e))?,
+        Command::Trade { cmd } => commands::trade::execute(client, &cmd).await
+            .map_err(|e| map_anyhow_error(e))?,
+        Command::Funding { cmd } => commands::funding::execute(client, config, &cmd).await
+            .map_err(|e| map_anyhow_error(e))?,
+        Command::Ws { cmd } => commands::websocket::execute(client, &cmd, cli.output).await
+            .map_err(|e| map_anyhow_error(e))?,
+        Command::Paper { cmd } => commands::paper::execute(client, config, &cmd).await?,
+        Command::Auth { cmd } => commands::auth::execute(client, config, &cmd).await
+            .map_err(|e| map_anyhow_error(e))?,
         Command::Setup | Command::Shell | Command::Mcp { .. } => {
-            return Err(anyhow::anyhow!("This command is handled separately"));
+            return Err(IndodaxError::Other("This command is handled separately".into()));
         }
     };
 
     Ok(output.with_format(cli.output))
+}
+
+pub fn map_anyhow_error(e: anyhow::Error) -> IndodaxError {
+    e.downcast::<IndodaxError>()
+        .unwrap_or_else(|e| IndodaxError::Other(e.to_string()))
 }
 
 #[cfg(test)]
@@ -128,7 +139,7 @@ mod tests {
             Command::Market { cmd: _ } => {
                 // Just verify it parsed
             }
-            _ => panic!("Expected Market command"),
+            _ => assert!(false, "Expected Market command, got {:?}", cli.command),
         }
     }
 

@@ -28,9 +28,17 @@ async fn setup() -> Result<CommandOutput> {
 
     println!("=== Indodax CLI Setup Wizard ===\n");
 
-    let api_key: String = Input::new()
-        .with_prompt("Enter your Indodax API key")
-        .interact_text()?;
+    let api_key: String = loop {
+        let key: String = Input::new()
+            .with_prompt("Enter your Indodax API key")
+            .interact_text()?;
+        let trimmed = key.trim().to_string();
+        if trimmed.len() < 10 || trimmed.contains(' ') {
+            println!("API key should be at least 10 characters and contain no spaces. Please try again.");
+            continue;
+        }
+        break trimmed;
+    };
 
     let api_secret: String = Password::new()
         .with_prompt("Enter your Indodax API secret")
@@ -89,8 +97,8 @@ async fn shell() -> Result<CommandOutput> {
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
                 let args = format!("indodax {}", input);
-                let args: Vec<&str> = shell_parse(&args);
-                match Cli::try_parse_from(args) {
+                let args: Vec<String> = shell_parse(&args);
+                match Cli::try_parse_from(args.iter().map(|s| s.as_str())) {
                     Ok(cli) => {
                         if matches!(cli.command, crate::Command::Shell) {
                             println!("Already in shell mode");
@@ -119,30 +127,14 @@ async fn shell() -> Result<CommandOutput> {
     Ok(CommandOutput::json(data))
 }
 
-fn shell_parse(input: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut current = "";
-    let mut in_quote = false;
-
-    for word in input.split(' ') {
-        if in_quote {
-            if word.ends_with('"') {
-                in_quote = false;
-                parts.push(&input[current.len() + 1..current.len() + 1 + parts.last().map(|s: &&str| s.len()).unwrap_or(0) + word.len() - 1]);
-            }
-        } else if word.starts_with('"') {
-            in_quote = true;
-            current = word;
-        } else {
-            parts.push(word);
-        }
+fn shell_parse(input: &str) -> Vec<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
     }
-
-    if parts.is_empty() {
-        input.split_whitespace().collect()
-    } else {
-        parts
-    }
+    shlex::split(trimmed).unwrap_or_else(|| {
+        trimmed.split_whitespace().map(|s| s.to_string()).collect()
+    })
 }
 
 #[cfg(test)]
@@ -167,31 +159,30 @@ mod tests {
     fn test_shell_parse_empty() {
         let input = "";
         let result = shell_parse(input);
-        assert!(result.is_empty() || result == vec![""]);
+        assert!(result.is_empty());
     }
 
     #[test]
     fn test_shell_parse_with_quotes() {
         let input = r#"auth set --api-key "my key" --api-secret "my secret""#;
         let result = shell_parse(input);
-        // The shell_parse function doesn't handle quotes like this perfectly,
-        // but let's test what it actually does
-        assert!(!result.is_empty());
+        assert!(result.contains(&"auth".to_string()));
+        assert!(result.contains(&"my key".to_string()));
+        assert!(result.contains(&"my secret".to_string()));
     }
 
     #[test]
     fn test_shell_parse_multiple_spaces() {
         let input = "market   ticker   btc_idr";
         let result = shell_parse(input);
-        // The function doesn't normalize multiple spaces perfectly
-        assert!(result.contains(&"market") || result.len() >= 3);
+        assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
     }
 
     #[test]
     fn test_shell_parse_leading_trailing_spaces() {
         let input = "  market ticker btc_idr  ";
         let result = shell_parse(input);
-        assert!(result.contains(&"market") || result.len() >= 3);
+        assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
     }
 
     #[test]
@@ -202,7 +193,6 @@ mod tests {
 
     #[test]
     fn test_shell_parse_whitespace_fallback() {
-        // Test the fallback path when parts is empty
         let input = "simple";
         let result = shell_parse(input);
         assert_eq!(result.len(), 1);
@@ -212,6 +202,6 @@ mod tests {
     fn test_shell_parse_with_dash_args() {
         let input = "account balance -v";
         let result = shell_parse(input);
-        assert!(result.contains(&"account") || result.len() >= 2);
+        assert_eq!(result, vec!["account", "balance", "-v"]);
     }
 }

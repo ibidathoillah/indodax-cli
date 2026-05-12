@@ -4,19 +4,6 @@ use crate::output::CommandOutput;
 use anyhow::Result;
 use serde_json::Value;
 
-fn first_of<'a>(val: &'a Value, keys: &[&str]) -> &'a Value {
-    for k in keys {
-        let v = &val[k];
-        if !v.is_null() {
-            let s = helpers::value_to_string(v);
-            if !s.is_empty() && s != "null" {
-                return v;
-            }
-        }
-    }
-    &Value::Null
-}
-
 #[derive(Debug, clap::Subcommand)]
 pub enum MarketCommand {
     #[command(name = "server-time", about = "Get server time")]
@@ -39,25 +26,25 @@ pub enum MarketCommand {
 
     #[command(name = "orderbook", about = "Get order book for a pair")]
     Orderbook {
-        #[arg(default_value = "btcidr")]
+        #[arg(default_value = "btc_idr")]
         pair: String,
     },
 
     #[command(name = "trades", about = "Get recent trades for a pair")]
     Trades {
-        #[arg(default_value = "btcidr")]
+        #[arg(default_value = "btc_idr")]
         pair: String,
     },
 
-    #[command(name = "ohlc", about = "Get OHLCV candle data")]
+    #[command(name = "ohlc", about = "Get OHLCV candle data (default --from is 24h ago)")]
     Ohlc {
-        #[arg(short, long, default_value = "BTCIDR")]
+        #[arg(short, long, default_value = "btc_idr")]
         symbol: String,
         #[arg(long, default_value = "60")]
         timeframe: String,
-        #[arg(short, long)]
+        #[arg(short, long, help = "Start timestamp in seconds (default: 24h ago)")]
         from: Option<u64>,
-        #[arg(long)]
+        #[arg(long, help = "End timestamp in seconds (default: now)")]
         to: Option<u64>,
     },
 
@@ -72,13 +59,23 @@ pub async fn execute(
     match cmd {
         MarketCommand::ServerTime => server_time(client).await,
         MarketCommand::Pairs => pairs(client).await,
-        MarketCommand::Ticker { pair } => ticker(client, pair).await,
+        MarketCommand::Ticker { pair: p } => {
+            let pair = helpers::normalize_pair(p);
+            ticker(client, &pair).await
+        }
         MarketCommand::TickerAll => ticker_all(client).await,
         MarketCommand::Summaries => summaries(client).await,
-        MarketCommand::Orderbook { pair } => orderbook(client, pair).await,
-        MarketCommand::Trades { pair } => trades(client, pair).await,
+        MarketCommand::Orderbook { pair: p } => {
+            let pair = helpers::normalize_pair(p);
+            orderbook(client, &pair).await
+        }
+        MarketCommand::Trades { pair: p } => {
+            let pair = helpers::normalize_pair(p);
+            trades(client, &pair).await
+        }
         MarketCommand::Ohlc { symbol, timeframe, from, to } => {
-            ohlc(client, symbol, timeframe, *from, *to).await
+            let symbol = helpers::normalize_pair(symbol).replace('_', "").to_uppercase();
+            ohlc(client, &symbol, timeframe, *from, *to).await
         }
         MarketCommand::PriceIncrements => price_increments(client).await,
     }
@@ -131,8 +128,8 @@ async fn ticker_all(client: &IndodaxClient) -> Result<CommandOutput> {
                     helpers::value_to_string(&val["low"]),
                     helpers::value_to_string(&val["buy"]),
                     helpers::value_to_string(&val["sell"]),
-                    helpers::value_to_string(first_of(val, &["vol_btc", "vol_base"])),
-                    helpers::value_to_string(first_of(val, &["vol_idr", "vol_traded"])),
+                    helpers::value_to_string(helpers::first_of(val, &["vol_btc", "vol_base"])),
+                    helpers::value_to_string(helpers::first_of(val, &["vol_idr", "vol_traded"])),
                 ]);
             }
         }
@@ -160,8 +157,8 @@ async fn summaries(client: &IndodaxClient) -> Result<CommandOutput> {
                     helpers::value_to_string(&val["last"]),
                     helpers::value_to_string(&val["high"]),
                     helpers::value_to_string(&val["low"]),
-                    helpers::value_to_string(first_of(val, &["vol_btc", "vol_base"])),
-                    helpers::value_to_string(first_of(val, &["vol_idr", "vol_traded"])),
+                    helpers::value_to_string(helpers::first_of(val, &["vol_btc", "vol_base"])),
+                    helpers::value_to_string(helpers::first_of(val, &["vol_idr", "vol_traded"])),
                 ]);
             }
         }
@@ -229,7 +226,7 @@ async fn ohlc(
 ) -> Result<CommandOutput> {
     let now_secs = crate::auth::Signer::now_millis() / 1000;
     let from_val = from.map(|v| v.to_string()).unwrap_or_else(|| {
-        (now_secs - 24 * 60 * 60).to_string()
+        (now_secs - crate::commands::helpers::ONE_DAY_SECS).to_string()
     });
     let to_val = to.map(|v| v.to_string()).unwrap_or_else(|| {
         now_secs.to_string()
@@ -303,43 +300,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_first_of_first_key_exists() {
-        let val = json!({"a": "1", "b": "2"});
-        let result = first_of(&val, &["a", "b"]);
-        assert_eq!(result, &json!("1"));
-    }
-
-    #[test]
-    fn test_first_of_second_key_exists() {
-        let val = json!({"a": null, "b": "2"});
-        let result = first_of(&val, &["a", "b"]);
-        assert_eq!(result, &json!("2"));
-    }
-
-    #[test]
-    fn test_first_of_no_keys_exist() {
-        let val = json!({"a": null, "b": null});
-        let result = first_of(&val, &["a", "b"]);
-        assert_eq!(result, &serde_json::Value::Null);
-    }
-
-    #[test]
-    fn test_first_of_empty_value() {
-        let val = json!({"a": "", "b": "value"});
-        let result = first_of(&val, &["a", "b"]);
-        // first_of skips empty strings
-        assert_eq!(result, &json!("value"));
-    }
-
-    #[test]
-    fn test_first_of_null_value() {
-        let val = json!({"a": "null", "b": "value"});
-        let result = first_of(&val, &["a", "b"]);
-        // first_of skips values where string representation is "null"
-        assert_eq!(result, &json!("value"));
-    }
-
-    #[test]
     fn test_market_command_variants() {
         let _cmd1 = MarketCommand::ServerTime;
         let _cmd2 = MarketCommand::Pairs;
@@ -360,14 +320,14 @@ mod tests {
     #[test]
     fn test_first_of_with_json_null() {
         let val = json!(null);
-        let result = first_of(&val, &["key"]);
+        let result = helpers::first_of(&val, &["key"]);
         assert_eq!(result, &serde_json::Value::Null);
     }
 
     #[test]
     fn test_first_of_empty_keys() {
         let val = json!({"a": 1});
-        let result = first_of(&val, &[]);
+        let result = helpers::first_of(&val, &[]);
         assert_eq!(result, &serde_json::Value::Null);
     }
 }

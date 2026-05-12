@@ -265,8 +265,11 @@ Options:
 | `indodax paper orders` | List paper orders |
 | `indodax paper cancel` | Cancel a paper order |
 | `indodax paper cancel-all` | Cancel all paper orders |
+| `indodax paper fill` | Fill an open paper order (use `--order-id` or `--all`) |
+| `indodax paper check-fills` | Auto-fill open orders based on market prices |
+| `indodax paper topup` | Top up a virtual currency balance |
 | `indodax paper history` | Show paper trade history |
-| `indodax paper status` | Show paper trading status |
+| `indodax paper status` | Show paper trading status (counts filled/open/cancelled) |
 
 ### Authentication Management
 
@@ -331,6 +334,22 @@ indodax paper sell --pair btc_idr --price 1000000000 --amount 0.05
 # Check balances and status
 indodax paper balance
 indodax paper status
+
+# Fill specific orders
+indodax paper fill --order-id 1
+indodax paper fill --order-id 2 --price 110000000
+
+# Fill all open orders at once
+indodax paper fill --all
+
+# Auto-fill based on market prices (JSON of pair -> current price)
+indodax paper check-fills '{"btc_idr": 95000000, "eth_idr": 12000000}'
+
+# Filter orders by pair
+indodax paper orders --pair btc_idr
+
+# Top up a balance
+indodax paper topup --currency usdt --amount 50000
 ```
 
 ---

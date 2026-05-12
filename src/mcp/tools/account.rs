@@ -1,0 +1,187 @@
+use std::collections::HashMap;
+
+use serde_json::{Map, Value};
+use rmcp::model::{CallToolResult, Tool};
+
+use super::IndodaxMcp;
+use crate::auth::Signer;
+use crate::commands::helpers;
+
+pub fn account_tools() -> Vec<Tool> {
+    vec![
+        IndodaxMcp::tool_def(
+            "account_info",
+            "[REQUIRES AUTH] Get account information including balances",
+            serde_json::json!({}),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "balance",
+            "[REQUIRES AUTH] Get wallet balances (non-zero only)",
+            serde_json::json!({}),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "open_orders",
+            "[REQUIRES AUTH] List open orders",
+            serde_json::json!({
+                "pair": IndodaxMcp::str_param("Filter by trading pair (optional)", false, None)
+            }),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "order_history",
+            "[REQUIRES AUTH] Get order history",
+            serde_json::json!({
+                "symbol": IndodaxMcp::str_param(
+                    "Trading pair symbol, e.g. btc_idr",
+                    false,
+                    Some("btc_idr"),
+                ),
+                "limit": IndodaxMcp::num_param("Maximum number of orders to return", false),
+            }),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "trade_history",
+            "[REQUIRES AUTH] Get trade fill history",
+            serde_json::json!({
+                "symbol": IndodaxMcp::str_param(
+                    "Trading pair symbol, e.g. btc_idr",
+                    false,
+                    Some("btc_idr"),
+                ),
+                "limit": IndodaxMcp::num_param("Maximum number of trades to return", false),
+            }),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "get_order",
+            "[REQUIRES AUTH] Get order details by order ID",
+            serde_json::json!({
+                "order_id": IndodaxMcp::num_param("Order ID", true),
+                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
+            }),
+            vec!["order_id", "pair"],
+        ),
+        IndodaxMcp::tool_def(
+            "trans_history",
+            "[REQUIRES AUTH] Get deposit and withdrawal transaction history",
+            serde_json::json!({}),
+            vec![],
+        ),
+    ]
+}
+
+impl IndodaxMcp {
+    pub async fn handle_account_info(&self) -> CallToolResult {
+        match self
+            .client
+            .private_post_v1::<Value>("getInfo", &HashMap::new())
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_balance(&self) -> CallToolResult {
+        match self
+            .client
+            .private_post_v1::<Value>("getInfo", &HashMap::new())
+            .await
+        {
+            Ok(data) => {
+                let balance = data
+                    .get("balance")
+                    .cloned()
+                    .unwrap_or(Value::Object(Map::new()));
+                Self::json_result(balance)
+            }
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_open_orders(&self, pair: Option<&str>) -> CallToolResult {
+        let mut params = HashMap::new();
+        if let Some(p) = pair {
+            params.insert("pair".to_string(), p.to_string());
+        }
+        match self
+            .client
+            .private_post_v1::<Value>("openOrders", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_order_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
+        let now = Signer::now_millis();
+        let start = now - helpers::ONE_DAY_MS;
+        let limit_val = limit.unwrap_or(100.0) as u32;
+
+        let mut params = HashMap::new();
+        params.insert("symbol".to_string(), symbol.to_string());
+        params.insert("limit".to_string(), limit_val.to_string());
+        params.insert("startTime".to_string(), start.to_string());
+        params.insert("endTime".to_string(), now.to_string());
+
+        match self
+            .client
+            .private_get_v2::<Value>("/api/v2/order/histories", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_trade_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
+        let now = Signer::now_millis();
+        let start = now - helpers::ONE_DAY_MS;
+        let limit_val = limit.unwrap_or(100.0) as u32;
+
+        let mut params = HashMap::new();
+        params.insert("symbol".to_string(), symbol.to_string());
+        params.insert("limit".to_string(), limit_val.to_string());
+        params.insert("startTime".to_string(), start.to_string());
+        params.insert("endTime".to_string(), now.to_string());
+
+        match self
+            .client
+            .private_get_v2::<Value>("/api/v2/myTrades", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_get_order(&self, order_id: f64, pair: &str) -> CallToolResult {
+        let mut params = HashMap::new();
+        params.insert("order_id".to_string(), (order_id as u64).to_string());
+        params.insert("pair".to_string(), pair.to_string());
+
+        match self
+            .client
+            .private_post_v1::<Value>("getOrder", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_trans_history(&self) -> CallToolResult {
+        match self
+            .client
+            .private_post_v1::<Value>("transHistory", &HashMap::new())
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+}
