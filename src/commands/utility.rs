@@ -120,11 +120,6 @@ async fn shell() -> Result<CommandOutput> {
 }
 
 /// Splits a shell-style command line into argv-like tokens.
-///
-/// Supports double-quoted strings with backslash escapes for `"` and `\`.
-/// Whitespace inside quotes is preserved; unmatched closing quotes leave the
-/// final token open and it is still returned. Multiple spaces between tokens
-/// are collapsed.
 fn shell_parse(input: &str) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -200,7 +195,6 @@ mod tests {
 
     #[test]
     fn test_shell_parse_quoted_value_with_dash() {
-        // Regression: --pair "btc_idr" used to be silently mis-parsed.
         let result = shell_parse(r#"market ticker --pair "btc_idr""#);
         assert_eq!(result, vec!["market", "ticker", "--pair", "btc_idr"]);
     }
@@ -249,7 +243,6 @@ mod tests {
 
     #[test]
     fn test_shell_parse_unclosed_quote_keeps_token() {
-        // Best-effort recovery: don't drop the partial token.
         let result = shell_parse(r#"foo "bar baz"#);
         assert_eq!(result, vec!["foo", "bar baz"]);
     }
