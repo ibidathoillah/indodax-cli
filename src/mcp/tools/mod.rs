@@ -427,8 +427,8 @@ mod tests {
     use crate::client::IndodaxClient;
     use crate::config::IndodaxConfig;
 
-    fn test_mcp() -> IndodaxMcp {
-        let client = IndodaxClient::new(None);
+fn test_mcp() -> IndodaxMcp {
+    let client = IndodaxClient::new(None).unwrap();
         let config = IndodaxConfig::default();
         let safety = SafetyConfig::new(false);
         let groups = vec![ServiceGroup::Market, ServiceGroup::Paper];

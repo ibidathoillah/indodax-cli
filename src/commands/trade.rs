@@ -4,6 +4,8 @@ use crate::output::CommandOutput;
 use anyhow::Result;
 use std::collections::HashMap;
 
+const BALANCE_EPSILON: f64 = 1e-8;
+
 async fn get_account_info(client: &IndodaxClient) -> Result<serde_json::Value> {
     let params = HashMap::new();
     Ok(client.private_post_v1("getInfo", &params).await?)
@@ -107,11 +109,15 @@ async fn place_buy_order(
         .or_else(|| info["balance"]["idr"].as_f64())
         .unwrap_or(0.0);
 
-    if idr_balance < idr_amount {
+    if idr_balance + BALANCE_EPSILON < idr_amount {
         return Err(anyhow::anyhow!(
             "Insufficient IDR balance. Need {:.2}, have {:.2}",
             idr_amount, idr_balance
         ));
+    }
+
+    if idr_amount <= 0.0 {
+        return Err(anyhow::anyhow!("IDR amount must be positive, got {}", idr_amount));
     }
 
     let mut params = HashMap::new();
@@ -120,6 +126,9 @@ async fn place_buy_order(
     params.insert("idr".to_string(), idr_amount.to_string());
 
     let order_type_str = if let Some(p) = price {
+        if p <= 0.0 {
+            return Err(anyhow::anyhow!("Price must be positive, got {}", p));
+        }
         params.insert("price".to_string(), p.to_string());
         "limit"
     } else {
@@ -161,11 +170,15 @@ async fn place_sell_order(
         .or_else(|| info["balance"][base_currency].as_f64())
         .unwrap_or(0.0);
 
-    if base_balance < amount {
+    if base_balance + BALANCE_EPSILON < amount {
         return Err(anyhow::anyhow!(
             "Insufficient {} balance. Need {:.8}, have {:.8}",
             base_currency.to_uppercase(), amount, base_balance
         ));
+    }
+
+    if amount <= 0.0 {
+        return Err(anyhow::anyhow!("Amount must be positive, got {}", amount));
     }
 
     let mut params = HashMap::new();
@@ -174,6 +187,9 @@ async fn place_sell_order(
     params.insert(base_currency.to_string(), amount.to_string());
 
     let order_type = if let Some(p) = price {
+        if p <= 0.0 {
+            return Err(anyhow::anyhow!("Price must be positive, got {}", p));
+        }
         params.insert("price".to_string(), p.to_string());
         "limit"
     } else {
@@ -207,10 +223,17 @@ async fn cancel_order(
     pair: &str,
     order_type: &str,
 ) -> Result<CommandOutput> {
+    let normalized = order_type.to_lowercase();
+    if normalized != "buy" && normalized != "sell" {
+        return Err(anyhow::anyhow!(
+            "Invalid order type '{}'. Must be 'buy' or 'sell'", order_type
+        ));
+    }
+
     let mut params = HashMap::new();
     params.insert("order_id".into(), order_id.to_string());
     params.insert("pair".into(), pair.to_string());
-    params.insert("type".into(), order_type.to_string());
+    params.insert("type".into(), normalized);
 
     let data: serde_json::Value =
         client.private_post_v1("cancelOrder", &params).await?;

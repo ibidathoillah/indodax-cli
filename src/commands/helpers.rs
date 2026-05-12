@@ -16,10 +16,19 @@ pub fn flatten_json_to_table(json: &serde_json::Value) -> (Vec<String>, Vec<Vec<
             (headers, vec![row])
         }
         serde_json::Value::Array(arr) if !arr.is_empty() => {
-            let first = &arr[0];
-            if let serde_json::Value::Object(first_map) = first {
-                let mut headers: Vec<String> = first_map.keys().cloned().collect();
-                headers.sort();
+            // Collect all unique keys from all array elements
+            let mut all_keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut is_obj = false;
+            for item in arr {
+                if let serde_json::Value::Object(map) = item {
+                    is_obj = true;
+                    for k in map.keys() {
+                        all_keys.insert(k.clone());
+                    }
+                }
+            }
+            if is_obj {
+                let headers: Vec<String> = all_keys.into_iter().collect();
                 let rows: Vec<Vec<String>> = arr
                     .iter()
                     .map(|item| {

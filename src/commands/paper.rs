@@ -10,6 +10,7 @@ use std::collections::HashMap;
 const DEFAULT_BALANCE_IDR: f64 = 100_000_000.0;
 const DEFAULT_BALANCE_BTC: f64 = 1.0;
 const TAKER_FEE: f64 = 0.0026; // 0.26% taker fee
+const BALANCE_EPSILON: f64 = 1e-8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperOrder {
@@ -261,8 +262,10 @@ fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<Co
         "new_balance": balance,
     });
     Ok(CommandOutput::json(data).with_addendum(format!(
-        "[PAPER] Added {:.2} to {} balance. New balance: {:.2}",
-        amount, currency.to_uppercase(), balance
+        "[PAPER] Added {} to {} balance. New balance: {}",
+        format_balance(currency, amount),
+        currency.to_uppercase(),
+        format_balance(currency, *balance)
     )))
 }
 
@@ -281,11 +284,12 @@ fn paper_balance(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
         .map(|(k, v)| vec![k.to_uppercase(), format_balance(k, *v)])
         .collect();
     rows.sort_by(|a, b| {
-        b[1].parse::<f64>()
-            .ok()
-            .zip(a[1].parse::<f64>().ok())
-            .and_then(|(bv, av)| bv.partial_cmp(&av))
-            .unwrap_or(std::cmp::Ordering::Equal)
+        let bv = b[1].parse::<f64>().ok().filter(|v| v.is_finite());
+        let av = a[1].parse::<f64>().ok().filter(|v| v.is_finite());
+        match (bv, av) {
+            (Some(bv), Some(av)) => bv.partial_cmp(&av).unwrap_or(std::cmp::Ordering::Equal),
+            _ => std::cmp::Ordering::Equal,
+        }
     });
 
     let data = paper_balance_value(state);
@@ -328,7 +332,7 @@ pub fn place_paper_order(
             }
         } else {
             let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
-            if *quote_balance < total_cost {
+            if *quote_balance + BALANCE_EPSILON < total_cost {
                 return Err(IndodaxError::Other(
                     format!("[PAPER] Insufficient {} balance. Need {:.2}, have {:.2}",
                         quote.to_uppercase(), total_cost, quote_balance)
@@ -338,7 +342,7 @@ pub fn place_paper_order(
         }
     } else {
         let base_balance = state.balances.entry(base.to_string()).or_insert(0.0);
-        if *base_balance < amount {
+        if *base_balance + BALANCE_EPSILON < amount {
             return Err(IndodaxError::Other(
                 format!("[PAPER] Insufficient {} balance. Need {:.8}, have {:.8}",
                     base.to_uppercase(), amount, base_balance)
@@ -352,7 +356,7 @@ pub fn place_paper_order(
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis() as u64;
 
     state.orders.push(PaperOrder {
@@ -556,6 +560,12 @@ fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<
     }
 
     let price = fill_price.unwrap_or(order_price);
+    if !price.is_finite() {
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] Invalid fill price: {}. Ensure order price or explicit fill price is valid.",
+            price
+        )));
+    }
     let base = pair.split('_').next().unwrap_or("btc");
     let quote = pair.split('_').next_back().unwrap_or("idr");
 
@@ -1298,7 +1308,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dispatch_paper_init() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         let cmd = PaperCommand::Init { idr: None, btc: None };
         let result = dispatch_paper(&client, &mut state, &cmd).await;
@@ -1307,7 +1317,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dispatch_paper_balance() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let state = PaperState::default();
         let cmd = PaperCommand::Balance;
         let result = dispatch_paper(&client, &mut state.clone(), &cmd).await;
@@ -1316,7 +1326,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_buy_match() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000_000.0), 0.5).unwrap();
         let prices = r#"{"btc_idr": 90000000}"#;
@@ -1328,7 +1338,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_buy_no_match() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000_000.0), 0.5).unwrap();
         let prices = r#"{"btc_idr": 110000000}"#;
@@ -1340,7 +1350,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_sell_match() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "sell", Some(100_000_000.0), 0.5).unwrap();
         let prices = r#"{"btc_idr": 110000000}"#;
@@ -1352,7 +1362,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_multiple_orders() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "eth_idr", "buy", Some(10_000_000.0), 1.0).unwrap();
@@ -1369,7 +1379,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_invalid_json() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         let result = paper_check_fills(&client, &mut state, Some("not-json"), false).await;
         assert!(result.is_err());
@@ -1377,7 +1387,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_empty_prices() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000_000.0), 0.5).unwrap();
         let result = paper_check_fills(&client, &mut state, Some(r#"{}"#), false).await;
@@ -1387,7 +1397,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_no_open_orders() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         let result = paper_check_fills(&client, &mut state, Some(r#"{"btc_idr": 90000000}"#), false).await;
         assert!(result.is_ok());
@@ -1395,7 +1405,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_check_fills_fetch_not_available() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000_000.0), 0.5).unwrap();
         // With --fetch but no network, the function handles gracefully — fetch errors
@@ -1469,7 +1479,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_lifecycle_multiple_orders_and_check_fills() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
 
         // Add ETH balance for selling

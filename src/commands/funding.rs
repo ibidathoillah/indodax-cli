@@ -47,6 +47,7 @@ pub async fn execute(
     client: &IndodaxClient,
     config: &crate::config::IndodaxConfig,
     cmd: &FundingCommand,
+    output_format: crate::output::OutputFormat,
 ) -> Result<CommandOutput> {
     match cmd {
         FundingCommand::WithdrawFee { currency, network } => {
@@ -57,7 +58,7 @@ pub async fn execute(
             withdraw(client, currency, *amount, address, *username, memo.as_deref(), network.as_deref(), cb_url).await
         }
         FundingCommand::ServeCallback { port, auto_ok, listen } => {
-            serve_callback(*port, *auto_ok, listen.as_deref()).await
+            serve_callback(*port, *auto_ok, listen.as_deref(), output_format).await
         }
     }
 }
@@ -95,7 +96,7 @@ async fn withdraw(
     params.insert("amount".into(), amount.to_string());
 
     if to_username {
-        params.insert("request_id".into(), "1".to_string());
+        params.insert("request_id".into(), format!("{}", chrono::Utc::now().timestamp_millis()));
         params.insert("withdraw_to".into(), address.to_string());
     } else {
         params.insert("address".into(), address.to_string());
@@ -132,7 +133,12 @@ async fn withdraw(
         .with_addendum(format!("Withdrew {} {} to {}", amount, currency, dest_label)))
 }
 
-async fn serve_callback(port: u16, auto_ok: bool, listen: Option<&str>) -> Result<CommandOutput> {
+async fn serve_callback(
+    port: u16,
+    auto_ok: bool,
+    listen: Option<&str>,
+    output_format: crate::output::OutputFormat,
+) -> Result<CommandOutput> {
     use axum::{routing::post, Router};
     use colored::Colorize;
     use std::net::SocketAddr;
@@ -140,25 +146,57 @@ async fn serve_callback(port: u16, auto_ok: bool, listen: Option<&str>) -> Resul
     let app = Router::new().route(
         "/callback",
         post(move |body: String| async move {
-            println!("\n{} Incoming Callback Request", ">>>".green());
-            println!("{}: {}", "Body".bold(), body);
+            if output_format == crate::output::OutputFormat::Json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "event": "callback_received",
+                        "body": body,
+                        "auto_ok": auto_ok
+                    })
+                );
+            } else {
+                eprintln!("\n{} Incoming Callback Request", ">>>".green());
+                eprintln!("{}: {}", "Body".bold(), body);
+            }
 
             if auto_ok {
-                println!("{} Sent response: {}", "<<<".blue(), "ok".bold());
+                if output_format == crate::output::OutputFormat::Json {
+                    println!("{}", serde_json::json!({"event": "callback_response", "response": "ok"}));
+                } else {
+                    eprintln!("{} Sent response: {}", "<<<".blue(), "ok".bold());
+                }
                 "ok".to_string()
             } else {
-                println!("{} Waiting for manual confirmation...", "???".yellow());
-                println!("{} Type 'ok' to confirm, or anything else to cancel:", ">>>".green());
+                if output_format == crate::output::OutputFormat::Json {
+                    eprintln!("{}", "Waiting for manual confirmation (check stderr)...".yellow());
+                } else {
+                    eprintln!("{} Waiting for manual confirmation...", "???".yellow());
+                }
+                eprintln!(
+                    "{} Type 'ok' to confirm, or anything else to cancel:",
+                    ">>>".green()
+                );
                 let input = tokio::task::spawn_blocking(|| {
                     let mut buf = String::new();
                     std::io::stdin().read_line(&mut buf).unwrap_or_default();
                     buf.trim().to_lowercase()
-                }).await.unwrap_or_default();
+                })
+                .await
+                .unwrap_or_default();
                 if input == "ok" {
-                    println!("{} Sent response: {}", "<<<".blue(), "ok".bold());
+                    if output_format == crate::output::OutputFormat::Json {
+                        println!("{}", serde_json::json!({"event": "callback_response", "response": "ok"}));
+                    } else {
+                        eprintln!("{} Sent response: {}", "<<<".blue(), "ok".bold());
+                    }
                     "ok".to_string()
                 } else {
-                    println!("{} Sent response: {}", "<<<".blue(), "cancel".bold());
+                    if output_format == crate::output::OutputFormat::Json {
+                        println!("{}", serde_json::json!({"event": "callback_response", "response": "cancel"}));
+                    } else {
+                        eprintln!("{} Sent response: {}", "<<<".blue(), "cancel".bold());
+                    }
                     "cancel".to_string()
                 }
             }
@@ -166,13 +204,22 @@ async fn serve_callback(port: u16, auto_ok: bool, listen: Option<&str>) -> Resul
     );
 
     let ip = listen.unwrap_or("127.0.0.1");
-    let addr: SocketAddr = ip.parse()
+    let addr: SocketAddr = ip
+        .parse()
         .map(|ip: std::net::IpAddr| SocketAddr::new(ip, port))
         .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], port)));
-    println!("\n{}", "Indodax Callback Server".bold().underline());
-    println!("{}: {}", "Listening on".cyan(), addr);
-    println!("{}: {}", "Auto-confirm".cyan(), if auto_ok { "ENABLED (returns 'ok')" } else { "DISABLED" });
-    println!("{}\n", "Press Ctrl+C to stop".dimmed());
+    eprintln!("\n{}", "Indodax Callback Server".bold().underline());
+    eprintln!("{}: {}", "Listening on".cyan(), addr);
+    eprintln!(
+        "{}: {}",
+        "Auto-confirm".cyan(),
+        if auto_ok {
+            "ENABLED (returns 'ok')"
+        } else {
+            "DISABLED"
+        }
+    );
+    eprintln!("{}\n", "Press Ctrl+C to stop".dimmed());
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

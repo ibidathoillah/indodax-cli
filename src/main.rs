@@ -60,7 +60,13 @@ async fn main() {
         indodax_cli::auth::Signer::new(c.api_key.as_str(), c.api_secret.as_str())
     });
 
-    let client = IndodaxClient::new(signer);
+    let client = match IndodaxClient::new(signer) {
+        Ok(c) => c,
+        Err(e) => {
+            report_error(&e, output_format);
+            process::exit(1);
+        }
+    };
 
     // Handle MCP server separately — it runs indefinitely on stdio
     if let Command::Mcp { groups, allow_dangerous } = &cli.command {

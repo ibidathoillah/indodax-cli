@@ -87,7 +87,7 @@ async fn shell() -> Result<CommandOutput> {
     let signer = creds.as_ref().map(|c| {
         crate::auth::Signer::new(c.api_key.as_str(), c.api_secret.as_str())
     });
-    let client = crate::client::IndodaxClient::new(signer);
+    let client = crate::client::IndodaxClient::new(signer)?;
 
     loop {
         let line = rl.readline("indodax> ");
@@ -120,7 +120,6 @@ async fn shell() -> Result<CommandOutput> {
             }
             Err(_) => break,
         }
-        let _ = rl.add_history_entry("");
     }
 
     let data = serde_json::json!({"status": "exited"});

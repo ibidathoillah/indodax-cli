@@ -197,7 +197,12 @@ async fn open_orders(
         }
     }
 
-    rows.sort_by(|a, b| b[0].parse::<u64>().unwrap_or(0).cmp(&a[0].parse::<u64>().unwrap_or(0)));
+    rows.sort_by(|a, b| {
+        match (b[0].parse::<u64>().ok(), a[0].parse::<u64>().ok()) {
+            (Some(bv), Some(av)) => bv.cmp(&av),
+            _ => b[0].cmp(&a[0]),
+        }
+    });
     let count = rows.len();
     Ok(CommandOutput::new(data, headers, rows)
         .with_addendum(format!("{} open orders", count)))

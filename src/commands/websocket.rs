@@ -4,8 +4,10 @@ use crate::output::{CommandOutput, OutputFormat};
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
 use indicatif::ProgressBar;
+use std::io::IsTerminal;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
+use tracing;
 
 const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
 const PRIVATE_WS_URL: &str = "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true";
@@ -81,7 +83,10 @@ async fn ws_connect_and_listen(
     output_format: OutputFormat,
 ) -> Result<CommandOutput> {
     let spinner = if output_format == OutputFormat::Json {
-        println!("{}", serde_json::json!({"event": "connecting", "url": ws_url}));
+        eprintln!(
+            "{}",
+            serde_json::json!({"event": "connecting", "url": ws_url})
+        );
         None
     } else {
         let pb = ProgressBar::new_spinner();
@@ -93,7 +98,10 @@ async fn ws_connect_and_listen(
     if let Some(ref pb) = spinner {
         pb.set_message("Connected. Authenticating...");
     } else {
-        println!("{}", serde_json::json!({"event": "connected", "status": "authenticating"}));
+        eprintln!(
+            "{}",
+            serde_json::json!({"event": "connected", "status": "authenticating"})
+        );
     }
 
     let auth_msg = serde_json::json!({
@@ -106,66 +114,88 @@ async fn ws_connect_and_listen(
 
     let mut authed = false;
 
-    while let Some(msg) = ws_stream.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                let val = match serde_json::from_str::<serde_json::Value>(&text) {
-                    Ok(v) => v,
-                    Err(_) => continue,
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                if let Some(ref pb) = spinner {
+                    pb.finish_and_clear();
+                    eprintln!("Interrupted by user. Closing connection...");
+                } else {
+                    eprintln!("{}", serde_json::json!({"event": "interrupted", "reason": "user_ctrl_c"}));
+                }
+                let _ = ws_stream.send(Message::Close(None)).await;
+                break;
+            }
+            msg = ws_stream.next() => {
+                let msg = match msg {
+                    Some(m) => m,
+                    None => break,
                 };
 
-                if !authed {
-                    if val.get("id") == Some(&serde_json::Value::Number(1.into()))
-                        && val.get("result").is_some()
-                    {
-                        authed = true;
+                match msg {
+                    Ok(Message::Text(text)) => {
+                        let val = match serde_json::from_str::<serde_json::Value>(&text) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                tracing::warn!("WebSocket JSON parse error: {} (text: {})", e, text);
+                                continue;
+                            }
+                        };
+
+                        if !authed {
+                            if val.get("id").and_then(|v| v.as_i64()) == Some(1)
+                                && val.get("result").is_some()
+                            {
+                                authed = true;
+                                if let Some(ref pb) = spinner {
+                                    pb.finish_and_clear();
+                                    eprintln!("Authenticated. Subscribing to channel: {}", channel);
+                                    eprintln!();
+                                } else {
+                                    eprintln!("{}", serde_json::json!({"event": "authenticated", "channel": channel}));
+                                }
+                                let sub_msg = serde_json::json!({
+                                    "method": 1,
+                                    "params": { "channel": channel },
+                                    "id": 2
+                                });
+                                ws_stream
+                                    .send(Message::Text(sub_msg.to_string()))
+                                    .await?;
+                            }
+                            continue;
+                        }
+
+                        if val.get("id").and_then(|v| v.as_i64()) == Some(2) {
+                            // subscription confirmation, skip
+                        } else if val.get("result").is_some() {
+                            handler(val);
+                        }
+                    }
+                    Ok(Message::Ping(_)) => {
+                        let _ = ws_stream.send(Message::Pong(vec![])).await;
+                    }
+                    Ok(Message::Close(_)) => {
                         if let Some(ref pb) = spinner {
                             pb.finish_and_clear();
-                            eprintln!("Authenticated. Subscribing to channel: {}", channel);
-                            eprintln!();
+                            eprintln!("Connection closed by server.");
                         } else {
-                            println!("{}", serde_json::json!({"event": "authenticated", "channel": channel}));
+                            eprintln!("{}", serde_json::json!({"event": "disconnected", "reason": "server_close"}));
                         }
-                        let sub_msg = serde_json::json!({
-                            "method": 1,
-                            "params": { "channel": channel },
-                            "id": 2
-                        });
-                        ws_stream
-                            .send(Message::Text(sub_msg.to_string()))
-                            .await?;
+                        break;
                     }
-                    continue;
-                }
-
-                if val.get("id") == Some(&serde_json::Value::Number(2.into())) {
-                    // subscription confirmation, skip
-                } else if val.get("result").is_some() {
-                    handler(val);
+                    Err(e) => {
+                        if let Some(ref pb) = spinner {
+                            pb.finish_and_clear();
+                            eprintln!("WebSocket error: {}", e);
+                        } else {
+                            eprintln!("{}", serde_json::json!({"event": "error", "message": e.to_string()}));
+                        }
+                        break;
+                    }
+                    _ => {}
                 }
             }
-            Ok(Message::Ping(_)) => {
-                let _ = ws_stream.send(Message::Pong(vec![])).await;
-            }
-            Ok(Message::Close(_)) => {
-                if let Some(ref pb) = spinner {
-                    pb.finish_and_clear();
-                    eprintln!("Connection closed by server.");
-                } else {
-                    println!("{}", serde_json::json!({"event": "disconnected", "reason": "server_close"}));
-                }
-                break;
-            }
-            Err(e) => {
-                if let Some(ref pb) = spinner {
-                    pb.finish_and_clear();
-                    eprintln!("WebSocket error: {}", e);
-                } else {
-                    println!("{}", serde_json::json!({"event": "error", "message": e.to_string()}));
-                }
-                break;
-            }
-            _ => {}
         }
     }
 
@@ -275,9 +305,16 @@ async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat
                 "ask": ask_price.map(|(p, a)| serde_json::json!({"price": p, "amount": a})),
                 "bid": bid_price.map(|(p, a)| serde_json::json!({"price": p, "amount": a})),
             }));
-        } else {
+        } else if std::io::stdout().is_terminal() {
             if let Some((price, amount)) = ask_price {
                 print!("\r\x1b[KAsk: {} @ {} | ", price, amount);
+            }
+            if let Some((price, amount)) = bid_price {
+                println!("Bid: {} @ {}", price, amount);
+            }
+        } else {
+            if let Some((price, amount)) = ask_price {
+                println!("Ask: {} @ {}", price, amount);
             }
             if let Some((price, amount)) = bid_price {
                 println!("Bid: {} @ {}", price, amount);
@@ -311,8 +348,10 @@ async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Resu
                                 "event": "summary", "pair": pair, "last": last,
                                 "high": high, "low": low, "change": change
                             }));
-                        } else {
+                        } else if std::io::stdout().is_terminal() {
                             println!("\x1b[K{:15}  last: {:>15}  high: {:>15}  low: {:>15}  change: {}", pair, last, high, low, change);
+                        } else {
+                            println!("{:15}  last: {:>15}  high: {:>15}  low: {:>15}  change: {}", pair, last, high, low, change);
                         }
                     }
                 }

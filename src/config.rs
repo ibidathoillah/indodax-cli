@@ -59,16 +59,26 @@ pub struct ResolvedCredentials {
 }
 
 impl IndodaxConfig {
+    fn get_base_dir() -> PathBuf {
+        match dirs::config_dir() {
+            Some(dir) => dir,
+            None => {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                eprintln!(
+                    "Warning: Could not determine user config directory. Falling back to current directory: {}",
+                    cwd.display()
+                );
+                cwd
+            }
+        }
+    }
+
     pub fn config_path() -> PathBuf {
-        let base = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
-        base.join("indodax").join("config.toml")
+        Self::get_base_dir().join("indodax").join("config.toml")
     }
 
     pub fn config_dir() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("indodax")
+        Self::get_base_dir().join("indodax")
     }
 
     pub fn load() -> Result<Self, anyhow::Error> {

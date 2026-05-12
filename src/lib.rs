@@ -107,7 +107,7 @@ pub async fn dispatch(
             .map_err(|e| map_anyhow_error(e))?,
         Command::Trade { cmd } => commands::trade::execute(client, &cmd).await
             .map_err(|e| map_anyhow_error(e))?,
-        Command::Funding { cmd } => commands::funding::execute(client, config, &cmd).await
+        Command::Funding { cmd } => commands::funding::execute(client, config, &cmd, cli.output).await
             .map_err(|e| map_anyhow_error(e))?,
         Command::Ws { cmd } => commands::websocket::execute(client, &cmd, cli.output).await
             .map_err(|e| map_anyhow_error(e))?,

@@ -51,8 +51,17 @@ impl RateLimiter {
                     let elapsed_secs = elapsed.as_secs();
                     if elapsed_secs > 0 {
                         let add = self.refill_per_sec.saturating_mul(elapsed_secs);
-                        let new_tokens = self.tokens.load(Ordering::Relaxed).saturating_add(add).min(self.capacity);
-                        self.tokens.store(new_tokens, Ordering::Relaxed);
+                        loop {
+                            let t = self.tokens.load(Ordering::Relaxed);
+                            let new_tokens = t.saturating_add(add).min(self.capacity);
+                            if self
+                                .tokens
+                                .compare_exchange(t, new_tokens, Ordering::Relaxed, Ordering::Relaxed)
+                                .is_ok()
+                            {
+                                break;
+                            }
+                        }
                         *last = Instant::now();
                     }
                     let elapsed_ms = elapsed.as_millis() as u64;
@@ -100,19 +109,19 @@ pub struct IndodaxV2Response<T> {
 }
 
 impl IndodaxClient {
-    pub fn new(signer: Option<Signer>) -> Self {
+    pub fn new(signer: Option<Signer>) -> Result<Self, IndodaxError> {
         let http = Client::builder()
             .user_agent(format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(30))
             .pool_max_idle_per_host(2)
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| IndodaxError::Other(format!("Failed to create HTTP client: {}", e)))?;
 
-        Self {
+        Ok(Self {
             http,
             signer,
             rate_limiter: RateLimiter::from_env(),
-        }
+        })
     }
 
     pub fn signer(&self) -> Option<&Signer> {
@@ -149,7 +158,7 @@ impl IndodaxClient {
         }
 
         let body = body_parts.join("&");
-        let (payload, signature) = signer.sign_v1(&body);
+        let (payload, signature) = signer.sign_v1(&body)?;
 
         let resp = self
             .http
@@ -195,7 +204,7 @@ impl IndodaxClient {
         })?;
 
         let nonce = signer.next_nonce_str();
-        let (_, signature) = signer.sign_v1(&nonce);
+        let (_, signature) = signer.sign_v1(&nonce)?;
 
         let resp = self
             .http
@@ -245,7 +254,7 @@ impl IndodaxClient {
         full_params.insert("nonce".into(), signer.next_nonce_str());
 
         let body = serde_urlencoded_str(&full_params);
-        let (_, signature) = signer.sign_v1(&body);
+        let (_, signature) = signer.sign_v1(&body)?;
 
         let resp = self
             .retry_post(PRIVATE_V1_URL, &body, signer.api_key(), &signature)
@@ -296,18 +305,17 @@ impl IndodaxClient {
         qs_parts.sort();
         let query_string = qs_parts.join("&");
 
-        let signature = signer.sign_v2(&query_string, timestamp);
+        let signature = signer.sign_v2(&query_string, timestamp)?;
         let url = format!("{}{}?{}", PRIVATE_V2_BASE, path, query_string);
 
-        let resp = self
+        let req = self
             .http
             .get(&url)
             .header("X-APIKEY", signer.api_key())
             .header("Sign", &signature)
             .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .send()
-            .await?;
+            .header("Content-Type", "application/json");
+        let resp = self.send_with_retry(req).await?;
 
         let body_text = resp.text().await?;
         let envelope: IndodaxV2Response<T> = serde_json::from_str(&body_text).map_err(|e| {
@@ -456,20 +464,20 @@ mod tests {
     #[test]
     fn test_indodax_client_new_with_signer() {
         let signer = Signer::new("key", "secret");
-        let client = IndodaxClient::new(Some(signer));
+        let client = IndodaxClient::new(Some(signer)).unwrap();
         assert!(client.signer().is_some());
     }
 
     #[test]
     fn test_indodax_client_new_without_signer() {
-        let client = IndodaxClient::new(None);
+        let client = IndodaxClient::new(None).unwrap();
         assert!(client.signer().is_none());
     }
 
     #[test]
     fn test_indodax_client_signer() {
         let signer = Signer::new("mykey", "mysecret");
-        let client = IndodaxClient::new(Some(signer));
+        let client = IndodaxClient::new(Some(signer)).unwrap();
         let s = client.signer().unwrap();
         assert_eq!(s.api_key(), "mykey");
     }
