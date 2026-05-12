@@ -77,6 +77,13 @@ impl IndodaxMcp {
         })
     }
 
+    /// Helper to get account info from Indodax API.
+    pub async fn get_account_info(&self) -> Result<Value, IndodaxError> {
+        self.client
+            .private_post_v1::<Value>("getInfo", &std::collections::HashMap::new())
+            .await
+    }
+
     pub fn tool_def(name: &str, description: &str, properties: Value, required: Vec<&str>) -> Tool {
         let mut schema = Map::new();
         schema.insert("type".to_string(), Value::String("object".to_string()));

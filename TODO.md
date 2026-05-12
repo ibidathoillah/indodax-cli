@@ -66,6 +66,10 @@
 
 ### Completed (this session)
 
+#### MCP Improvements
+- [x] **MCP `getInfo` consolidation** — Added `IndodaxMcp::get_account_info` helper to `mod.rs` and updated `account.rs` and `trade.rs` to use it, reducing redundant code and API interaction logic.
+- [x] **MCP trade validation** — Added validation to `handle_buy_order` and `handle_sell_order` to ensure `idr`, `amount`, and `price` are positive and finite, bringing MCP tools to parity with CLI command robustness.
+
 #### Refactoring
 - [x] **MCP `tools.rs` split into sub-modules** — `src/mcp/tools/` directory with `mod.rs`, `market.rs`, `account.rs`, `trade.rs`, `funding.rs`, `paper.rs`, `auth.rs`. The 1489-line `tools.rs` is gone. `IndodaxMcp` struct and common helpers stay in `tools/mod.rs`; each group has its own tool definitions and handler impls. ServerHandler dispatch remains in `mod.rs`.
 - [x] **CLI/MCP paper duplication reduced** — Added shared `paper_balance_value`, `paper_orders_value`, `paper_history_value`, `paper_status_value` helpers in `commands/paper.rs` that return `serde_json::Value`. MCP handlers now call these instead of duplicating formatting logic.

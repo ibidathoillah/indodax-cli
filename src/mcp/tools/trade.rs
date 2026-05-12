@@ -48,13 +48,20 @@ pub fn trade_tools() -> Vec<Tool> {
     ]
 }
 
+const BALANCE_EPSILON: f64 = 1e-8;
+
 impl IndodaxMcp {
     pub async fn handle_buy_order(&self, pair: &str, idr: f64, price: Option<f64>) -> CallToolResult {
-        let info = match self
-            .client
-            .private_post_v1::<Value>("getInfo", &HashMap::new())
-            .await
-        {
+        if idr <= 0.0 || !idr.is_finite() {
+            return Self::error_result(format!("IDR amount must be positive and finite, got {}", idr));
+        }
+        if let Some(p) = price {
+            if p <= 0.0 || !p.is_finite() {
+                return Self::error_result(format!("Price must be positive and finite, got {}", p));
+            }
+        }
+
+        let info = match self.get_account_info().await {
             Ok(data) => data,
             Err(e) => return Self::error_from_indodax(&e),
         };
@@ -65,7 +72,7 @@ impl IndodaxMcp {
             .or_else(|| info["balance"]["idr"].as_f64())
             .unwrap_or(0.0);
 
-        if idr_balance < idr {
+        if idr_balance + BALANCE_EPSILON < idr {
             return Self::error_result(format!(
                 "Insufficient IDR balance. Need {:.2}, have {:.2}",
                 idr, idr_balance
@@ -100,16 +107,21 @@ impl IndodaxMcp {
         amount: f64,
         _order_type: &str,
     ) -> CallToolResult {
+        if amount <= 0.0 || !amount.is_finite() {
+            return Self::error_result(format!("Amount must be positive and finite, got {}", amount));
+        }
+        if let Some(p) = price {
+            if p <= 0.0 || !p.is_finite() {
+                return Self::error_result(format!("Price must be positive and finite, got {}", p));
+            }
+        }
+
         let base_currency = pair.split('_').next().unwrap_or_default();
         if base_currency.is_empty() {
             return Self::error_result(format!("Invalid pair format: {}", pair));
         }
 
-        let info = match self
-            .client
-            .private_post_v1::<Value>("getInfo", &HashMap::new())
-            .await
-        {
+        let info = match self.get_account_info().await {
             Ok(data) => data,
             Err(e) => return Self::error_from_indodax(&e),
         };
@@ -120,7 +132,7 @@ impl IndodaxMcp {
             .or_else(|| info["balance"][base_currency].as_f64())
             .unwrap_or(0.0);
 
-        if base_balance < amount {
+        if base_balance + BALANCE_EPSILON < amount {
             return Self::error_result(format!(
                 "Insufficient {} balance. Need {:.8}, have {:.8}",
                 base_currency.to_uppercase(),

@@ -75,22 +75,14 @@ pub fn account_tools() -> Vec<Tool> {
 
 impl IndodaxMcp {
     pub async fn handle_account_info(&self) -> CallToolResult {
-        match self
-            .client
-            .private_post_v1::<Value>("getInfo", &HashMap::new())
-            .await
-        {
+        match self.get_account_info().await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_from_indodax(&e),
         }
     }
 
     pub async fn handle_balance(&self) -> CallToolResult {
-        match self
-            .client
-            .private_post_v1::<Value>("getInfo", &HashMap::new())
-            .await
-        {
+        match self.get_account_info().await {
             Ok(data) => {
                 let balance = data
                     .get("balance")
