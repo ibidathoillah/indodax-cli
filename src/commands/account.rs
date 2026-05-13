@@ -91,11 +91,11 @@ async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
 
     let balance = &data["balance"];
     if let serde_json::Value::Object(bal_map) = balance {
-        let bal_str: Vec<String> = bal_map
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect();
-        rows.push(vec!["Balances".into(), bal_str.join("  ")]);
+        let mut entries: Vec<(&String, &serde_json::Value)> = bal_map.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+        for (k, v) in entries {
+            rows.push(vec![k.clone(), helpers::value_to_string(v)]);
+        }
     }
 
     Ok(CommandOutput::new(data, headers, rows))
@@ -300,10 +300,13 @@ async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
-    let trans_list = data
-        .get("withdraw")
-        .or_else(|| data.get("deposit"))
-        .or_else(|| data.get("transactions"));
+    let mut merged = serde_json::Map::new();
+    for key in &["withdraw", "deposit", "transactions"] {
+        if let Some(obj) = data.get(*key).and_then(|v| v.as_object()) {
+            merged.extend(obj.clone());
+        }
+    }
+    let trans_list = if merged.is_empty() { None } else { Some(serde_json::Value::Object(merged)) };
 
     if let Some(serde_json::Value::Object(map)) = trans_list {
         for (id, entry) in map {

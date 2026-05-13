@@ -276,6 +276,20 @@ async fn cancel_all_orders(
     client: &IndodaxClient,
     pair: Option<&str>,
 ) -> Result<CommandOutput> {
+    if pair.is_none() {
+        use dialoguer::Confirm;
+        let confirmed = Confirm::new()
+            .with_prompt("No --pair filter specified. This will cancel ALL orders across ALL pairs. Continue?")
+            .default(false)
+            .interact()
+            .unwrap_or(false);
+        if !confirmed {
+            return Ok(CommandOutput::json(serde_json::json!({
+                "cancelled": false,
+                "reason": "user_cancelled",
+            })).with_addendum("Cancel all orders aborted by user."));
+        }
+    }
     let mut params = std::collections::HashMap::new();
     if let Some(p) = pair {
         params.insert("pair".to_string(), p.to_string());

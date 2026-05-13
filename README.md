@@ -229,9 +229,10 @@ Options:
 
 | Command | Description |
 |---------|-------------|
-| `indodax trade buy` | Place a buy order |
-| `indodax trade sell` | Place a sell order |
-| `indodax trade cancel` | Cancel an order by ID |
+| `indodax trade buy -p <pair> -i <idr>` | Place a buy order (IDR amount) |
+| `indodax trade buy -p <pair> -a <amount> [-r <price>]` | Place a buy order (base amount) |
+| `indodax trade sell -p <pair> -a <amount> [-r <price>]` | Place a sell order |
+| `indodax trade cancel -i <id> -p <pair> -t <type>` | Cancel an order by ID |
 | `indodax trade cancel-by-client-id` | Cancel by client order ID |
 | `indodax trade countdown` | Deadman switch countdown |
 
@@ -255,21 +256,25 @@ Options:
 
 ### Paper Trading (Simulated)
 
+> Paper trading mirrors the live trade commands for easy switching between simulated and real trading.
+
 | Command | Description |
 |---------|-------------|
-| `indodax paper init` | Initialize paper trading |
+| `indodax paper init [--idr N] [--btc N]` | Initialize with default or custom balances |
 | `indodax paper reset` | Reset paper trading state |
 | `indodax paper balance` | Show virtual balances |
-| `indodax paper buy` | Simulated buy order |
-| `indodax paper sell` | Simulated sell order |
-| `indodax paper orders` | List paper orders |
-| `indodax paper cancel` | Cancel a paper order |
+| `indodax paper buy -p <pair> -i <idr>` | Simulated buy (IDR amount, like live) |
+| `indodax paper buy -p <pair> -a <amt> [-r <price>]` | Simulated buy (base amount, like live) |
+| `indodax paper sell -p <pair> -a <amt> [-r <price>]` | Simulated sell (matches live interface) |
+| `indodax paper orders [-p <pair>]` | List open paper orders |
+| `indodax paper cancel -i <id>` | Cancel a paper order |
 | `indodax paper cancel-all` | Cancel all paper orders |
-| `indodax paper fill` | Fill an open paper order (use `--order-id` or `--all`) |
-| `indodax paper check-fills` | Auto-fill open orders based on market prices |
-| `indodax paper topup` | Top up a virtual currency balance |
+| `indodax paper fill -i <id> [-r <price>]` | Fill an open paper order |
+| `indodax paper fill --all` | Fill all open orders at once |
+| `indodax paper check-fills [-p <json>] [--fetch]` | Auto-fill based on market prices |
+| `indodax paper topup -c <currency> -a <amount>` | Top up a virtual currency balance |
 | `indodax paper history` | Show paper trade history |
-| `indodax paper status` | Show paper trading status (counts filled/open/cancelled) |
+| `indodax paper status` | Show paper trading status summary |
 
 ### Authentication Management
 
@@ -318,7 +323,7 @@ When an error occurs in JSON mode, a structured error envelope is returned on st
 
 ## 🧪 Paper Trading
 
-Test your strategies without risking real funds. Paper trading provides a simulated environment with virtual balances:
+Test your strategies without risking real funds. Paper trading mirrors the live trade commands for easy switching:
 
 ```bash
 # Initialize with default balances (100M IDR, 1 BTC)
@@ -327,30 +332,38 @@ indodax paper init
 # Or with custom balances
 indodax paper init --idr 50000000 --btc 0.5
 
-# Place simulated orders (uses --amount for base currency)
-indodax paper buy --pair btc_idr --price 500000000 --amount 0.1
-indodax paper sell --pair btc_idr --price 1000000000 --amount 0.05
+# Buy orders (matches live trade interface)
+indodax paper buy -p btc_idr -i 1000000            # Buy BTC worth 1M IDR at market price
+indodax paper buy -p btc_idr -a 0.1 -r 500000000   # Buy 0.1 BTC with limit price
+
+# Sell orders (matches live trade interface)
+indodax paper sell -p btc_idr -a 0.05 -r 1000000000  # Sell 0.05 BTC at limit price
 
 # Check balances and status
 indodax paper balance
 indodax paper status
 
-# Fill specific orders
-indodax paper fill --order-id 1
-indodax paper fill --order-id 2 --price 110000000
+# Manage orders
+indodax paper orders --pair btc_idr    # List open orders
+indodax paper cancel -i 1              # Cancel order ID 1
+indodax paper cancel-all               # Cancel all open orders
 
-# Fill all open orders at once
-indodax paper fill --all
+# Fill orders
+indodax paper fill -i 1                # Fill order 1
+indodax paper fill -i 2 --price 110000000  # Fill at custom price
+indodax paper fill --all               # Fill all open orders
 
-# Auto-fill based on market prices (JSON of pair -> current price)
-indodax paper check-fills '{"btc_idr": 95000000, "eth_idr": 12000000}'
+# Auto-fill based on market prices
+indodax paper check-fills -p '{"btc_idr": 95000000, "eth_idr": 12000000}'
 
-# Filter orders by pair
-indodax paper orders --pair btc_idr
+# Top up balances
+indodax paper topup -c usdt -a 50000
 
-# Top up a balance
-indodax paper topup --currency usdt --amount 50000
+# Reset to initial state
+indodax paper reset
 ```
+
+> **Tip:** Paper trading uses the same command structure as live trading. Switch between modes by replacing `trade` with `paper`.
 
 ---
 
@@ -420,7 +433,7 @@ cargo tarpaulin --out stdout
 | `lib.rs` | 20+ | ✅ 100% |
 | `commands/*` | 90+ | ✅ 100% |
 | `mcp/*` | 20+ | ✅ 100% |
-| **Total** | **236+** | **✅ 100%** |
+| **Total** | **295** | **✅ 100%** |
 
 ### E2E Testing
 

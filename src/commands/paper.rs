@@ -634,12 +634,12 @@ fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<
             })).with_addendum("[PAPER] No open orders to fill"));
         }
 
-        let mut _skipped = 0;
-        let mut filled = 0;
+        let mut skipped = 0u64;
+        let mut filled = 0u64;
         for id in &open_ids {
             let order = match state.orders.iter().find(|o| o.id == *id) {
                 Some(o) => o.clone(),
-                None => { _skipped += 1; continue; }
+                None => { skipped += 1; continue; }
             };
             let price = fill_price.unwrap_or(order.price);
             if !price.is_finite() {
@@ -656,7 +656,7 @@ fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<
                 },
                 None => true,
             };
-            if !should_fill { _skipped += 1; continue; }
+            if !should_fill { skipped += 1; continue; }
             let base = order.pair.split('_').next().unwrap_or("btc").to_string();
             let quote = order.pair.split('_').next_back().unwrap_or("idr").to_string();
             execute_fill(state, *id, &base, &quote, &order.side, price, order.remaining)?;
@@ -666,9 +666,16 @@ fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<
         let data = serde_json::json!({
             "mode": "paper",
             "filled_count": filled,
+            "skipped_count": skipped,
         });
 
-        return Ok(CommandOutput::json(data).with_addendum(format!("[PAPER] Filled {} order(s)", filled)));
+        let addendum = if skipped > 0 {
+            format!("[PAPER] Filled {} order(s), skipped {}", filled, skipped)
+        } else {
+            format!("[PAPER] Filled {} order(s)", filled)
+        };
+
+        return Ok(CommandOutput::json(data).with_addendum(addendum));
     }
 
     let order_id = order_id.ok_or_else(|| IndodaxError::Other("[PAPER] Either --order-id or --all must be specified".into()))?;
