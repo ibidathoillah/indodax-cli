@@ -269,7 +269,7 @@ fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<Co
     )))
 }
 
-fn format_balance(currency: &str, value: f64) -> String {
+pub fn format_balance(currency: &str, value: f64) -> String {
     match currency.to_lowercase().as_str() {
         "idr" | "usdt" | "usdc" => format!("{:.2}", value),
         _ => format!("{:.8}", value),
@@ -523,6 +523,13 @@ fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<
                 Some(o) => o.clone(),
                 None => { _skipped += 1; continue; }
             };
+            let price = fill_price.unwrap_or(order.price);
+            if !price.is_finite() {
+                return Err(IndodaxError::Other(format!(
+                    "[PAPER] Invalid fill price: {}. Ensure order price or explicit fill price is valid.",
+                    price
+                )));
+            }
             let should_fill = match fill_price {
                 Some(fp) => match order.side.as_str() {
                     "buy" => fp <= order.price,
@@ -532,7 +539,6 @@ fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<
                 None => true,
             };
             if !should_fill { _skipped += 1; continue; }
-            let price = fill_price.unwrap_or(order.price);
             let base = order.pair.split('_').next().unwrap_or("btc").to_string();
             let quote = order.pair.split('_').next_back().unwrap_or("idr").to_string();
             execute_fill(state, *id, &base, &quote, &order.side, price, order.remaining)?;

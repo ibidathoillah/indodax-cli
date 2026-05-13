@@ -112,7 +112,13 @@ impl IndodaxMcp {
     pub async fn handle_order_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
         let now = Signer::now_millis();
         let start = now - helpers::ONE_DAY_MS;
-        let limit_val = limit.unwrap_or(100.0) as u32;
+        let limit_val = match limit {
+            Some(v) if v.fract() != 0.0 || v <= 0.0 => {
+                return Self::error_result(format!("limit must be a positive whole number, got {}", v));
+            }
+            Some(v) => v as u32,
+            None => 100,
+        };
 
         let mut params = HashMap::new();
         params.insert("symbol".to_string(), symbol.to_string());
@@ -133,7 +139,13 @@ impl IndodaxMcp {
     pub async fn handle_trade_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
         let now = Signer::now_millis();
         let start = now - helpers::ONE_DAY_MS;
-        let limit_val = limit.unwrap_or(100.0) as u32;
+        let limit_val = match limit {
+            Some(v) if v.fract() != 0.0 || v <= 0.0 => {
+                return Self::error_result(format!("limit must be a positive whole number, got {}", v));
+            }
+            Some(v) => v as u32,
+            None => 100,
+        };
 
         let mut params = HashMap::new();
         params.insert("symbol".to_string(), symbol.to_string());

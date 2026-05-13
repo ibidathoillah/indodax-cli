@@ -13,8 +13,8 @@ const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
 const PRIVATE_WS_URL: &str = "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true";
 const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
 
-async fn fetch_public_ws_token(client: &reqwest::Client) -> Result<String> {
-    let resp = client.get(PUBLIC_WS_TOKEN_URL).send().await
+async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String> {
+    let resp = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await
         .map_err(|e| anyhow::anyhow!("Failed to fetch WebSocket token: {}", e))?;
     let text = resp.text().await
         .map_err(|e| anyhow::anyhow!("Failed to read token response: {}", e))?;
@@ -211,7 +211,7 @@ fn format_ws_price(val: &serde_json::Value) -> Option<String> {
 
 async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputFormat) -> Result<CommandOutput> {
     let channel = format!("chart:tick-{}", pair);
-    let token = fetch_public_ws_token(client.http_client()).await?;
+    let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let rows = &val["result"]["data"]["data"];
         if let serde_json::Value::Array(arr) = rows {
@@ -240,7 +240,7 @@ async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputForm
 
 async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputFormat) -> Result<CommandOutput> {
     let channel = format!("market:trade-activity-{}", pair);
-    let token = fetch_public_ws_token(client.http_client()).await?;
+    let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let rows = &val["result"]["data"]["data"];
         if let serde_json::Value::Array(arr) = rows {
@@ -272,7 +272,7 @@ async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputForm
 
 async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat) -> Result<CommandOutput> {
     let channel = format!("market:order-book-{}", pair);
-    let token = fetch_public_ws_token(client.http_client()).await?;
+    let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let data = &val["result"]["data"]["data"];
         let ask_price = data["ask"].as_array().and_then(|asks| {
@@ -325,7 +325,7 @@ async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat
 }
 
 async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Result<CommandOutput> {
-    let token = fetch_public_ws_token(client.http_client()).await?;
+    let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, "market:summary-24h", |val| {
         let rows = &val["result"]["data"]["data"];
         if let serde_json::Value::Array(arr) = rows {

@@ -1,119 +1,64 @@
 # TODO
 
-## Completed (all prior sessions)
+## Completed (current session)
 
-- [x] `trade_count` inconsistent between CLI and WASM
-- [x] Nonce collision under concurrent requests
-- [x] `sign_v2` double-appends timestamp/recvWindow
-- [x] Non-paper errors lose category/retryability through `anyhow` conversion
-- [x] Rate limiter only refills when tokens reach zero
-- [x] `place_sell_order` always includes price even for market orders
-- [x] `fetch_market_prices` fetches sequentially, not concurrently
-- [x] Funding callback manual mode is non-functional
-- [x] MCP missing required parameters silently default to 0/""
-- [x] Rate limiter sub-second busy-wait loop
-- [x] JSON output mode silently drops addendum
-- [x] `cancel_all_orders` discards per-order error details
-- [x] Blocking `std::io::stdin()` in async context
-- [x] `sign_v1` has unused `_use_timestamp` parameter
-- [x] `resolve_public_ws_token` is a trivial dead-code wrapper
-- [x] `report_error` uses `unwrap()` on JSON serialization
-- [x] `auth test` creates unnecessary `IndodaxClient`
-- [x] Inline URL instead of `PRIVATE_V1_URL` constant
-- [x] WASM `fetch_public_ws_token` creates new `reqwest::Client` each call
-- [x] MCP paper handlers swallow save errors
-- [x] `cancel_all_orders` silently swallows individual failures
-- [x] Success and error JSON have different envelope formats
-- [x] `paper_status` JSON output differs between CLI and MCP
-- [x] All balances formatted with 8 decimal places regardless of currency
-- [x] `paper topup` accepts negative amounts
-- [x] Double trailing newline in table output
-- [x] OHLC help text doesn't mention 24h default for `--from`
-- [x] `utility_execute` errors wrapped in `IndodaxError::Other`
-- [x] `sign_v1` caller still passed unused `false` argument
-- [x] `sell` command `price` required even for market orders
-- [x] `json.rs` duplicate import
-- [x] `paper_balance` / `paper_history` / `paper_status` empty addendums
-- [x] MCP `sell_order` price made optional
-- [x] MCP `handle_sell_order` only sends price for limit orders
-- [x] MCP buy/sell balance pre-check added
-- [x] `paper_fill(all=true)` checks price against side
-- [x] `paper_fill` no longer panics on vanished order
-- [x] Account order side detection is case-insensitive
-- [x] WASM `execute_fill` buy side checks fee sufficiency
-- [x] WASM `execute_fill` / `cancel_order` safe pair splitting
-- [x] WASM default balances aligned with CLI
-- [x] Paper buy/sell `price` `Option<f64>`
-- [x] `priv_get`/`first_of` unified
-- [x] Blocking `std::io::stdin()` in funding callback
-- [x] `auth.rs` UNIX_EPOCH unwrap replaced
-- [x] `errors.rs` duplicate category strings
-- [x] `paper.rs` unnecessary clone in default()
-- [x] `market.rs` `first_of()` inefficient string allocation
-- [x] `config.rs` TOCTOU race in file permissions
-- [x] `paper.rs:283` balance sort parse failures
-- [x] Rate limiter lock optimization
-- [x] Telemetry module removed
-- [x] Buy/sell UX consistency
-- [x] Cancel `order_type` help text
-- [x] Buy `idr` short flag
-- [x] Cancel short flags consistency
-- [x] Funding `address` help text
-- [x] OHLC default symbol
-- [x] JSON success envelope
-- [x] Funding `auto_ok` defaults to `false`
-- [x] Verified: `serial_test` is used; `IndodaxClient` import needed
+### High Priority
 
-### Completed (this session)
+- [x] **MCP `handle_withdraw` `request_id` still hardcoded to `"1"`** — `src/mcp/tools/funding.rs`: Fixed to use `chrono::Utc::now().timestamp_millis()`, aligning MCP handler with CLI fix.
 
-#### MCP Improvements
-- [x] **MCP `getInfo` consolidation** — Added `IndodaxMcp::get_account_info` helper to `mod.rs` and updated `account.rs` and `trade.rs` to use it, reducing redundant code and API interaction logic.
-- [x] **MCP trade validation** — Added validation to `handle_buy_order` and `handle_sell_order` to ensure `idr`, `amount`, and `price` are positive and finite, bringing MCP tools to parity with CLI command robustness.
+- [x] **MCP `handle_sell_order` ignores `order_type` parameter** — `src/mcp/tools/trade.rs`: Now respects `order_type` parameter. If `order_type` is `"market"`, treats as market order; if `"limit"`, treats as limit order; otherwise falls back to `price.is_none()` behavior.
 
-#### Refactoring
-- [x] **MCP `tools.rs` split into sub-modules** — `src/mcp/tools/` directory with `mod.rs`, `market.rs`, `account.rs`, `trade.rs`, `funding.rs`, `paper.rs`, `auth.rs`. The 1489-line `tools.rs` is gone. `IndodaxMcp` struct and common helpers stay in `tools/mod.rs`; each group has its own tool definitions and handler impls. ServerHandler dispatch remains in `mod.rs`.
-- [x] **CLI/MCP paper duplication reduced** — Added shared `paper_balance_value`, `paper_orders_value`, `paper_history_value`, `paper_status_value` helpers in `commands/paper.rs` that return `serde_json::Value`. MCP handlers now call these instead of duplicating formatting logic.
-- [x] **`trade.rs` repeated `getInfo`+`HashMap::new()` consolidated** — Extracted `get_account_info()` helper in `trade.rs:5-8`, used by both `place_buy_order` and `place_sell_order`.
-- [x] **`trade.rs` type mismatch fixed** — `get_account_info` return type alignment with `anyhow::Result` via `?` operator.
+- [x] **Balance check precedes positivity validation** — `src/commands/trade.rs`: Reordered positivity checks (`<= 0.0`) to occur before balance sufficiency checks in both `place_buy_order` and `place_sell_order`.
 
-#### High Priority Fixes
-- [x] **Nonce race condition** — `auth.rs:next_nonce()`: Changed from non-atomic load/store to `compare_exchange` loop with `Acquire`/`Release` ordering. Concurrent calls now safely serialize without collision.
-- [x] **`private_get_v2` bypasses rate limiter & retry** — `client.rs:280-327`: Changed from `self.http.get().send()` to `self.send_with_retry(req)`. Now respects rate limiter token acquisition and retries on failure.
-- [x] **`f64` for financial balance comparisons** — `trade.rs`, `paper.rs`: Added `BALANCE_EPSILON` constant (`1e-8`) for floating-point comparisons. All balance sufficiency checks use `balance + EPSILON < required` to avoid precision-edge rejection.
-- [x] **Paper market buy check** — `paper.rs:324-331`: Market buy price is unknown at order placement, so only positive quote balance is required. The actual sufficiency check happens at fill time in `execute_fill`.
-- [x] **Paper order `duration_since` unwrap** — `paper.rs:353-356`: Changed `.unwrap()` to `.unwrap_or_default()` to prevent panic on system clock rollback.
-- [x] **HTTP client `.expect()`** — `client.rs:new()`: Changed return type to `Result<Self, IndodaxError>`. Propagates TLS/client build failures instead of panicking.
-- [x] **HMAC key `.expect()`** — `auth.rs:hmac_sha512()`: Changed `Hmac::new_from_slice().expect()` to `.map_err()?`. Propagates key initialization errors through `IndodaxError`.
-- [x] **Rate limiter refill race** — `client.rs:44-76`: Refill now uses `compare_exchange` loop instead of non-atomic `load()+store()`. Multiple concurrent `acquire()` calls no longer lose token increments.
-- [x] **WebSocket output interleaves with JSON mode** — `websocket.rs`: Route all status events (connecting, connected, authenticated, etc.) to `stderr` in JSON mode. `stdout` is now a pure JSON event stream.
-- [x] **Graceful WebSocket shutdown** — `websocket.rs`: Added Ctrl+C handler using `tokio::select!`. Connections now close cleanly with a WebSocket `Close` frame when interrupted.
+- [x] **MCP `paper_buy`/`paper_sell` amount defaults to 0.0 instead of explicit error** — `src/mcp/tools/mod.rs`: Amount is now validated at the MCP dispatch layer with a clear error message if missing or non-positive.
 
-#### Medium Priority Fixes
-- [x] **Withdraw `request_id` hardcoded to `"1"`** — `funding.rs:98`: Changed from `"1".to_string()` to `chrono::Utc::now().timestamp_millis()` for unique per-request IDs.
-- [x] **Silent error suppression** — `websocket.rs:114`: Added `tracing::warn!()` logging for JSON parse errors. No longer silently drops malformed messages.
-- [x] **WebSocket ANSI escape codes unconditionally** — `websocket.rs:280,283`, `websocket.rs:315`: Made `\r\x1b[K` clear-line sequences conditional on `std::io::stdout().is_terminal()`. Terminal gets inline-updating display; piped output gets clean newline-separated lines.
-- [x] **Cancel `order_type` not validated** — `trade.rs:35-38`: Added validation rejecting anything other than "buy" or "sell" (case-insensitive). Invalid values produce clear error before API call.
-- [x] **`flatten_json_to_table` assumes uniform array schema** — `helpers.rs:23-35`: Now collects *all* unique keys from *all* array elements instead of deriving headers from the first element only. Heterogeneous schemas no longer lose columns.
-- [x] **`f64` sort in paper_balance** — `paper.rs:284-289`: Added `.filter(|v| v.is_finite())` to exclude NaN/inf values from sort comparison. Falls back to `Ordering::Equal` for non-finite values.
-- [x] **Missing zero/negative price validation** — `trade.rs`: Added validation rejecting `price <= 0.0` and `amount <= 0.0` / `idr <= 0.0` in both buy and sell paths.
-- [x] **`paper topup` precision fix** — `commands/paper.rs`: Now uses `format_balance()` helper for addendum messages. BTC/crypto topups show 8 decimals instead of being truncated to 2.
-- [x] **Funding callback server stdout cleanup** — `funding.rs`: All server status/interaction messages routed to `stderr`. Incoming callback bodies are emitted as structured JSON on `stdout` when in JSON mode.
-- [x] **`paper_fill` NaN validation** — `paper.rs`: Added `f64::is_finite()` check on fill price before executing simulated trades.
-- [x] **Config fallback warning** — `config.rs`: Added `eprintln!` warning and explicit `std::env::current_dir()` fallback when `dirs::config_dir()` is unavailable.
+### Medium Priority
 
-#### Low Priority Fixes
-- [x] **Redundant empty history entry** — `utility.rs:123`: Removed `rl.add_history_entry("")` call that added empty string to readline history after every command.
-- [x] **Order ID string sort fallback undefined** — `account.rs:200`: Changed `unwrap_or(0)` to fallback string comparison via `match` on `parse::<u64>().ok()`. Non-numeric order IDs now sort deterministically lexicographically.
-- [x] **WebSocket auth `id` comparison fragile** — `websocket.rs:117-120,141`: Changed `== Some(&Value::Number(1.into()))` to `.and_then(|v| v.as_i64()) == Some(1)`. Handles both integer (`1`) and float (`1.0`) JSON representations.
+- [x] **MCP withdrawal missing amount/address/currency validation** — `src/mcp/tools/funding.rs`: Added validation for `amount > 0 && is_finite()`, `address` non-empty, and `currency` non-empty in `handle_withdraw`.
+
+- [x] **`paper_fill(all=true)` doesn't validate fill_price finiteness** — `src/commands/paper.rs`: Added `is_finite()` check in the batch-fill path before calling `execute_fill`, matching the single-order path.
+
+- [x] **MCP `get_num` for `order_id` truncates non-integers silently** — `src/mcp/tools/mod.rs`: Added `fract() != 0.0` validation for `order_id` in `paper_cancel`, `cancel_order`, and `get_order` handlers.
+
+- [x] **WebSocket `fetch_public_ws_token` signature exposes `reqwest::Client` internals** — `src/commands/websocket.rs`: Changed to accept `&IndodaxClient` and use `client.http_client()` internally.
+
+### Low Priority / Polish
+
+- [x] **MCP `paper_init` verbose IDR/BTC output via format_balance** — `src/mcp/tools/paper.rs` and `src/commands/paper.rs`: Made `format_balance` public and used it in MCP handler for consistent formatting with CLI.
+
+- [x] **MCP `order_history`/`trade_history` `limit` cast from f64 to u32 truncates** — `src/mcp/tools/account.rs`: Added validation for whole-number and positivity before casting, with clear error messages.
+
+- [x] **`cancel_all_orders` uses `value_to_string` for order_type from API** — `src/commands/trade.rs`: Changed to use `as_str()` with fallback to empty string instead of `value_to_string` which can produce multi-word strings for object values.
+
+## New Issues (current review)
+
+### High Priority
+
+- [x] **CLI `funding withdraw` lacks input validation** — `src/commands/funding.rs:84-134`: Added validation for `currency`, `amount`, and `address` to provide clear error messages.
+
+- [ ] **`paper_fill all=true` accumulates `_skipped` counter but never reports it** — `src/commands/paper.rs:519-520`: The `_skipped` variable is incremented when an order goes missing during batch fill but is never included in output, silently hiding partial failures.
+
+### Medium Priority
+
+- [ ] **`account info` joins all balances into a single line** — `src/commands/account.rs:92-99`: Balances are joined with `"  "` into one row instead of individual rows. With many currencies this becomes unreadable in table mode. Should show each balance as its own row like `balance` subcommand does.
+
+- [ ] **`trans_history` shows only one transaction type at a time** — `src/commands/account.rs:303-306`: Uses `or_else` chaining on `get("withdraw")`, `get("deposit")`, and `get("transactions")`, so if multiple types are present in the response, only the first one checked is displayed.
+
+- [ ] **`cancel_all_orders` doesn't validate pair filter scope** — `src/commands/trade.rs:275-339`: Cancel all with no `--pair` filter cancels ALL open orders across all pairs. No confirmation prompt or `--dry-run` flag exists to preview which orders would be cancelled.
+
+### Low Priority / Polish
+
+- [x] **`funding.rs:98` uses `format!` for timestamp when `.to_string()` suffices** — `src/commands/funding.rs:98`: Changed to `.to_string()` for consistency.
+
+- [ ] **MCP tool validation errors all report `mcp_error` type** — `src/mcp/tools/mod.rs:136`: Validation errors in MCP handlers (missing params, non-positive amounts, etc.) all use `error_type: "mcp_error"` instead of more specific types that would help AI agents distinguish validation failures from system errors.
+
+- [ ] **WebSocket `CommandOutput` discards all streamed data** — `src/commands/websocket.rs:202`: After disconnect, returns `{"status": "disconnected"}` regardless of the data received during the session. In JSON mode, data is printed directly to stdout, making it impossible for callers to distinguish streaming events from the final result.
 
 ## Known / Intentional
 
-- **Balance check formatting** — `trade.rs` Buy shows `{:.2}`, Sell shows `{:.8}`. IDR precision is always 2 decimals; crypto precision depends on pair. Intentional.
-- **JSON vs table output routing** — `main.rs:103-119`: JSON to stdout, table errors to stderr. Scripts parse JSON on stdout; humans see errors on stderr. Intentional.
-- **Buy hardcodes `idr` param name** — `trade.rs:120` always uses `"idr"` for buy amount. Indodax only supports IDR-quoted pairs for buys; selling uses base currency dynamically.
-- **Paper market buy price unknown** — `paper.rs:324-331`: Market buy price is unknown at placement time; balance sufficiency check happens at fill time in `execute_fill`. Only positive quote balance is required upfront.
-- **`cancel_all_orders` partial failure** — `trade.rs:252-316`: Each cancel is individual via API. Failed orders are collected and reported; earlier successes cannot be rolled back. Design limitation of the API.
-
-## New Findings (this review)
-
-(All identified findings have been implemented in this session)
+- **Buy hardcodes `idr` param name** — `trade.rs` always uses `"idr"` for buy amount. Indodax only supports IDR-quoted pairs for buys.
+- **Paper market buy price unknown** — Balance sufficiency for market buys is checked at fill time, not at order placement. Intentional design.
+- **JSON vs table output routing** — JSON to stdout, errors to stderr. Scripts parse JSON; humans see errors. Intentional.
+- **`cancel_all_orders` partial failure** — Individual API cancels cannot be rolled back. Design limitation of the API.
+- **Paper topup positive-only** — Negative topups rejected explicitly. Intentional.
+- **MCP withdraw does not expose callback_url** — Deliberately excluded from the MCP `withdraw` tool for safety.

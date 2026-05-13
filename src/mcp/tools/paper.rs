@@ -86,10 +86,11 @@ impl IndodaxMcp {
     pub async fn handle_paper_init(&self, idr: Option<f64>, btc: Option<f64>) -> CallToolResult {
         let mut config = self.config.lock().await;
         let state = crate::commands::paper::init_paper_state(idr, btc);
+        let idr_str = crate::commands::paper::format_balance("idr", state.balances.get("idr").copied().unwrap_or(100_000_000.0));
+        let btc_str = crate::commands::paper::format_balance("btc", state.balances.get("btc").copied().unwrap_or(1.0));
         let msg = format!(
-            "[PAPER] Paper trading initialized with {:.0} IDR and {:.8} BTC",
-            state.balances.get("idr").copied().unwrap_or(100_000_000.0),
-            state.balances.get("btc").copied().unwrap_or(1.0),
+            "[PAPER] Paper trading initialized with {} IDR and {} BTC",
+            idr_str, btc_str,
         );
         match state.save(&mut config) {
             Ok(()) => Self::ok_result(msg),

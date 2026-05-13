@@ -105,7 +105,7 @@ impl IndodaxMcp {
         pair: &str,
         price: Option<f64>,
         amount: f64,
-        _order_type: &str,
+        order_type: &str,
     ) -> CallToolResult {
         if amount <= 0.0 || !amount.is_finite() {
             return Self::error_result(format!("Amount must be positive and finite, got {}", amount));
@@ -146,9 +146,20 @@ impl IndodaxMcp {
         params.insert("type".to_string(), "sell".to_string());
         params.insert(base_currency.to_string(), amount.to_string());
 
-        if let Some(p) = price {
-            params.insert("price".to_string(), p.to_string());
+        let is_market = if order_type == "market" {
+            true
+        } else if order_type == "limit" {
+            false
         } else {
+            price.is_none()
+        };
+
+        if let Some(p) = price {
+            if !is_market {
+                params.insert("price".to_string(), p.to_string());
+            }
+        }
+        if is_market {
             params.insert("order_type".to_string(), "market".to_string());
         }
 

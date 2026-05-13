@@ -67,12 +67,21 @@ impl IndodaxMcp {
         memo: Option<&str>,
         network: Option<&str>,
     ) -> CallToolResult {
+        if currency.is_empty() {
+            return Self::error_result("Missing required parameter: currency".into());
+        }
+        if amount <= 0.0 || !amount.is_finite() {
+            return Self::error_result(format!("Amount must be positive and finite, got {}", amount));
+        }
+        if address.is_empty() {
+            return Self::error_result("Missing required parameter: address".into());
+        }
         let mut params = HashMap::new();
         params.insert("currency".to_string(), currency.to_string());
         params.insert("amount".to_string(), amount.to_string());
 
         if to_username {
-            params.insert("request_id".to_string(), "1".to_string());
+            params.insert("request_id".to_string(), chrono::Utc::now().timestamp_millis().to_string());
             params.insert("withdraw_to".to_string(), address.to_string());
         } else {
             params.insert("address".to_string(), address.to_string());

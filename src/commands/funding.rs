@@ -91,12 +91,28 @@ async fn withdraw(
     network: Option<&str>,
     callback_url: Option<&str>,
 ) -> Result<CommandOutput> {
+    if currency.is_empty() {
+        return Err(anyhow::anyhow!("Currency cannot be empty"));
+    }
+    if address.is_empty() {
+        return Err(anyhow::anyhow!("Address cannot be empty"));
+    }
+    if amount <= 0.0 || !amount.is_finite() {
+        return Err(anyhow::anyhow!(
+            "Amount must be positive and finite, got {}",
+            amount
+        ));
+    }
+
     let mut params = HashMap::new();
     params.insert("currency".into(), currency.to_string());
     params.insert("amount".into(), amount.to_string());
 
     if to_username {
-        params.insert("request_id".into(), format!("{}", chrono::Utc::now().timestamp_millis()));
+        params.insert(
+            "request_id".into(),
+            chrono::Utc::now().timestamp_millis().to_string(),
+        );
         params.insert("withdraw_to".into(), address.to_string());
     } else {
         params.insert("address".into(), address.to_string());

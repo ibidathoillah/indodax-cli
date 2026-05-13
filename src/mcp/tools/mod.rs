@@ -245,7 +245,12 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             }
             "get_order" => {
                 let order_id = match Self::get_num(&args, "order_id") {
-                    Some(v) => v,
+                    Some(v) => {
+                        if v.fract() != 0.0 {
+                            return Ok(Self::error_result(format!("order_id must be a whole number, got {}", v)));
+                        }
+                        v
+                    }
                     None => return Ok(Self::error_result("Missing required parameter: order_id".into())),
                 };
                 let pair = match Self::get_str(&args, "pair") {
@@ -253,47 +258,6 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     None => return Ok(Self::error_result("Missing required parameter: pair".into())),
                 };
                 self.handle_get_order(order_id, &pair).await
-            }
-            "trans_history" => self.handle_trans_history().await,
-
-            // Trade (dangerous)
-            "buy_order" => {
-                let acknowledged = Self::get_bool(&args, "acknowledged");
-                if let Err(msg) =
-                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
-                {
-                    return Ok(Self::error_result(msg));
-                }
-                let pair = match Self::get_str(&args, "pair") {
-                    Some(v) => helpers::normalize_pair(&v),
-                    None => return Ok(Self::error_result("Missing required parameter: pair".into())),
-                };
-                let idr = match Self::get_num(&args, "idr") {
-                    Some(v) => v,
-                    None => return Ok(Self::error_result("Missing required parameter: idr".into())),
-                };
-                let price = Self::get_num(&args, "price");
-                self.handle_buy_order(&pair, idr, price).await
-            }
-            "sell_order" => {
-                let acknowledged = Self::get_bool(&args, "acknowledged");
-                if let Err(msg) =
-                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
-                {
-                    return Ok(Self::error_result(msg));
-                }
-                let pair = match Self::get_str(&args, "pair") {
-                    Some(v) => helpers::normalize_pair(&v),
-                    None => return Ok(Self::error_result("Missing required parameter: pair".into())),
-                };
-                let price = Self::get_num(&args, "price");
-                let amount = match Self::get_num(&args, "amount") {
-                    Some(v) => v,
-                    None => return Ok(Self::error_result("Missing required parameter: amount".into())),
-                };
-                let order_type =
-                    Self::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
-                self.handle_sell_order(&pair, price, amount, &order_type).await
             }
             "cancel_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
@@ -303,7 +267,12 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     return Ok(Self::error_result(msg));
                 }
                 let order_id = match Self::get_num(&args, "order_id") {
-                    Some(v) => v,
+                    Some(v) => {
+                        if v.fract() != 0.0 {
+                            return Ok(Self::error_result(format!("order_id must be a whole number, got {}", v)));
+                        }
+                        v
+                    }
                     None => return Ok(Self::error_result("Missing required parameter: order_id".into())),
                 };
                 let pair = match Self::get_str(&args, "pair") {
@@ -359,7 +328,11 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                         .unwrap_or_else(|| "btc_idr".into())
                 );
                 let price = Self::get_num(&args, "price");
-                let amount = Self::get_num(&args, "amount").unwrap_or(0.0);
+                let amount = match Self::get_num(&args, "amount") {
+                    Some(v) if v > 0.0 => v,
+                    Some(v) => return Ok(Self::error_result(format!("Amount must be positive, got {}", v))),
+                    None => return Ok(Self::error_result("Missing required parameter: amount".into())),
+                };
                 let side = if name == "paper_buy" {
                     "buy"
                 } else {
@@ -370,7 +343,12 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             "paper_orders" => self.handle_paper_orders().await,
             "paper_cancel" => {
                 let order_id = match Self::get_num(&args, "order_id") {
-                    Some(v) => v as u64,
+                    Some(v) => {
+                        if v.fract() != 0.0 {
+                            return Ok(Self::error_result(format!("order_id must be a whole number, got {}", v)));
+                        }
+                        v as u64
+                    }
                     None => return Ok(Self::error_result("Missing required parameter: order_id".into())),
                 };
                 self.handle_paper_cancel(order_id).await

@@ -103,6 +103,10 @@ async fn place_buy_order(
 ) -> Result<CommandOutput> {
     let info = get_account_info(client).await?;
 
+    if idr_amount <= 0.0 {
+        return Err(anyhow::anyhow!("IDR amount must be positive, got {}", idr_amount));
+    }
+
     let idr_balance = info["balance"]["idr"]
         .as_str()
         .and_then(|s| s.parse::<f64>().ok())
@@ -114,10 +118,6 @@ async fn place_buy_order(
             "Insufficient IDR balance. Need {:.2}, have {:.2}",
             idr_amount, idr_balance
         ));
-    }
-
-    if idr_amount <= 0.0 {
-        return Err(anyhow::anyhow!("IDR amount must be positive, got {}", idr_amount));
     }
 
     let mut params = HashMap::new();
@@ -164,6 +164,10 @@ async fn place_sell_order(
 
     let info = get_account_info(client).await?;
 
+    if amount <= 0.0 {
+        return Err(anyhow::anyhow!("Amount must be positive, got {}", amount));
+    }
+
     let base_balance = info["balance"][base_currency]
         .as_str()
         .and_then(|s| s.parse::<f64>().ok())
@@ -175,10 +179,6 @@ async fn place_sell_order(
             "Insufficient {} balance. Need {:.8}, have {:.8}",
             base_currency.to_uppercase(), amount, base_balance
         ));
-    }
-
-    if amount <= 0.0 {
-        return Err(anyhow::anyhow!("Amount must be positive, got {}", amount));
     }
 
     let mut params = HashMap::new();
@@ -294,11 +294,11 @@ async fn cancel_all_orders(
                     .or_else(|| order_val.get("symbol"))
                     .unwrap_or(&serde_json::Value::Null),
             );
-            let order_type = helpers::value_to_string(
-                order_val.get("type")
-                    .or_else(|| order_val.get("order_type"))
-                    .unwrap_or(&serde_json::Value::Null),
-            );
+            let order_type = order_val.get("type")
+                .or_else(|| order_val.get("order_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
 
             let mut cancel_params = std::collections::HashMap::new();
             cancel_params.insert("order_id".to_string(), order_id.clone());
