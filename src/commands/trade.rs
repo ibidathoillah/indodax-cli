@@ -27,10 +27,10 @@ pub enum TradeCommand {
     Sell {
         #[arg(short, long)]
         pair: String,
-        #[arg(short = 'r', long, help = "Limit price. If omitted, a market order will be placed.")]
-        price: Option<f64>,
         #[arg(short = 'a', long, help = "Amount in base currency (e.g. BTC)")]
         amount: f64,
+        #[arg(short = 'r', long, help = "Limit price. If omitted, a market order will be placed.")]
+        price: Option<f64>,
     },
 
     #[command(name = "cancel", about = "Cancel an order by ID")]

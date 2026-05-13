@@ -113,25 +113,27 @@ pub enum PaperCommand {
 
     #[command(name = "buy", about = "Place a simulated buy order")]
     Buy {
-        #[arg(short = 'p', long, default_value = "btc_idr", help = "Trading pair (e.g. btc_idr)")]
+        #[arg(short = 'p', long, help = "Trading pair (e.g. btc_idr)")]
         pair: String,
-        #[arg(short = 'r', long, help = "Price per unit in quote currency (omit for market order)")]
+        #[arg(short = 'i', long, help = "The total IDR amount to spend.")]
+        idr: Option<f64>,
+        #[arg(short = 'a', long, help = "Amount in base currency (e.g. BTC) (alternative to --idr)")]
+        amount: Option<f64>,
+        #[arg(short = 'r', long, help = "Limit price. If omitted, a market order will be placed.")]
         price: Option<f64>,
-        #[arg(short = 'a', long, help = "Amount in base currency")]
-        amount: f64,
     },
 
     #[command(name = "sell", about = "Place a simulated sell order")]
     Sell {
-        #[arg(short = 'p', long, default_value = "btc_idr", help = "Trading pair (e.g. btc_idr)")]
+        #[arg(short = 'p', long, help = "Trading pair (e.g. btc_idr)")]
         pair: String,
-        #[arg(short = 'r', long, help = "Price per unit in quote currency (omit for market order)")]
-        price: Option<f64>,
-        #[arg(short = 'a', long, help = "Amount in base currency")]
+        #[arg(short = 'a', long, help = "Amount in base currency (e.g. BTC)")]
         amount: f64,
+        #[arg(short = 'r', long, help = "Limit price. If omitted, a market order will be placed.")]
+        price: Option<f64>,
     },
 
-    #[command(name = "orders", about = "List open paper trading orders (use history for all orders)")]
+    #[command(name = "orders", about = "List open paper orders (use history for all orders)")]
     Orders {
         #[arg(short = 'p', long, help = "Filter by trading pair (e.g. btc_idr)")]
         pair: Option<String>,
@@ -192,9 +194,15 @@ async fn dispatch_paper(
         PaperCommand::Reset => paper_reset(state),
         PaperCommand::Topup { currency, amount } => paper_topup(state, currency, *amount),
         PaperCommand::Balance => paper_balance(state),
-        PaperCommand::Buy { pair, price, amount } => {
+        PaperCommand::Buy { pair, idr, amount, price } => {
             let pair = helpers::normalize_pair(pair);
-            place_paper_order(state, &pair, "buy", *price, *amount)
+            if let Some(idr_val) = idr {
+                place_paper_order_idr(state, &pair, "buy", *idr_val, *price)
+            } else if let Some(amt) = amount {
+                place_paper_order(state, &pair, "buy", *price, *amt)
+            } else {
+                Err(IndodaxError::Other("Either --idr or --amount must be specified".to_string()))
+            }
         }
         PaperCommand::Sell { pair, price, amount } => {
             let pair = helpers::normalize_pair(pair);
@@ -401,6 +409,116 @@ pub fn place_paper_order(
 
     Ok(CommandOutput::new(data, headers, rows)
         .with_addendum(format!("[PAPER] {} {} {} @ {} — open", side, amount, pair, price_display)))
+}
+
+pub fn place_paper_order_idr(
+    state: &mut PaperState,
+    pair: &str,
+    side: &str,
+    idr_amount: f64,
+    price: Option<f64>,
+) -> Result<CommandOutput, IndodaxError> {
+    if idr_amount <= 0.0 {
+        return Err(IndodaxError::Other(
+            format!("[PAPER] IDR amount must be positive, got {}", idr_amount)
+        ));
+    }
+    if side != "buy" {
+        return Err(IndodaxError::Other(
+            "[PAPER] --idr is only valid for buy orders".to_string()
+        ));
+    }
+    let is_market = price.is_none();
+    let order_price = price.unwrap_or(0.0);
+    if !is_market && order_price <= 0.0 {
+        return Err(IndodaxError::Other(
+            format!("[PAPER] Price must be positive, got {}", order_price)
+        ));
+    }
+    let quote = pair.split('_').next_back().unwrap_or("idr");
+    let base = pair.split('_').next().unwrap_or(pair);
+
+    let amount = if is_market {
+        let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
+        if *quote_balance <= 0.0 {
+            return Err(IndodaxError::Other(
+                format!("[PAPER] Insufficient {} balance for market buy. Need positive balance, have {:.2}",
+                    quote.to_uppercase(), quote_balance)
+            ));
+        }
+        let amt = idr_amount / order_price.max(0.01);
+        let cost = amt * order_price;
+        if cost > *quote_balance {
+            let actual_amt = *quote_balance / order_price;
+            *quote_balance = 0.0;
+            actual_amt
+        } else {
+            *quote_balance -= cost;
+            amt
+        }
+    } else {
+        let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
+        if *quote_balance + BALANCE_EPSILON < idr_amount {
+            return Err(IndodaxError::Other(
+                format!("[PAPER] Insufficient {} balance. Need {:.2}, have {:.2}",
+                    quote.to_uppercase(), idr_amount, quote_balance)
+            ));
+        }
+        *quote_balance -= idr_amount;
+        idr_amount / order_price
+    };
+
+    let order_id = state.next_order_id;
+    state.next_order_id += 1;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    state.orders.push(PaperOrder {
+        id: order_id,
+        pair: pair.to_string(),
+        side: side.to_string(),
+        price: order_price,
+        amount,
+        remaining: amount,
+        order_type: if is_market { "market".into() } else { "limit".into() },
+        status: "open".into(),
+        created_at: now,
+        fees_paid: 0.0,
+        filled_price: 0.0,
+        total_spent: if !is_market { idr_amount } else { 0.0 },
+    });
+
+    state.trade_count += 1;
+
+    let price_display = if is_market { "market".to_string() } else { order_price.to_string() };
+    let data = serde_json::json!({
+        "mode": "paper",
+        "order_id": order_id,
+        "pair": pair,
+        "side": side,
+        "price": order_price,
+        "amount": amount,
+        "order_type": if is_market { "market" } else { "limit" },
+        "status": "open",
+    });
+
+    let headers = vec!["Field".into(), "Value".into()];
+    let rows = vec![
+        vec!["Order ID".into(), order_id.to_string()],
+        vec!["Pair".into(), pair.to_string()],
+        vec!["Side".into(), side.to_string()],
+        vec!["Price".into(), price_display.clone()],
+        vec!["Amount".into(), format!("{:.8}", amount)],
+        vec!["IDR Spent".into(), format!("{:.2}", idr_amount)],
+        vec!["Type".into(), if is_market { "market".into() } else { "limit".into() }],
+        vec!["Status".into(), "open".into()],
+    ];
+
+    Ok(CommandOutput::new(data, headers, rows)
+        .with_addendum(format!("[PAPER] buy {} {} for {} IDR @ {} — open", amount, base, idr_amount, price_display)))
 }
 
 fn execute_fill(
