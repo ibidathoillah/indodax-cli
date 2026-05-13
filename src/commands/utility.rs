@@ -98,7 +98,7 @@ async fn shell() -> Result<CommandOutput> {
                 let _ = rl.add_history_entry(&input);
                 let args = format!("indodax {}", input);
                 let args: Vec<String> = shell_parse(&args);
-                match Cli::try_parse_from(args.iter().map(|s| s.as_str())) {
+                match Cli::try_parse_from(args) {
                     Ok(cli) => {
                         if matches!(cli.command, crate::Command::Shell) {
                             println!("Already in shell mode");
@@ -126,14 +126,44 @@ async fn shell() -> Result<CommandOutput> {
     Ok(CommandOutput::json(data))
 }
 
+/// Splits a shell-style command line into argv-like tokens.
 fn shell_parse(input: &str) -> Vec<String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Vec::new();
+    let mut parts: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+    let mut has_token = false;
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                in_quote = !in_quote;
+                has_token = true;
+            }
+            '\\' if in_quote => match chars.peek() {
+                Some('"') | Some('\\') => {
+                    current.push(chars.next().unwrap());
+                }
+                _ => current.push(ch),
+            },
+            c if c.is_whitespace() && !in_quote => {
+                if has_token {
+                    parts.push(std::mem::take(&mut current));
+                    has_token = false;
+                }
+            }
+            c => {
+                current.push(c);
+                has_token = true;
+            }
+        }
     }
-    shlex::split(trimmed).unwrap_or_else(|| {
-        trimmed.split_whitespace().map(|s| s.to_string()).collect()
-    })
+
+    if has_token {
+        parts.push(current);
+    }
+
+    parts
 }
 
 #[cfg(test)]
@@ -142,46 +172,98 @@ mod tests {
 
     #[test]
     fn test_shell_parse_simple() {
-        let input = "market ticker btc_idr";
-        let result = shell_parse(input);
+        let result = shell_parse("market ticker btc_idr");
         assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
     }
 
     #[test]
     fn test_shell_parse_single_word() {
-        let input = "help";
-        let result = shell_parse(input);
+        let result = shell_parse("help");
         assert_eq!(result, vec!["help"]);
     }
 
     #[test]
     fn test_shell_parse_empty() {
-        let input = "";
-        let result = shell_parse(input);
+        let result = shell_parse("");
         assert!(result.is_empty());
     }
 
     #[test]
     fn test_shell_parse_with_quotes() {
-        let input = r#"auth set --api-key "my key" --api-secret "my secret""#;
-        let result = shell_parse(input);
-        assert!(result.contains(&"auth".to_string()));
-        assert!(result.contains(&"my key".to_string()));
-        assert!(result.contains(&"my secret".to_string()));
+        let result =
+            shell_parse(r#"auth set --api-key "my key" --api-secret "my secret""#);
+        assert_eq!(
+            result,
+            vec![
+                "auth", "set", "--api-key", "my key", "--api-secret", "my secret",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_shell_parse_quoted_value_with_dash() {
+        let result = shell_parse(r#"market ticker --pair "btc_idr""#);
+        assert_eq!(result, vec!["market", "ticker", "--pair", "btc_idr"]);
     }
 
     #[test]
     fn test_shell_parse_multiple_spaces() {
-        let input = "market   ticker   btc_idr";
-        let result = shell_parse(input);
+        let result = shell_parse("market   ticker   btc_idr");
         assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
     }
 
     #[test]
     fn test_shell_parse_leading_trailing_spaces() {
-        let input = "  market ticker btc_idr  ";
-        let result = shell_parse(input);
+        let result = shell_parse("  market ticker btc_idr  ");
         assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
+    }
+
+    #[test]
+    fn test_shell_parse_only_whitespace() {
+        let result = shell_parse("    ");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_shell_parse_quoted_empty_string() {
+        let result = shell_parse(r#"set key """#);
+        assert_eq!(result, vec!["set", "key", ""]);
+    }
+
+    #[test]
+    fn test_shell_parse_quoted_whitespace_only() {
+        let result = shell_parse(r#"echo "   ""#);
+        assert_eq!(result, vec!["echo", "   "]);
+    }
+
+    #[test]
+    fn test_shell_parse_escaped_quote_inside_quotes() {
+        let result = shell_parse(r#"echo "he said \"hi\"""#);
+        assert_eq!(result, vec!["echo", r#"he said "hi""#]);
+    }
+
+    #[test]
+    fn test_shell_parse_escaped_backslash_inside_quotes() {
+        let result = shell_parse(r#"path "a\\b""#);
+        assert_eq!(result, vec!["path", r#"a\b"#]);
+    }
+
+    #[test]
+    fn test_shell_parse_unclosed_quote_keeps_token() {
+        let result = shell_parse(r#"foo "bar baz"#);
+        assert_eq!(result, vec!["foo", "bar baz"]);
+    }
+
+    #[test]
+    fn test_shell_parse_adjacent_quoted_and_bare() {
+        let result = shell_parse(r#"x="hello world""#);
+        assert_eq!(result, vec!["x=hello world"]);
+    }
+
+    #[test]
+    fn test_shell_parse_tab_separator() {
+        let result = shell_parse("a\tb\tc");
+        assert_eq!(result, vec!["a", "b", "c"]);
     }
 
     #[test]
@@ -191,16 +273,8 @@ mod tests {
     }
 
     #[test]
-    fn test_shell_parse_whitespace_fallback() {
-        let input = "simple";
-        let result = shell_parse(input);
-        assert_eq!(result.len(), 1);
-    }
-
-    #[test]
     fn test_shell_parse_with_dash_args() {
-        let input = "account balance -v";
-        let result = shell_parse(input);
+        let result = shell_parse("account balance -v");
         assert_eq!(result, vec!["account", "balance", "-v"]);
     }
 }
