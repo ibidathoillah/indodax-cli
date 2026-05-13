@@ -27,6 +27,9 @@ pub fn render(output: &CommandOutput) -> String {
     }
 
     let mut result = table.to_string();
+    if result.ends_with('\n') {
+        result.pop();
+    }
 
     if let Some(ref addendum) = output.addendum {
         result.push('\n');

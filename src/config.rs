@@ -43,8 +43,7 @@ impl From<&str> for SecretValue {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IndodaxConfig {
     pub api_key: Option<SecretValue>,
     pub api_secret: Option<SecretValue>,
@@ -60,16 +59,26 @@ pub struct ResolvedCredentials {
 }
 
 impl IndodaxConfig {
+    fn get_base_dir() -> PathBuf {
+        match dirs::config_dir() {
+            Some(dir) => dir,
+            None => {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                eprintln!(
+                    "Warning: Could not determine user config directory. Falling back to current directory: {}",
+                    cwd.display()
+                );
+                cwd
+            }
+        }
+    }
+
     pub fn config_path() -> PathBuf {
-        let base = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
-        base.join("indodax").join("config.toml")
+        Self::get_base_dir().join("indodax").join("config.toml")
     }
 
     pub fn config_dir() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("indodax")
+        Self::get_base_dir().join("indodax")
     }
 
     pub fn load() -> Result<Self, anyhow::Error> {
@@ -87,13 +96,21 @@ impl IndodaxConfig {
         fs::create_dir_all(&dir)?;
         let path = Self::config_path();
         let content = toml::to_string_pretty(self)?;
-        fs::write(&path, content)?;
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&path)?.permissions();
-            perms.set_mode(0o600);
-            fs::set_permissions(&path, perms)?;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&path)?;
+            use std::io::Write;
+            file.write_all(content.as_bytes())?;
+        }
+        #[cfg(not(unix))]
+        {
+            fs::write(&path, content)?;
         }
         Ok(())
     }
@@ -183,10 +200,17 @@ mod tests {
     }
 
     #[test]
-    fn test_secret_value_serialize() {
+    fn test_secret_value_serialize_raw() {
         let sv = SecretValue::new("serialize_me");
         let serialized = serde_json::to_string(&sv).unwrap();
         assert!(serialized.contains("serialize_me"));
+    }
+
+    #[test]
+    fn test_secret_value_serialize_empty() {
+        let sv = SecretValue::new("");
+        let serialized = serde_json::to_string(&sv).unwrap();
+        assert_eq!(serialized, "\"\"");
     }
 
     #[test]

@@ -1,0 +1,196 @@
+use std::collections::HashMap;
+
+use serde_json::Value;
+use rmcp::model::{CallToolResult, Tool};
+
+use super::IndodaxMcp;
+
+pub fn trade_tools() -> Vec<Tool> {
+    vec![
+        IndodaxMcp::tool_def(
+            "buy_order",
+            "[DANGEROUS: requires acknowledged=true] Place a buy order on Indodax",
+            serde_json::json!({
+                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
+                "idr": IndodaxMcp::num_param("Total IDR amount to spend", true),
+                "price": IndodaxMcp::num_param("Limit price (omit for market order)", false),
+                "acknowledged":
+                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+            }),
+            vec!["pair", "idr", "acknowledged"],
+        ),
+        IndodaxMcp::tool_def(
+            "sell_order",
+            "[DANGEROUS: requires acknowledged=true] Place a sell order on Indodax",
+            serde_json::json!({
+                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
+                "price": IndodaxMcp::num_param("Limit price (omit for market order)", false),
+                "amount": IndodaxMcp::num_param("Amount in base currency (e.g. BTC)", true),
+                "order_type":
+                    IndodaxMcp::str_param("Order type: limit or market", false, Some("limit")),
+                "acknowledged":
+                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+            }),
+            vec!["pair", "amount", "acknowledged"],
+        ),
+        IndodaxMcp::tool_def(
+            "cancel_order",
+            "[DANGEROUS: requires acknowledged=true] Cancel an existing order by ID",
+            serde_json::json!({
+                "order_id": IndodaxMcp::num_param("Order ID to cancel", true),
+                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
+                "order_type": IndodaxMcp::str_param("Order type: buy or sell", true, None),
+                "acknowledged":
+                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+            }),
+            vec!["order_id", "pair", "order_type", "acknowledged"],
+        ),
+    ]
+}
+
+const BALANCE_EPSILON: f64 = 1e-8;
+
+impl IndodaxMcp {
+    pub async fn handle_buy_order(&self, pair: &str, idr: f64, price: Option<f64>) -> CallToolResult {
+        if idr <= 0.0 || !idr.is_finite() {
+            return Self::error_result(format!("IDR amount must be positive and finite, got {}", idr));
+        }
+        if let Some(p) = price {
+            if p <= 0.0 || !p.is_finite() {
+                return Self::error_result(format!("Price must be positive and finite, got {}", p));
+            }
+        }
+
+        let info = match self.get_account_info().await {
+            Ok(data) => data,
+            Err(e) => return Self::error_from_indodax(&e),
+        };
+
+        let idr_balance = info["balance"]["idr"]
+            .as_str()
+            .and_then(|s| s.parse::<f64>().ok())
+            .or_else(|| info["balance"]["idr"].as_f64())
+            .unwrap_or(0.0);
+
+        if idr_balance + BALANCE_EPSILON < idr {
+            return Self::error_result(format!(
+                "Insufficient IDR balance. Need {:.2}, have {:.2}",
+                idr, idr_balance
+            ));
+        }
+
+        let mut params = HashMap::new();
+        params.insert("pair".to_string(), pair.to_string());
+        params.insert("type".to_string(), "buy".to_string());
+        params.insert("idr".to_string(), idr.to_string());
+
+        if let Some(p) = price {
+            params.insert("price".to_string(), p.to_string());
+        } else {
+            params.insert("order_type".to_string(), "market".to_string());
+        }
+
+        match self
+            .client
+            .private_post_v1::<Value>("trade", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_sell_order(
+        &self,
+        pair: &str,
+        price: Option<f64>,
+        amount: f64,
+        order_type: &str,
+    ) -> CallToolResult {
+        if amount <= 0.0 || !amount.is_finite() {
+            return Self::error_result(format!("Amount must be positive and finite, got {}", amount));
+        }
+        if let Some(p) = price {
+            if p <= 0.0 || !p.is_finite() {
+                return Self::error_result(format!("Price must be positive and finite, got {}", p));
+            }
+        }
+
+        let base_currency = pair.split('_').next().unwrap_or_default();
+        if base_currency.is_empty() {
+            return Self::error_result(format!("Invalid pair format: {}", pair));
+        }
+
+        let info = match self.get_account_info().await {
+            Ok(data) => data,
+            Err(e) => return Self::error_from_indodax(&e),
+        };
+
+        let base_balance = info["balance"][base_currency]
+            .as_str()
+            .and_then(|s| s.parse::<f64>().ok())
+            .or_else(|| info["balance"][base_currency].as_f64())
+            .unwrap_or(0.0);
+
+        if base_balance + BALANCE_EPSILON < amount {
+            return Self::error_result(format!(
+                "Insufficient {} balance. Need {:.8}, have {:.8}",
+                base_currency.to_uppercase(),
+                amount,
+                base_balance
+            ));
+        }
+
+        let mut params = HashMap::new();
+        params.insert("pair".to_string(), pair.to_string());
+        params.insert("type".to_string(), "sell".to_string());
+        params.insert(base_currency.to_string(), amount.to_string());
+
+        let is_market = if order_type == "market" {
+            true
+        } else if order_type == "limit" {
+            false
+        } else {
+            price.is_none()
+        };
+
+        if let Some(p) = price {
+            if !is_market {
+                params.insert("price".to_string(), p.to_string());
+            }
+        }
+        if is_market {
+            params.insert("order_type".to_string(), "market".to_string());
+        }
+
+        match self
+            .client
+            .private_post_v1::<Value>("trade", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_cancel_order(
+        &self,
+        order_id: f64,
+        pair: &str,
+        order_type: &str,
+    ) -> CallToolResult {
+        let mut params = HashMap::new();
+        params.insert("order_id".to_string(), (order_id as u64).to_string());
+        params.insert("pair".to_string(), pair.to_string());
+        params.insert("type".to_string(), order_type.to_string());
+
+        match self
+            .client
+            .private_post_v1::<Value>("cancelOrder", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+}

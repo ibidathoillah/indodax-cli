@@ -176,14 +176,15 @@ mod tests {
         
         let rendered = output.render();
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
-        assert_eq!(parsed, data);
+        assert_eq!(parsed["data"], data);
     }
 
     #[test]
     fn test_command_output_render_json_empty() {
         let output = CommandOutput::new_empty().with_format(OutputFormat::Json);
         let rendered = output.render();
-        assert!(rendered.contains("{}") || rendered.is_empty());
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["data"], json!({}));
     }
 
     #[test]

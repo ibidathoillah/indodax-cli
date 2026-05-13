@@ -1,3 +1,4 @@
+use crate::auth::Signer;
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::output::CommandOutput;
@@ -53,16 +54,22 @@ pub async fn execute(
     match cmd {
         AccountCommand::Info => info(client).await,
         AccountCommand::Balance => balance(client).await,
-        AccountCommand::OpenOrders { pair } => open_orders(client, pair.as_deref()).await,
+        AccountCommand::OpenOrders { pair } => {
+            let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
+            open_orders(client, pair.as_deref()).await
+        }
         AccountCommand::OrderHistory { symbol, limit } => {
-            order_history(client, symbol, *limit).await
+            let symbol = helpers::normalize_pair(symbol);
+            order_history(client, &symbol, *limit).await
         }
         AccountCommand::TradeHistory { symbol, limit } => {
-            trade_history(client, symbol, *limit).await
+            let symbol = helpers::normalize_pair(symbol);
+            trade_history(client, &symbol, *limit).await
         }
         AccountCommand::TransHistory => trans_history(client).await,
         AccountCommand::GetOrder { order_id, pair } => {
-            get_order(client, *order_id, pair).await
+            let pair = helpers::normalize_pair(pair);
+            get_order(client, *order_id, &pair).await
         }
     }
 }
@@ -147,7 +154,7 @@ async fn open_orders(
             let order_type = helpers::value_to_string(
                 priv_get(order_val, &["type", "order_type"]),
             );
-            let side = if order_type.contains("sell") || order_type.contains("SELL") {
+            let side = if order_type.to_lowercase().contains("sell") {
                 "SELL"
             } else {
                 "BUY"
@@ -190,7 +197,12 @@ async fn open_orders(
         }
     }
 
-    rows.sort_by(|a, b| b[0].parse::<u64>().unwrap_or(0).cmp(&a[0].parse::<u64>().unwrap_or(0)));
+    rows.sort_by(|a, b| {
+        match (b[0].parse::<u64>().ok(), a[0].parse::<u64>().ok()) {
+            (Some(bv), Some(av)) => bv.cmp(&av),
+            _ => b[0].cmp(&a[0]),
+        }
+    });
     let count = rows.len();
     Ok(CommandOutput::new(data, headers, rows)
         .with_addendum(format!("{} open orders", count)))
@@ -201,9 +213,8 @@ async fn order_history(
     symbol: &str,
     limit: u32,
 ) -> Result<CommandOutput> {
-    use crate::auth::Signer;
     let now = Signer::now_millis();
-    let start = now - 24 * 60 * 60 * 1000;
+    let start = now - crate::commands::helpers::ONE_DAY_MS;
 
     let mut params = HashMap::new();
     params.insert("symbol".into(), symbol.to_string());
@@ -243,9 +254,8 @@ async fn trade_history(
     symbol: &str,
     limit: u32,
 ) -> Result<CommandOutput> {
-    use crate::auth::Signer;
     let now = Signer::now_millis();
-    let start = now - 24 * 60 * 60 * 1000;
+    let start = now - crate::commands::helpers::ONE_DAY_MS;
 
     let mut params = HashMap::new();
     params.insert("symbol".into(), symbol.to_string());
@@ -345,12 +355,7 @@ async fn get_order(
 }
 
 fn priv_get<'a>(val: &'a serde_json::Value, keys: &[&str]) -> &'a serde_json::Value {
-    for key in keys {
-        if let Some(v) = val.get(*key) {
-            return v;
-        }
-    }
-    &serde_json::Value::Null
+    helpers::first_of(val, keys)
 }
 
 #[cfg(test)]
@@ -375,8 +380,8 @@ mod tests {
     fn test_priv_get_second_key_exists() {
         let val = json!({"a": null, "b": "2"});
         let result = priv_get(&val, &["a", "b"]);
-        // priv_get returns the first key that exists in the JSON, even if null
-        assert_eq!(result, &serde_json::Value::Null);
+        // priv_get delegates to first_of which skips null values
+        assert_eq!(result, &json!("2"));
     }
 
     #[test]
@@ -422,8 +427,8 @@ mod tests {
     fn test_priv_get_with_null_first() {
         let val = json!({"first": null, "second": "value"});
         let result = priv_get(&val, &["first", "second"]);
-        // priv_get returns the first key that exists, even if it's null
-        assert_eq!(result, &serde_json::Value::Null);
+        // priv_get delegates to first_of which skips null values
+        assert_eq!(result, &json!("value"));
     }
 
     #[test]

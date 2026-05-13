@@ -1,0 +1,215 @@
+diff --git a/src/commands/utility.rs b/src/commands/utility.rs
+index 20c2d76..e03c716 100644
+--- a/src/commands/utility.rs
++++ b/src/commands/utility.rs
+@@ -89,7 +89,7 @@ async fn shell() -> Result<CommandOutput> {
+             Ok(input) => {
+                 let _ = rl.add_history_entry(&input);
+                 let args = format!("indodax {}", input);
+-                let args: Vec<&str> = shell_parse(&args);
++                let args: Vec<String> = shell_parse(&args);
+                 match Cli::try_parse_from(args) {
+                     Ok(cli) => {
+                         if matches!(cli.command, crate::Command::Shell) {
+@@ -119,30 +119,44 @@ async fn shell() -> Result<CommandOutput> {
+     Ok(CommandOutput::json(data))
+ }
+ 
+-fn shell_parse(input: &str) -> Vec<&str> {
+-    let mut parts = Vec::new();
+-    let mut current = "";
++/// Splits a shell-style command line into argv-like tokens.
++fn shell_parse(input: &str) -> Vec<String> {
++    let mut parts: Vec<String> = Vec::new();
++    let mut current = String::new();
+     let mut in_quote = false;
++    let mut has_token = false;
++    let mut chars = input.chars().peekable();
+ 
+-    for word in input.split(' ') {
+-        if in_quote {
+-            if word.ends_with('"') {
+-                in_quote = false;
+-                parts.push(&input[current.len() + 1..current.len() + 1 + parts.last().map(|s: &&str| s.len()).unwrap_or(0) + word.len() - 1]);
++    while let Some(ch) = chars.next() {
++        match ch {
++            '"' => {
++                in_quote = !in_quote;
++                has_token = true;
++            }
++            '\\' if in_quote => match chars.peek() {
++                Some('"') | Some('\\') => {
++                    current.push(chars.next().unwrap());
++                }
++                _ => current.push(ch),
++            },
++            c if c.is_whitespace() && !in_quote => {
++                if has_token {
++                    parts.push(std::mem::take(&mut current));
++                    has_token = false;
++                }
++            }
++            c => {
++                current.push(c);
++                has_token = true;
+             }
+-        } else if word.starts_with('"') {
+-            in_quote = true;
+-            current = word;
+-        } else {
+-            parts.push(word);
+         }
+     }
+ 
+-    if parts.is_empty() {
+-        input.split_whitespace().collect()
+-    } else {
+-        parts
++    if has_token {
++        parts.push(current);
+     }
++
++    parts
+ }
+ 
+ #[cfg(test)]
+@@ -151,67 +165,109 @@ mod tests {
+ 
+     #[test]
+     fn test_shell_parse_simple() {
+-        let input = "market ticker btc_idr";
+-        let result = shell_parse(input);
++        let result = shell_parse("market ticker btc_idr");
+         assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
+     }
+ 
+     #[test]
+     fn test_shell_parse_single_word() {
+-        let input = "help";
+-        let result = shell_parse(input);
++        let result = shell_parse("help");
+         assert_eq!(result, vec!["help"]);
+     }
+ 
+     #[test]
+     fn test_shell_parse_empty() {
+-        let input = "";
+-        let result = shell_parse(input);
+-        assert!(result.is_empty() || result == vec![""]);
++        let result = shell_parse("");
++        assert!(result.is_empty());
+     }
+ 
+     #[test]
+     fn test_shell_parse_with_quotes() {
+-        let input = r#"auth set --api-key "my key" --api-secret "my secret""#;
+-        let result = shell_parse(input);
+-        // The shell_parse function doesn't handle quotes like this perfectly,
+-        // but let's test what it actually does
+-        assert!(!result.is_empty());
++        let result =
++            shell_parse(r#"auth set --api-key "my key" --api-secret "my secret""#);
++        assert_eq!(
++            result,
++            vec![
++                "auth", "set", "--api-key", "my key", "--api-secret", "my secret",
++            ]
++        );
++    }
++
++    #[test]
++    fn test_shell_parse_quoted_value_with_dash() {
++        let result = shell_parse(r#"market ticker --pair "btc_idr""#);
++        assert_eq!(result, vec!["market", "ticker", "--pair", "btc_idr"]);
+     }
+ 
+     #[test]
+     fn test_shell_parse_multiple_spaces() {
+-        let input = "market   ticker   btc_idr";
+-        let result = shell_parse(input);
+-        // The function doesn't normalize multiple spaces perfectly
+-        assert!(result.contains(&"market") || result.len() >= 3);
++        let result = shell_parse("market   ticker   btc_idr");
++        assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
+     }
+ 
+     #[test]
+     fn test_shell_parse_leading_trailing_spaces() {
+-        let input = "  market ticker btc_idr  ";
+-        let result = shell_parse(input);
+-        assert!(result.contains(&"market") || result.len() >= 3);
++        let result = shell_parse("  market ticker btc_idr  ");
++        assert_eq!(result, vec!["market", "ticker", "btc_idr"]);
+     }
+ 
+     #[test]
+-    fn test_utility_command_variants() {
+-        let _cmd1 = UtilityCommand::Setup;
+-        let _cmd2 = UtilityCommand::Shell;
++    fn test_shell_parse_only_whitespace() {
++        let result = shell_parse("    ");
++        assert!(result.is_empty());
++    }
++
++    #[test]
++    fn test_shell_parse_quoted_empty_string() {
++        let result = shell_parse(r#"set key """#);
++        assert_eq!(result, vec!["set", "key", ""]);
++    }
++
++    #[test]
++    fn test_shell_parse_quoted_whitespace_only() {
++        let result = shell_parse(r#"echo "   ""#);
++        assert_eq!(result, vec!["echo", "   "]);
+     }
+ 
+     #[test]
+-    fn test_shell_parse_whitespace_fallback() {
+-        // Test the fallback path when parts is empty
+-        let input = "simple";
+-        let result = shell_parse(input);
+-        assert_eq!(result.len(), 1);
++    fn test_shell_parse_escaped_quote_inside_quotes() {
++        let result = shell_parse(r#"echo "he said \"hi\"""#);
++        assert_eq!(result, vec!["echo", r#"he said "hi""#]);
++    }
++
++    #[test]
++    fn test_shell_parse_escaped_backslash_inside_quotes() {
++        let result = shell_parse(r#"path "a\\b""#);
++        assert_eq!(result, vec!["path", r#"a\b"#]);
++    }
++
++    #[test]
++    fn test_shell_parse_unclosed_quote_keeps_token() {
++        let result = shell_parse(r#"foo "bar baz"#);
++        assert_eq!(result, vec!["foo", "bar baz"]);
++    }
++
++    #[test]
++    fn test_shell_parse_adjacent_quoted_and_bare() {
++        let result = shell_parse(r#"x="hello world""#);
++        assert_eq!(result, vec!["x=hello world"]);
++    }
++
++    #[test]
++    fn test_shell_parse_tab_separator() {
++        let result = shell_parse("a\tb\tc");
++        assert_eq!(result, vec!["a", "b", "c"]);
++    }
++
++    #[test]
++    fn test_utility_command_variants() {
++        let _cmd1 = UtilityCommand::Setup;
++        let _cmd2 = UtilityCommand::Shell;
+     }
+ 
+     #[test]
+     fn test_shell_parse_with_dash_args() {
+-        let input = "account balance -v";
+-        let result = shell_parse(input);
+-        assert!(result.contains(&"account") || result.len() >= 2);
++        let result = shell_parse("account balance -v");
++        assert_eq!(result, vec!["account", "balance", "-v"]);
+     }
+ }

@@ -1,4 +1,8 @@
 use chrono::DateTime;
+use serde_json::Value;
+
+pub const ONE_DAY_MS: u64 = 24 * 60 * 60 * 1000;
+pub const ONE_DAY_SECS: u64 = 24 * 60 * 60;
 
 pub fn flatten_json_to_table(json: &serde_json::Value) -> (Vec<String>, Vec<Vec<String>>) {
     match json {
@@ -12,10 +16,19 @@ pub fn flatten_json_to_table(json: &serde_json::Value) -> (Vec<String>, Vec<Vec<
             (headers, vec![row])
         }
         serde_json::Value::Array(arr) if !arr.is_empty() => {
-            let first = &arr[0];
-            if let serde_json::Value::Object(first_map) = first {
-                let mut headers: Vec<String> = first_map.keys().cloned().collect();
-                headers.sort();
+            // Collect all unique keys from all array elements
+            let mut all_keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut is_obj = false;
+            for item in arr {
+                if let serde_json::Value::Object(map) = item {
+                    is_obj = true;
+                    for k in map.keys() {
+                        all_keys.insert(k.clone());
+                    }
+                }
+            }
+            if is_obj {
+                let headers: Vec<String> = all_keys.into_iter().collect();
                 let rows: Vec<Vec<String>> = arr
                     .iter()
                     .map(|item| {
@@ -57,6 +70,34 @@ pub fn format_timestamp(ts: u64, millis: bool) -> String {
     }
 }
 
+pub fn normalize_pair(pair: &str) -> String {
+    let pair = pair.to_lowercase().replace('-', "_");
+    if pair.contains('_') || pair.is_empty() {
+        return pair;
+    }
+    for quote in &["idr", "usdt", "btc"] {
+        if let Some(base) = pair.strip_suffix(quote) {
+            if !base.is_empty() {
+                return format!("{}_{}", base, quote);
+            }
+        }
+    }
+    pair
+}
+
+pub fn first_of<'a>(val: &'a Value, keys: &[&str]) -> &'a Value {
+    for k in keys {
+        if let Some(v) = val.get(*k) {
+            match v {
+                Value::Null => continue,
+                Value::String(s) if s.is_empty() || s == "null" => continue,
+                _ => return v,
+            }
+        }
+    }
+    &Value::Null
+}
+
 pub fn extract_pairs(data: &serde_json::Value) -> Vec<(String, String)> {
     let mut pairs: Vec<(String, String)> = Vec::new();
     if let serde_json::Value::Object(map) = data {
@@ -83,6 +124,54 @@ pub fn extract_pairs(data: &serde_json::Value) -> Vec<(String, String)> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_normalize_pair_already_normalized() {
+        assert_eq!(normalize_pair("btc_idr"), "btc_idr");
+        assert_eq!(normalize_pair("eth_btc"), "eth_btc");
+        assert_eq!(normalize_pair("usdt_idr"), "usdt_idr");
+    }
+
+    #[test]
+    fn test_normalize_pair_no_underscore() {
+        assert_eq!(normalize_pair("btcidr"), "btc_idr");
+        assert_eq!(normalize_pair("ethidr"), "eth_idr");
+        assert_eq!(normalize_pair("ethbtc"), "eth_btc");
+        assert_eq!(normalize_pair("solusdt"), "sol_usdt");
+    }
+
+    #[test]
+    fn test_normalize_pair_uppercase() {
+        assert_eq!(normalize_pair("BTC_IDR"), "btc_idr");
+        assert_eq!(normalize_pair("BTCIDR"), "btc_idr");
+        assert_eq!(normalize_pair("ETH_BTC"), "eth_btc");
+    }
+
+    #[test]
+    fn test_normalize_pair_dash_separator() {
+        assert_eq!(normalize_pair("btc-idr"), "btc_idr");
+        assert_eq!(normalize_pair("ETH-IDR"), "eth_idr");
+        assert_eq!(normalize_pair("sol-usdt"), "sol_usdt");
+    }
+
+    #[test]
+    fn test_normalize_pair_empty() {
+        assert_eq!(normalize_pair(""), "");
+    }
+
+    #[test]
+    fn test_normalize_pair_single_token() {
+        // Pairs that don't match known quote currencies pass through
+        assert_eq!(normalize_pair("foobar"), "foobar");
+    }
+
+    #[test]
+    fn test_normalize_pair_btc_as_quote() {
+        // ethbtc -> eth_btc (btc as suffix)
+        assert_eq!(normalize_pair("ethbtc"), "eth_btc");
+        // btc alone -> stays as btc (base would be empty, so skipped)
+        assert_eq!(normalize_pair("btc"), "btc");
+    }
 
     #[test]
     fn test_flatten_json_to_table_object() {
@@ -144,6 +233,36 @@ mod tests {
         let (_headers, rows) = flatten_json_to_table(&json);
         
         assert_eq!(rows[0][0], "true");
+    }
+
+    #[test]
+    fn test_first_of_first_key() {
+        let val = json!({"a": "1", "b": "2"});
+        assert_eq!(first_of(&val, &["a", "b"]), &json!("1"));
+    }
+
+    #[test]
+    fn test_first_of_second_key() {
+        let val = json!({"a": null, "b": "2"});
+        assert_eq!(first_of(&val, &["a", "b"]), &json!("2"));
+    }
+
+    #[test]
+    fn test_first_of_skips_null() {
+        let val = json!({"a": null, "b": null});
+        assert_eq!(first_of(&val, &["a", "b"]), &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_first_of_skips_empty() {
+        let val = json!({"a": "", "b": "value"});
+        assert_eq!(first_of(&val, &["a", "b"]), &json!("value"));
+    }
+
+    #[test]
+    fn test_first_of_skips_null_string() {
+        let val = json!({"a": "null", "b": "value"});
+        assert_eq!(first_of(&val, &["a", "b"]), &json!("value"));
     }
 
     #[test]

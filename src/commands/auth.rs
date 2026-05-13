@@ -29,7 +29,7 @@ pub enum AuthCommand {
 }
 
 pub async fn execute(
-    _client: &IndodaxClient,
+    client: &IndodaxClient,
     config: &mut IndodaxConfig,
     cmd: &AuthCommand,
 ) -> Result<CommandOutput> {
@@ -41,7 +41,9 @@ pub async fn execute(
 
             if *api_secret_stdin {
                 let mut buf = String::new();
-                std::io::stdin().read_line(&mut buf)?;
+                let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
+                use tokio::io::AsyncBufReadExt;
+                stdin.read_line(&mut buf).await?;
                 config.api_secret = Some(SecretValue::new(buf.trim().to_string()));
             } else if let Some(s) = api_secret {
                 config.api_secret = Some(SecretValue::new(s.clone()));
@@ -83,10 +85,20 @@ pub async fn execute(
                 vec!["Callback URL".into(), callback_url.into()],
             ];
 
+            let masked_key = config.api_key.as_ref().map(|k| {
+                let s = k.as_str();
+                if s.len() > 4 {
+                    format!("{}****", &s[..4])
+                } else {
+                    "****".to_string()
+                }
+            });
+
             let data = serde_json::json!({
                 "config_path": config_path.to_string_lossy(),
                 "api_key_set": config.api_key.is_some(),
                 "api_secret_set": config.api_secret.is_some(),
+                "masked_key": masked_key,
                 "callback_url": config.callback_url,
             });
 
@@ -100,13 +112,8 @@ pub async fn execute(
                 ));
             }
 
-            let signer = crate::auth::Signer::new(
-                config.api_key.as_ref().unwrap().as_str(),
-                config.api_secret.as_ref().unwrap().as_str(),
-            );
-            let test_client = IndodaxClient::new(Some(signer));
             let test_params = std::collections::HashMap::new();
-            let result: serde_json::Value = test_client.private_post_v1("getInfo", &test_params).await?;
+            let result: serde_json::Value = client.private_post_v1("getInfo", &test_params).await?;
 
             let balance = &result["balance"];
             let bal_summary = if balance.is_object() {
@@ -169,7 +176,7 @@ mod tests {
                 assert!(!api_secret_stdin);
                 assert_eq!(callback_url, Some("http://callback.test".into()));
             }
-            _ => panic!("Expected Set command"),
+            _ => assert!(false, "Expected Set command, got {:?}", cmd),
         }
     }
 
@@ -178,7 +185,7 @@ mod tests {
         let cmd = AuthCommand::Show;
         match cmd {
             AuthCommand::Show => (),
-            _ => panic!("Expected Show command"),
+            _ => assert!(false, "Expected Show command, got {:?}", cmd),
         }
     }
 
@@ -187,7 +194,7 @@ mod tests {
         let cmd = AuthCommand::Test;
         match cmd {
             AuthCommand::Test => (),
-            _ => panic!("Expected Test command"),
+            _ => assert!(false, "Expected Test command, got {:?}", cmd),
         }
     }
 
@@ -196,7 +203,7 @@ mod tests {
         let cmd = AuthCommand::Reset;
         match cmd {
             AuthCommand::Reset => (),
-            _ => panic!("Expected Reset command"),
+            _ => assert!(false, "Expected Reset command, got {:?}", cmd),
         }
     }
 
@@ -215,7 +222,7 @@ mod tests {
                 assert!(api_secret_stdin);
                 assert!(callback_url.is_none());
             }
-            _ => panic!("Expected Set command"),
+            _ => assert!(false, "Expected Set command, got {:?}", cmd),
         }
     }
 

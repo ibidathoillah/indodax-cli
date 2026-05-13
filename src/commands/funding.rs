@@ -20,7 +20,7 @@ pub enum FundingCommand {
         currency: String,
         #[arg(short, long, help = "Amount to withdraw")]
         amount: f64,
-        #[arg(long, help = "Destination address (or Indodax username)")]
+        #[arg(long, help = "Crypto destination address (or Indodax username if --username is set)")]
         address: String,
         #[arg(long, help = "Withdraw to Indodax username instead of blockchain")]
         username: bool,
@@ -36,8 +36,10 @@ pub enum FundingCommand {
     ServeCallback {
         #[arg(short, long, default_value = "8080")]
         port: u16,
-        #[arg(short, long, help = "Auto-confirm all requests (returns 'ok')", default_value = "true")]
+        #[arg(short, long, help = "When true, auto-confirms all callback requests. When false, prompts for each request.", default_value = "false")]
         auto_ok: bool,
+        #[arg(long, help = "Listen address (default: 127.0.0.1). Use 0.0.0.0 for network access")]
+        listen: Option<String>,
     },
 }
 
@@ -45,6 +47,7 @@ pub async fn execute(
     client: &IndodaxClient,
     config: &crate::config::IndodaxConfig,
     cmd: &FundingCommand,
+    output_format: crate::output::OutputFormat,
 ) -> Result<CommandOutput> {
     match cmd {
         FundingCommand::WithdrawFee { currency, network } => {
@@ -54,8 +57,8 @@ pub async fn execute(
             let cb_url = callback_url.as_deref().or(config.callback_url.as_deref());
             withdraw(client, currency, *amount, address, *username, memo.as_deref(), network.as_deref(), cb_url).await
         }
-        FundingCommand::ServeCallback { port, auto_ok } => {
-            serve_callback(*port, *auto_ok).await
+        FundingCommand::ServeCallback { port, auto_ok, listen } => {
+            serve_callback(*port, *auto_ok, listen.as_deref(), output_format).await
         }
     }
 }
@@ -88,12 +91,28 @@ async fn withdraw(
     network: Option<&str>,
     callback_url: Option<&str>,
 ) -> Result<CommandOutput> {
+    if currency.is_empty() {
+        return Err(anyhow::anyhow!("Currency cannot be empty"));
+    }
+    if address.is_empty() {
+        return Err(anyhow::anyhow!("Address cannot be empty"));
+    }
+    if amount <= 0.0 || !amount.is_finite() {
+        return Err(anyhow::anyhow!(
+            "Amount must be positive and finite, got {}",
+            amount
+        ));
+    }
+
     let mut params = HashMap::new();
     params.insert("currency".into(), currency.to_string());
     params.insert("amount".into(), amount.to_string());
 
     if to_username {
-        params.insert("request_id".into(), "1".to_string());
+        params.insert(
+            "request_id".into(),
+            chrono::Utc::now().timestamp_millis().to_string(),
+        );
         params.insert("withdraw_to".into(), address.to_string());
     } else {
         params.insert("address".into(), address.to_string());
@@ -130,7 +149,12 @@ async fn withdraw(
         .with_addendum(format!("Withdrew {} {} to {}", amount, currency, dest_label)))
 }
 
-async fn serve_callback(port: u16, auto_ok: bool) -> Result<CommandOutput> {
+async fn serve_callback(
+    port: u16,
+    auto_ok: bool,
+    listen: Option<&str>,
+    output_format: crate::output::OutputFormat,
+) -> Result<CommandOutput> {
     use axum::{routing::post, Router};
     use colored::Colorize;
     use std::net::SocketAddr;
@@ -138,24 +162,80 @@ async fn serve_callback(port: u16, auto_ok: bool) -> Result<CommandOutput> {
     let app = Router::new().route(
         "/callback",
         post(move |body: String| async move {
-            println!("\n{} Incoming Callback Request", ">>>".green());
-            println!("{}: {}", "Body".bold(), body);
+            if output_format == crate::output::OutputFormat::Json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "event": "callback_received",
+                        "body": body,
+                        "auto_ok": auto_ok
+                    })
+                );
+            } else {
+                eprintln!("\n{} Incoming Callback Request", ">>>".green());
+                eprintln!("{}: {}", "Body".bold(), body);
+            }
 
             if auto_ok {
-                println!("{} Sent response: {}", "<<<".blue(), "ok".bold());
-                "ok"
+                if output_format == crate::output::OutputFormat::Json {
+                    println!("{}", serde_json::json!({"event": "callback_response", "response": "ok"}));
+                } else {
+                    eprintln!("{} Sent response: {}", "<<<".blue(), "ok".bold());
+                }
+                "ok".to_string()
             } else {
-                println!("{} Waiting for manual confirmation...", "???".yellow());
-                "cancel" // Default if not auto
+                if output_format == crate::output::OutputFormat::Json {
+                    eprintln!("{}", "Waiting for manual confirmation (check stderr)...".yellow());
+                } else {
+                    eprintln!("{} Waiting for manual confirmation...", "???".yellow());
+                }
+                eprintln!(
+                    "{} Type 'ok' to confirm, or anything else to cancel:",
+                    ">>>".green()
+                );
+                let input = tokio::task::spawn_blocking(|| {
+                    let mut buf = String::new();
+                    std::io::stdin().read_line(&mut buf).unwrap_or_default();
+                    buf.trim().to_lowercase()
+                })
+                .await
+                .unwrap_or_default();
+                if input == "ok" {
+                    if output_format == crate::output::OutputFormat::Json {
+                        println!("{}", serde_json::json!({"event": "callback_response", "response": "ok"}));
+                    } else {
+                        eprintln!("{} Sent response: {}", "<<<".blue(), "ok".bold());
+                    }
+                    "ok".to_string()
+                } else {
+                    if output_format == crate::output::OutputFormat::Json {
+                        println!("{}", serde_json::json!({"event": "callback_response", "response": "cancel"}));
+                    } else {
+                        eprintln!("{} Sent response: {}", "<<<".blue(), "cancel".bold());
+                    }
+                    "cancel".to_string()
+                }
             }
         }),
     );
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    println!("\n{}", "Indodax Callback Server".bold().underline());
-    println!("{}: {}", "Listening on".cyan(), addr);
-    println!("{}: {}", "Auto-confirm".cyan(), if auto_ok { "ENABLED (returns 'ok')" } else { "DISABLED" });
-    println!("{}\n", "Press Ctrl+C to stop".dimmed());
+    let ip = listen.unwrap_or("127.0.0.1");
+    let addr: SocketAddr = ip
+        .parse()
+        .map(|ip: std::net::IpAddr| SocketAddr::new(ip, port))
+        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], port)));
+    eprintln!("\n{}", "Indodax Callback Server".bold().underline());
+    eprintln!("{}: {}", "Listening on".cyan(), addr);
+    eprintln!(
+        "{}: {}",
+        "Auto-confirm".cyan(),
+        if auto_ok {
+            "ENABLED (returns 'ok')"
+        } else {
+            "DISABLED"
+        }
+    );
+    eprintln!("{}\n", "Press Ctrl+C to stop".dimmed());
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
@@ -184,7 +264,8 @@ mod tests {
         };
         let _cmd3 = FundingCommand::ServeCallback { 
             port: 8080, 
-            auto_ok: true 
+            auto_ok: true,
+            listen: None,
         };
     }
 
@@ -203,7 +284,7 @@ mod tests {
             FundingCommand::Withdraw { username, .. } => {
                 assert!(username);
             }
-            _ => panic!("Expected Withdraw command"),
+            _ => assert!(false, "Expected Withdraw command, got {:?}", cmd),
         }
     }
 
@@ -211,14 +292,15 @@ mod tests {
     fn test_funding_command_serve_callback_defaults() {
         let cmd = FundingCommand::ServeCallback { 
             port: 8080, 
-            auto_ok: true 
+            auto_ok: true,
+            listen: None,
         };
         match cmd {
-            FundingCommand::ServeCallback { port, auto_ok } => {
+            FundingCommand::ServeCallback { port, auto_ok, .. } => {
                 assert_eq!(port, 8080);
                 assert!(auto_ok);
             }
-            _ => panic!("Expected ServeCallback command"),
+            _ => assert!(false, "Expected ServeCallback command, got {:?}", cmd),
         }
     }
 
@@ -232,7 +314,7 @@ mod tests {
             FundingCommand::WithdrawFee { network, .. } => {
                 assert!(network.is_none());
             }
-            _ => panic!("Expected WithdrawFee command"),
+            _ => assert!(false, "Expected WithdrawFee command, got {:?}", cmd),
         }
     }
 
@@ -251,7 +333,7 @@ mod tests {
             FundingCommand::Withdraw { memo, .. } => {
                 assert_eq!(memo, Some("123456".into()));
             }
-            _ => panic!("Expected Withdraw command"),
+            _ => assert!(false, "Expected Withdraw command, got {:?}", cmd),
         }
     }
 }

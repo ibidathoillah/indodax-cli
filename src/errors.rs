@@ -45,6 +45,9 @@ pub enum IndodaxError {
     #[error("{0}")]
     Parse(String),
 
+    #[error("WebSocket token generation failed: {0}")]
+    WsToken(String),
+
     #[error("{0}")]
     Io(#[from] std::io::Error),
 
@@ -66,26 +69,17 @@ impl IndodaxError {
         }
     }
 
-    pub fn category(&self) -> &str {
+    pub fn category(&self) -> String {
         match self {
-            IndodaxError::Api { category, .. } => match category {
-                ErrorCategory::Connection => "connection_error",
-                ErrorCategory::Authentication => "authentication_error",
-                ErrorCategory::Authorization => "authorization_error",
-                ErrorCategory::RateLimit => "rate_limit",
-                ErrorCategory::Validation => "validation_error",
-                ErrorCategory::Server => "server_error",
-                ErrorCategory::NotFound => "not_found",
-                ErrorCategory::Config => "config_error",
-                ErrorCategory::Unknown => "unknown_error",
-            },
-            IndodaxError::Http(_) => "connection_error",
-            IndodaxError::WebSocket(_) => "connection_error",
-            IndodaxError::Json(_) => "validation_error",
-            IndodaxError::Config(_) => "config_error",
-            IndodaxError::Parse(_) => "validation_error",
-            IndodaxError::Io(_) => "io_error",
-            IndodaxError::Other(_) => "unknown_error",
+            IndodaxError::Api { category, .. } => category.to_string(),
+            IndodaxError::Http(_) => "connection_error".to_string(),
+            IndodaxError::WebSocket(_) => "connection_error".to_string(),
+            IndodaxError::Json(_) => "validation_error".to_string(),
+            IndodaxError::Config(_) => "config_error".to_string(),
+            IndodaxError::Parse(_) => "validation_error".to_string(),
+            IndodaxError::WsToken(_) => "authentication_error".to_string(),
+            IndodaxError::Io(_) => "io_error".to_string(),
+            IndodaxError::Other(_) => "unknown_error".to_string(),
         }
     }
 
@@ -247,7 +241,7 @@ mod tests {
         let err = IndodaxError::api("test", ErrorCategory::Connection, None);
         match err {
             IndodaxError::Api { retryable, .. } => assert!(retryable),
-            _ => panic!("Expected Api error"),
+            _ => assert!(false, "Expected Api error, got {:?}", err),
         }
     }
 
@@ -256,7 +250,7 @@ mod tests {
         let err = IndodaxError::api("test", ErrorCategory::Unknown, Some("ERR_123".into()));
         match err {
             IndodaxError::Api { code, .. } => assert_eq!(code, Some("ERR_123".into())),
-            _ => panic!("Expected Api error"),
+            _ => assert!(false, "Expected Api error, got {:?}", err),
         }
     }
 }

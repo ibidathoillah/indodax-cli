@@ -4,6 +4,7 @@ pub mod tools;
 
 use crate::client::IndodaxClient;
 use crate::config::IndodaxConfig;
+use crate::errors::IndodaxError;
 use rmcp::ServiceExt;
 use service::ServiceGroup;
 use tools::IndodaxMcp;
@@ -17,9 +18,9 @@ pub async fn run(
     allow_dangerous: bool,
     client: IndodaxClient,
     config: IndodaxConfig,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), IndodaxError> {
     let enabled_groups = ServiceGroup::parse(groups_str)
-        .map_err(|e| anyhow::anyhow!("Invalid service groups: {}", e))?;
+        .map_err(|e| IndodaxError::Other(format!("Invalid service groups: {}", e)))?;
 
     let safety = safety::SafetyConfig::new(allow_dangerous);
 
@@ -28,7 +29,7 @@ pub async fn run(
     let service = mcp_server
         .serve(rmcp::transport::io::stdio())
         .await
-        .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))?;
+        .map_err(|e| IndodaxError::Other(format!("MCP server error: {}", e)))?;
 
     tracing::info!(
         "MCP server started with groups: {}, allow_dangerous: {}",
@@ -37,7 +38,8 @@ pub async fn run(
     );
 
     // Block forever while the MCP server runs
-    service.waiting().await?;
+    service.waiting().await
+        .map_err(|e| IndodaxError::Other(format!("MCP server error: {}", e)))?;
 
     Ok(())
 }

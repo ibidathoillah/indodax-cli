@@ -4,8 +4,6 @@ use wasm_bindgen::prelude::*;
 
 const DEFAULT_BALANCE_IDR: f64 = 100_000_000.0;
 const DEFAULT_BALANCE_BTC: f64 = 1.0;
-const DEFAULT_ETH: f64 = 10.0;
-const DEFAULT_USDT: f64 = 50_000.0;
 const TAKER_FEE: f64 = 0.0026;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,8 +27,6 @@ impl Default for PaperState {
         let mut b = HashMap::new();
         b.insert("idr".into(), DEFAULT_BALANCE_IDR);
         b.insert("btc".into(), DEFAULT_BALANCE_BTC);
-        b.insert("eth".into(), DEFAULT_ETH);
-        b.insert("usdt".into(), DEFAULT_USDT);
         let initial = b.clone();
         Self {
             balances: b,
@@ -157,17 +153,19 @@ impl PaperTrader {
             amount,
             remaining: amount,
             order_type: "limit".into(),
-            status: "pending".into(),
+            status: "open".into(),
             created_at: now,
             fees_paid: 0.0,
             filled_price: 0.0,
-            total_spent: total,
+            total_spent: if side == "buy" { total } else { 0.0 },
         });
 
         let r = js_sys::Object::new();
         let _ = js_sys::Reflect::set(&r, &JsValue::from_str("success"), &JsValue::from_bool(true));
         let _ = js_sys::Reflect::set(&r, &JsValue::from_str("order_id"), &JsValue::from(id));
-        let _ = js_sys::Reflect::set(&r, &JsValue::from_str("status"), &JsValue::from_str("pending"));
+        let _ = js_sys::Reflect::set(&r, &JsValue::from_str("status"), &JsValue::from_str("open"));
+
+        self.state.trade_count += 1;
         Ok(r.into())
     }
 
@@ -177,7 +175,7 @@ impl PaperTrader {
             .map_err(|e| JsValue::from_str(&format!("Invalid market prices: {}", e)))?;
 
         let fill_ids: Vec<u64> = self.state.orders.iter()
-            .filter(|o| o.status == "pending")
+            .filter(|o| o.status == "open")
             .filter_map(|o| {
                 let current_price = prices.get(&o.pair)?;
                 let should_fill = match o.side.as_str() {
@@ -205,7 +203,7 @@ impl PaperTrader {
         let (base, quote, side, price, amount) = {
             let order = self.state.orders.iter().find(|o| o.id == order_id)
                 .ok_or_else(|| JsValue::from_str("Order not found"))?;
-            (order.pair.split('_').next().unwrap().to_string(),
+            (order.pair.split('_').next().unwrap_or("btc").to_string(),
              order.pair.split('_').last().unwrap_or("idr").to_string(),
              order.side.clone(),
              order.price,
@@ -216,6 +214,13 @@ impl PaperTrader {
         let fee = total * TAKER_FEE;
 
         if side == "buy" {
+            let quote_balance = self.state.balances.get(&quote).cloned().unwrap_or(0.0);
+            if quote_balance < fee {
+                return Err(JsValue::from_str(&format!(
+                    "Insufficient quote balance for fee: {} required, {} available",
+                    fee, quote_balance
+                )));
+            }
             *self.state.balances.entry(base.clone()).or_insert(0.0) += amount;
             *self.state.balances.entry(quote.clone()).or_insert(0.0) -= fee;
         } else {
@@ -230,7 +235,6 @@ impl PaperTrader {
         }
 
         self.state.total_fees_paid += fee;
-        self.state.trade_count += 1;
         Ok(())
     }
 
@@ -239,18 +243,18 @@ impl PaperTrader {
         let order = self.state.orders.iter().find(|o| o.id == order_id)
             .ok_or_else(|| JsValue::from_str("Order not found"))?;
 
-        if order.status != "pending" {
+        if order.status != "open" {
             return Err(JsValue::from_str(&format!("Order already {}", order.status)));
         }
 
-        let base = order.pair.split('_').next().unwrap_or("btc");
-        let quote = order.pair.split('_').last().unwrap_or("idr");
+        let base = order.pair.split('_').next().unwrap_or("btc").to_string();
+        let quote = order.pair.split('_').last().unwrap_or("idr").to_string();
         let refund = order.price * order.remaining;
 
         if order.side == "buy" {
-            *self.state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
+            *self.state.balances.entry(quote).or_insert(0.0) += refund;
         } else {
-            *self.state.balances.entry(base.to_string()).or_insert(0.0) += order.remaining;
+            *self.state.balances.entry(base).or_insert(0.0) += order.remaining;
         }
 
         if let Some(order) = self.state.orders.iter_mut().find(|o| o.id == order_id) {
@@ -267,12 +271,12 @@ impl PaperTrader {
     #[wasm_bindgen]
     pub fn get_status(&self) -> JsValue {
         let fc = self.state.orders.iter().filter(|o| o.status == "filled").count();
-        let pc = self.state.orders.iter().filter(|o| o.status == "pending").count();
+        let oc = self.state.orders.iter().filter(|o| o.status == "open").count();
         let cc = self.state.orders.iter().filter(|o| o.status == "cancelled").count();
         let r = js_sys::Object::new();
         let _ = js_sys::Reflect::set(&r, &JsValue::from_str("trade_count"), &JsValue::from(self.state.trade_count));
         let _ = js_sys::Reflect::set(&r, &JsValue::from_str("filled_count"), &JsValue::from(fc as u32));
-        let _ = js_sys::Reflect::set(&r, &JsValue::from_str("pending_count"), &JsValue::from(pc as u32));
+        let _ = js_sys::Reflect::set(&r, &JsValue::from_str("open_count"), &JsValue::from(oc as u32));
         let _ = js_sys::Reflect::set(&r, &JsValue::from_str("cancelled_count"), &JsValue::from(cc as u32));
         let _ = js_sys::Reflect::set(&r, &JsValue::from_str("total_fees_paid"), &JsValue::from(self.state.total_fees_paid));
         let _ = js_sys::Reflect::set(&r, &JsValue::from_str("total_orders"), &JsValue::from(self.state.orders.len() as u32));
@@ -300,8 +304,6 @@ impl PaperTrader {
             let mut b = HashMap::new();
             b.insert("idr".into(), DEFAULT_BALANCE_IDR);
             b.insert("btc".into(), DEFAULT_BALANCE_BTC);
-            b.insert("eth".into(), DEFAULT_ETH);
-            b.insert("usdt".into(), DEFAULT_USDT);
             self.state.initial_balances = Some(b);
         }
         Ok(self.get_state_js())
@@ -315,15 +317,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_topup() {
-        let mut state = PaperState::default();
-        assert_eq!(state.balances.get("idr"), Some(&100_000_000.0));
+    fn test_execute_fill_fee_check() {
+        let mut trader = PaperTrader::new();
+        // Clear balances to trigger error
+        trader.state.balances.clear();
+        trader.state.balances.insert("idr".into(), 0.0);
         
-        let currency = "idr".to_string();
-        let amount = 50000000.0;
-        let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
-        *balance += amount;
+        trader.state.orders.push(PaperOrder {
+            id: 1, pair: "btc_idr".into(), side: "buy".into(), price: 100_000.0,
+            amount: 1.0, remaining: 1.0, order_type: "limit".into(),
+            status: "open".into(), created_at: 0, fees_paid: 0.0,
+            filled_price: 0.0, total_spent: 0.0,
+        });
         
-        assert_eq!(state.balances.get("idr"), Some(&150_000_000.0));
+        let result = trader.execute_fill(1);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.as_string().unwrap().contains("Insufficient quote balance for fee"));
+    }
+
+    #[test]
+    fn test_execute_fill_malformed_pair() {
+        let mut trader = PaperTrader::new();
+        trader.state.orders.push(PaperOrder {
+            id: 1, pair: "btcidr".into(), // no underscore
+            side: "buy".into(), price: 100_000.0,
+            amount: 1.0, remaining: 1.0, order_type: "limit".into(),
+            status: "open".into(), created_at: 0, fees_paid: 0.0,
+            filled_price: 0.0, total_spent: 0.0,
+        });
+        
+        // This should not panic
+        let _ = trader.execute_fill(1);
     }
 }
