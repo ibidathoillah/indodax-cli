@@ -79,7 +79,8 @@ async fn shell() -> Result<CommandOutput> {
     let signer = creds.as_ref().map(|c| {
         crate::auth::Signer::new(c.api_key.as_str(), c.api_secret.as_str())
     });
-    let client = crate::client::IndodaxClient::new(signer);
+let client = crate::client::IndodaxClient::new(signer)?;
+    let client_ref = &client;
 
     loop {
         let line = rl.readline("indodax> ");
@@ -100,7 +101,7 @@ async fn shell() -> Result<CommandOutput> {
                             println!("Setup is only available from the command line, not inside the shell");
                             continue;
                         }
-                        match crate::dispatch(cli, &client, &mut config).await {
+                        match crate::dispatch(cli, client_ref, &mut config).await {
                             Ok(output) => println!("{}", output.render()),
                             Err(e) => {
                                 eprintln!("Error: {}", e);
@@ -112,7 +113,6 @@ async fn shell() -> Result<CommandOutput> {
             }
             Err(_) => break,
         }
-        let _ = rl.add_history_entry("");
     }
 
     let data = serde_json::json!({"status": "exited"});
