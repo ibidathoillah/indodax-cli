@@ -399,6 +399,11 @@
                 <p>Simulated trading environment with virtual balances to test strategies risk-free.</p>
             </div>
             <div class="feature">
+                <div class="feature-icon">🔔</div>
+                <h3>Price Alerts</h3>
+                <p>Set price alerts and monitor in real-time via WebSocket. Never miss a trading opportunity!</p>
+            </div>
+            <div class="feature">
                 <div class="feature-icon">🔐</div>
                 <h3>Secure Auth</h3>
                 <p>HMAC-SHA512 signing with 0600-permission config files and env variable support.</p>
@@ -581,6 +586,24 @@ indodax paper sell --pair btc_idr --price 600000000 --amount 0.05
 # Check status
 indodax paper balance
 indodax paper status</code></pre>
+    </div>
+</section>
+
+<section id="alerts">
+    <div class="container">
+        <h2>🔔 Price Alerts</h2>
+        <p>Set price alerts and get notified when conditions are met. Monitor in real-time via WebSocket.</p>
+        <pre><code># Price threshold alerts
+indodax alert add -p btc_idr --above 150000000
+indodax alert add -p btc_idr --below 50000000
+
+# Percentage change alerts
+indodax alert add -p btc_idr --percent-up 5
+indodax alert add -p btc_idr --percent-down 10
+
+# Real-time monitoring
+indodax alert watch
+indodax alert list</code></pre>
     </div>
 </section>
 

@@ -18,6 +18,7 @@ Track markets, execute trades, manage your portfolio, and stream real-time data 
 - **💰 Full Account Management** — Balances, open orders, order history, trade history, and transactions
 - **🛠️ Powerful Trading** — Place buy/sell orders, cancel orders, and set deadman switches
 - **🧪 Paper Trading** — Risk-free simulated trading environment to test strategies
+- **🔔 Price Alerts** — Set price alerts and monitor in real-time via WebSocket
 - **🔐 Secure Authentication** — HMAC-SHA512 API signing with multiple credential resolution methods
 - **📋 Flexible Output** — Human-friendly tables or machine-readable JSON
 - **🖥️ Interactive Shell** — Built-in REPL for exploratory usage
@@ -254,6 +255,23 @@ Options:
 | `indodax ws summary` | Stream 24h summary |
 | `indodax ws orders` | Stream private order updates |
 
+### Price Alerts
+
+> Set price alerts and monitor them in real-time via WebSocket. Never miss a trading opportunity!
+
+| Command | Description |
+|---------|-------------|
+| `indodax alert add -p <pair> --above <price>` | Alert when price goes above |
+| `indodax alert add -p <pair> --below <price>` | Alert when price goes below |
+| `indodax alert add -p <pair> --percent-up <%>` | Alert when price increases by % |
+| `indodax alert add -p <pair> --percent-down <%>` | Alert when price decreases by % |
+| `indodax alert list [--history]` | List all alerts |
+| `indodax alert cancel -i <id>` | Cancel specific alert |
+| `indodax alert cancel --all` | Cancel all alerts |
+| `indodax alert check [-p <pair>]` | Check alerts against current prices |
+| `indodax alert watch [-p <pair>]` | Monitor alerts in real-time (WebSocket) |
+| `indodax alert triggered` | Show triggered alerts |
+
 ### Paper Trading (Simulated)
 
 > Paper trading mirrors the live trade commands for easy switching between simulated and real trading.
@@ -364,6 +382,41 @@ indodax paper reset
 ```
 
 > **Tip:** Paper trading uses the same command structure as live trading. Switch between modes by replacing `trade` with `paper`.
+
+---
+
+## 🔔 Price Alerts
+
+Set price alerts and get notified when conditions are met. Alerts can be checked on-demand or monitored in real-time via WebSocket.
+
+```bash
+# Price threshold alerts
+indodax alert add -p btc_idr --above 150000000
+indodax alert add -p btc_idr --below 50000000
+
+# Percentage change alerts (based on current price)
+indodax alert add -p btc_idr --percent-up 5
+indodax alert add -p btc_idr --percent-down 10
+
+# Add note to alert
+indodax alert add -p btc_idr --above 200000000 -n "Take profit target"
+
+# List and manage alerts
+indodax alert list
+indodax alert list --history
+indodax alert cancel -i 1
+indodax alert cancel --all
+
+# One-time check (HTTP polling)
+indodax alert check
+indodax alert check -p btc_idr
+
+# Real-time monitoring (WebSocket)
+indodax alert watch
+indodax alert watch -p btc_idr
+```
+
+> **Tip:** Use `indodax alert watch` for real-time price monitoring. Alerts are stored in `~/.config/indodax/alerts.json`.
 
 ---
 
