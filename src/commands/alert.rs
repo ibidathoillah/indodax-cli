@@ -24,6 +24,10 @@ pub enum AlertCondition {
     Above { price: f64 },
     #[serde(rename = "below")]
     Below { price: f64 },
+    #[serde(rename = "change_up")]
+    ChangeUp { percent: f64, from_price: f64 },
+    #[serde(rename = "change_down")]
+    ChangeDown { percent: f64, from_price: f64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -44,6 +48,10 @@ pub enum AlertCommand {
         above: Option<f64>,
         #[arg(long, help = "Alert when price goes below this value")]
         below: Option<f64>,
+        #[arg(short = '%', long, help = "Alert when price increases by this percent")]
+        percent_up: Option<f64>,
+        #[arg(long, help = "Alert when price decreases by this percent")]
+        percent_down: Option<f64>,
         #[arg(short = 'n', long, help = "Note for this alert")]
         note: Option<String>,
     },
@@ -80,9 +88,9 @@ pub async fn execute(
     cmd: &AlertCommand,
 ) -> Result<CommandOutput> {
     match cmd {
-        AlertCommand::Add { pair, above, below, note } => {
+        AlertCommand::Add { pair, above, below, percent_up, percent_down, note } => {
             let pair = helpers::normalize_pair(pair);
-            alert_add(&pair, *above, *below, note.clone())
+            alert_add(&pair, *above, *below, *percent_up, *percent_down, note.clone(), client).await
         }
         AlertCommand::List { history } => alert_list(*history),
         AlertCommand::Cancel { id, all } => alert_cancel(*id, *all),
@@ -131,10 +139,27 @@ fn now_millis() -> u64 {
         .as_millis() as u64
 }
 
-fn alert_add(pair: &str, above: Option<f64>, below: Option<f64>, note: Option<String>) -> Result<CommandOutput> {
-    if above.is_none() && below.is_none() {
+async fn alert_add(
+    pair: &str,
+    above: Option<f64>,
+    below: Option<f64>,
+    percent_up: Option<f64>,
+    percent_down: Option<f64>,
+    note: Option<String>,
+    client: &IndodaxClient,
+) -> Result<CommandOutput> {
+    let condition_count = [above.is_some(), below.is_some(), percent_up.is_some(), percent_down.is_some()]
+        .iter().filter(|&&x| x).count();
+
+    if condition_count == 0 {
         return Err(anyhow::anyhow!(
-            "Must specify either --above or --below"
+            "Must specify one of: --above, --below, --percent-up, or --percent-down"
+        ));
+    }
+
+    if condition_count > 1 {
+        return Err(anyhow::anyhow!(
+            "Only one condition allowed per alert (--above, --below, --percent-up, --percent-down)"
         ));
     }
 
@@ -143,12 +168,24 @@ fn alert_add(pair: &str, above: Option<f64>, below: Option<f64>, note: Option<St
             return Err(anyhow::anyhow!("Price must be positive, got {}", price));
         }
         AlertCondition::Above { price }
-    } else {
-        let price = below.unwrap();
+    } else if let Some(price) = below {
         if price <= 0.0 {
             return Err(anyhow::anyhow!("Price must be positive, got {}", price));
         }
         AlertCondition::Below { price }
+    } else if let Some(percent) = percent_up {
+        if percent <= 0.0 || percent > 1000.0 {
+            return Err(anyhow::anyhow!("Percent must be between 0 and 1000, got {}", percent));
+        }
+        let from_price = fetch_price(client, pair).await?;
+        AlertCondition::ChangeUp { percent, from_price }
+    } else {
+        let percent = percent_down.unwrap();
+        if percent <= 0.0 || percent > 1000.0 {
+            return Err(anyhow::anyhow!("Percent must be between 0 and 1000, got {}", percent));
+        }
+        let from_price = fetch_price(client, pair).await?;
+        AlertCondition::ChangeDown { percent, from_price }
     };
 
     let mut alerts = load_alerts();
@@ -169,6 +206,8 @@ fn alert_add(pair: &str, above: Option<f64>, below: Option<f64>, note: Option<St
     let condition_str = match &alert.condition {
         AlertCondition::Above { price } => format!("above {}", format_number(*price)),
         AlertCondition::Below { price } => format!("below {}", format_number(*price)),
+        AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+        AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
     };
 
     let data = serde_json::json!({
@@ -220,6 +259,8 @@ fn alert_list(include_history: bool) -> Result<CommandOutput> {
         let condition_str = match &alert.condition {
             AlertCondition::Above { price } => format!("> {}", format_number(*price)),
             AlertCondition::Below { price } => format!("< {}", format_number(*price)),
+            AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
         };
 
         let mut row = vec![
@@ -328,6 +369,14 @@ async fn alert_check(
         let should_trigger = match &alert.condition {
             AlertCondition::Above { price: threshold } => price >= *threshold,
             AlertCondition::Below { price: threshold } => price <= *threshold,
+            AlertCondition::ChangeUp { percent, from_price } => {
+                let change = ((price - from_price) / from_price) * 100.0;
+                change >= *percent
+            }
+            AlertCondition::ChangeDown { percent, from_price } => {
+                let change = ((from_price - price) / from_price) * 100.0;
+                change >= *percent
+            }
         };
 
         if should_trigger {
@@ -355,12 +404,14 @@ async fn alert_check(
         let condition_str = match &alert.condition {
             AlertCondition::Above { price } => format!("> {}", format_number(*price)),
             AlertCondition::Below { price } => format!("< {}", format_number(*price)),
+            AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
         };
 
         rows.push(vec![
             alert.id.to_string(),
             alert.pair.clone(),
-            condition_str,
+            condition_str.clone(),
             format_number(current_price),
             chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap() as i64)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -399,12 +450,14 @@ fn alert_triggered() -> Result<CommandOutput> {
         let condition_str = match &alert.condition {
             AlertCondition::Above { price } => format!("> {}", format_number(*price)),
             AlertCondition::Below { price } => format!("< {}", format_number(*price)),
+            AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
         };
 
         rows.push(vec![
             alert.id.to_string(),
             alert.pair.clone(),
-            condition_str,
+            condition_str.clone(),
             chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap() as i64)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default(),
@@ -472,6 +525,15 @@ mod tests {
         let below = AlertCondition::Below { price: 50000000.0 };
         let json = serde_json::to_string(&below).unwrap();
         assert!(json.contains("\"type\":\"below\""));
+
+        let change_up = AlertCondition::ChangeUp { percent: 5.0, from_price: 100000000.0 };
+        let json = serde_json::to_string(&change_up).unwrap();
+        assert!(json.contains("\"type\":\"change_up\""));
+        assert!(json.contains("5.0"));
+
+        let change_down = AlertCondition::ChangeDown { percent: 10.0, from_price: 150000000.0 };
+        let json = serde_json::to_string(&change_down).unwrap();
+        assert!(json.contains("\"type\":\"change_down\""));
     }
 
     #[test]
