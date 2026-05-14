@@ -79,6 +79,27 @@ pub fn paper_tools() -> Vec<Tool> {
             serde_json::json!({}),
             vec![],
         ),
+        IndodaxMcp::tool_def(
+            "paper_fill",
+            "Fill an open paper order (provide order_id or set all=true)",
+            serde_json::json!({
+                "order_id":
+                    IndodaxMcp::num_param("Order ID to fill (optional if all=true)", false),
+                "price": IndodaxMcp::num_param("Fill price (defaults to order price)", false),
+                "all": IndodaxMcp::bool_param("Fill all open orders"),
+            }),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "paper_check_fills",
+            "Auto-fill open paper orders based on current market prices",
+            serde_json::json!({
+                "prices":
+                    IndodaxMcp::str_param("JSON object of market prices, e.g. {\"btc_idr\": 100000000}", false, None),
+                "fetch": IndodaxMcp::bool_param("Auto-fetch current market prices from Indodax API"),
+            }),
+            vec![],
+        ),
     ]
 }
 
@@ -86,8 +107,9 @@ impl IndodaxMcp {
     pub async fn handle_paper_init(&self, idr: Option<f64>, btc: Option<f64>) -> CallToolResult {
         let mut config = self.config.lock().await;
         let state = crate::commands::paper::init_paper_state(idr, btc);
-        let idr_str = crate::commands::paper::format_balance("idr", state.balances.get("idr").copied().unwrap_or(100_000_000.0));
-        let btc_str = crate::commands::paper::format_balance("btc", state.balances.get("btc").copied().unwrap_or(1.0));
+        use crate::commands::paper::{DEFAULT_BALANCE_BTC, DEFAULT_BALANCE_IDR};
+        let idr_str = crate::commands::paper::format_balance("idr", state.balances.get("idr").copied().unwrap_or(DEFAULT_BALANCE_IDR));
+        let btc_str = crate::commands::paper::format_balance("btc", state.balances.get("btc").copied().unwrap_or(DEFAULT_BALANCE_BTC));
         let msg = format!(
             "[PAPER] Paper trading initialized with {} IDR and {} BTC",
             idr_str, btc_str,
@@ -180,5 +202,50 @@ impl IndodaxMcp {
         let config = self.config.lock().await;
         let state = crate::commands::paper::PaperState::load(&config);
         Self::json_result(crate::commands::paper::paper_status_value(&state))
+    }
+
+    pub async fn handle_paper_fill(
+        &self,
+        order_id: Option<f64>,
+        fill_price: Option<f64>,
+        fill_all: bool,
+    ) -> CallToolResult {
+        let order_id = order_id.map(|v| v as u64);
+        let mut config = self.config.lock().await;
+        let mut state = crate::commands::paper::PaperState::load(&config);
+        match crate::commands::paper::paper_fill(&mut state, order_id, fill_price, fill_all) {
+            Ok(output) => {
+                if let Err(e) = state.save(&mut config) {
+                    return Self::error_from_indodax(&e);
+                }
+                Self::json_result(output.data)
+            }
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_paper_check_fills(
+        &self,
+        prices: Option<&str>,
+        fetch: bool,
+    ) -> CallToolResult {
+        let mut config = self.config.lock().await;
+        let mut state = crate::commands::paper::PaperState::load(&config);
+        match crate::commands::paper::paper_check_fills(
+            &self.client,
+            &mut state,
+            prices,
+            fetch,
+        )
+        .await
+        {
+            Ok(output) => {
+                if let Err(e) = state.save(&mut config) {
+                    return Self::error_from_indodax(&e);
+                }
+                Self::json_result(output.data)
+            }
+            Err(e) => Self::error_from_indodax(&e),
+        }
     }
 }

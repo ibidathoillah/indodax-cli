@@ -53,11 +53,11 @@ const BALANCE_EPSILON: f64 = 1e-8;
 impl IndodaxMcp {
     pub async fn handle_buy_order(&self, pair: &str, idr: f64, price: Option<f64>) -> CallToolResult {
         if idr <= 0.0 || !idr.is_finite() {
-            return Self::error_result(format!("IDR amount must be positive and finite, got {}", idr));
+            return Self::validation_error_result(format!("IDR amount must be positive and finite, got {}", idr));
         }
         if let Some(p) = price {
             if p <= 0.0 || !p.is_finite() {
-                return Self::error_result(format!("Price must be positive and finite, got {}", p));
+                return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
             }
         }
 
@@ -108,17 +108,17 @@ impl IndodaxMcp {
         order_type: &str,
     ) -> CallToolResult {
         if amount <= 0.0 || !amount.is_finite() {
-            return Self::error_result(format!("Amount must be positive and finite, got {}", amount));
+            return Self::validation_error_result(format!("Amount must be positive and finite, got {}", amount));
         }
         if let Some(p) = price {
             if p <= 0.0 || !p.is_finite() {
-                return Self::error_result(format!("Price must be positive and finite, got {}", p));
+                return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
             }
         }
 
         let base_currency = pair.split('_').next().unwrap_or_default();
         if base_currency.is_empty() {
-            return Self::error_result(format!("Invalid pair format: {}", pair));
+            return Self::validation_error_result(format!("Invalid pair format: {}", pair));
         }
 
         let info = match self.get_account_info().await {
@@ -146,12 +146,22 @@ impl IndodaxMcp {
         params.insert("type".to_string(), "sell".to_string());
         params.insert(base_currency.to_string(), amount.to_string());
 
-        let is_market = if order_type == "market" {
-            true
-        } else if order_type == "limit" {
-            false
-        } else {
-            price.is_none()
+        let is_market = match order_type {
+            "market" => true,
+            "limit" => {
+                if price.is_none() {
+                    return Self::validation_error_result(
+                        "price is required when order_type is 'limit'".into(),
+                    );
+                }
+                false
+            }
+            _ => {
+                return Self::validation_error_result(format!(
+                    "Invalid order_type '{}'. Must be 'limit' or 'market'.",
+                    order_type
+                ));
+            }
         };
 
         if let Some(p) = price {

@@ -7,8 +7,8 @@ use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-const DEFAULT_BALANCE_IDR: f64 = 100_000_000.0;
-const DEFAULT_BALANCE_BTC: f64 = 1.0;
+pub const DEFAULT_BALANCE_IDR: f64 = 100_000_000.0;
+pub const DEFAULT_BALANCE_BTC: f64 = 1.0;
 const TAKER_FEE: f64 = 0.0026; // 0.26% taker fee
 const BALANCE_EPSILON: f64 = 1e-8;
 
@@ -70,12 +70,18 @@ impl PaperState {
 
 impl PaperState {
     pub fn load(config: &IndodaxConfig) -> Self {
-        let result: Option<PaperState> = config
+        let mut result: Option<PaperState> = config
             .paper_balances
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok());
         if config.paper_balances.is_some() && result.is_none() {
             eprintln!("[PAPER] Warning: Failed to deserialize saved paper state, resetting to defaults");
+        }
+        if let Some(ref mut state) = result {
+            if state.initial_balances.is_none() {
+                eprintln!("[PAPER] Warning: Saved state predates balance tracking. Snapshotting current balances as initial (P&L will reflect only future changes).");
+                state.initial_balances = Some(state.balances.clone());
+            }
         }
         result.unwrap_or_default()
     }
@@ -137,6 +143,10 @@ pub enum PaperCommand {
     Orders {
         #[arg(short = 'p', long, help = "Filter by trading pair (e.g. btc_idr)")]
         pair: Option<String>,
+        #[arg(long, help = "Sort by field: id, pair, side, price, amount, remaining, status")]
+        sort_by: Option<String>,
+        #[arg(long, default_value = "asc", help = "Sort order: asc or desc")]
+        sort_order: Option<String>,
     },
 
     #[command(name = "cancel", about = "Cancel a paper order")]
@@ -159,7 +169,12 @@ pub enum PaperCommand {
     },
 
     #[command(name = "history", about = "Show paper trading history")]
-    History,
+    History {
+        #[arg(long, help = "Sort by field: id, pair, side, price, amount, status")]
+        sort_by: Option<String>,
+        #[arg(long, default_value = "desc", help = "Sort order: asc or desc (default: newest first)")]
+        sort_order: Option<String>,
+    },
 
     #[command(name = "check-fills", about = "Auto-fill open orders when market conditions match")]
     CheckFills {
@@ -208,15 +223,17 @@ async fn dispatch_paper(
             let pair = helpers::normalize_pair(pair);
             place_paper_order(state, &pair, "sell", *price, *amount)
         }
-        PaperCommand::Orders { pair } => {
+        PaperCommand::Orders { pair, sort_by, sort_order } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
-            paper_orders(state, pair.as_deref())
+            paper_orders(state, pair.as_deref(), sort_by.as_deref(), sort_order.as_deref())
         }
         PaperCommand::Cancel { order_id } => paper_cancel(state, *order_id),
         PaperCommand::CancelAll => paper_cancel_all(state),
         PaperCommand::Fill { order_id, price, all } => paper_fill(state, *order_id, *price, *all),
         PaperCommand::CheckFills { prices, fetch } => paper_check_fills(client, state, prices.as_deref(), *fetch).await,
-        PaperCommand::History => paper_history(state),
+        PaperCommand::History { sort_by, sort_order } => {
+            paper_history(state, sort_by.as_deref(), sort_order.as_deref())
+        }
         PaperCommand::Status => paper_status(state),
     }
 }
@@ -429,34 +446,20 @@ pub fn place_paper_order_idr(
         ));
     }
     let is_market = price.is_none();
+    if is_market {
+        return Err(IndodaxError::Other(
+            "[PAPER] Market buy via --idr requires a limit price (simulation cannot guess the fill price)".to_string()
+        ));
+    }
     let order_price = price.unwrap_or(0.0);
-    if !is_market && order_price <= 0.0 {
+    if order_price <= 0.0 {
         return Err(IndodaxError::Other(
             format!("[PAPER] Price must be positive, got {}", order_price)
         ));
     }
     let quote = pair.split('_').next_back().unwrap_or("idr");
-    let base = pair.split('_').next().unwrap_or(pair);
 
-    let amount = if is_market {
-        let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
-        if *quote_balance <= 0.0 {
-            return Err(IndodaxError::Other(
-                format!("[PAPER] Insufficient {} balance for market buy. Need positive balance, have {:.2}",
-                    quote.to_uppercase(), quote_balance)
-            ));
-        }
-        let amt = idr_amount / order_price.max(0.01);
-        let cost = amt * order_price;
-        if cost > *quote_balance {
-            let actual_amt = *quote_balance / order_price;
-            *quote_balance = 0.0;
-            actual_amt
-        } else {
-            *quote_balance -= cost;
-            amt
-        }
-    } else {
+    let amount = {
         let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
         if *quote_balance + BALANCE_EPSILON < idr_amount {
             return Err(IndodaxError::Other(
@@ -517,6 +520,7 @@ pub fn place_paper_order_idr(
         vec!["Status".into(), "open".into()],
     ];
 
+    let base = pair.split('_').next().unwrap_or("btc");
     Ok(CommandOutput::new(data, headers, rows)
         .with_addendum(format!("[PAPER] buy {} {} for {} IDR @ {} — open", amount, base, idr_amount, price_display)))
 }
@@ -558,13 +562,33 @@ fn execute_fill(
     Ok(())
 }
 
-fn paper_orders(state: &PaperState, filter_pair: Option<&str>) -> Result<CommandOutput, IndodaxError> {
-    let filtered: Vec<&PaperOrder> = state
+fn sort_paper_orders(orders: &mut Vec<&PaperOrder>, sort_by: Option<&str>, sort_order: Option<&str>) {
+    let desc = sort_order.map(|o| o == "desc" || o == "d").unwrap_or(false);
+    let by = sort_by.unwrap_or("id");
+    orders.sort_by(|a, b| {
+        let cmp = match by {
+            "id" => a.id.cmp(&b.id),
+            "pair" => a.pair.cmp(&b.pair),
+            "side" => a.side.cmp(&b.side),
+            "price" => a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal),
+            "amount" => a.amount.partial_cmp(&b.amount).unwrap_or(std::cmp::Ordering::Equal),
+            "remaining" => a.remaining.partial_cmp(&b.remaining).unwrap_or(std::cmp::Ordering::Equal),
+            "status" => a.status.cmp(&b.status),
+            _ => a.id.cmp(&b.id),
+        };
+        if desc { cmp.reverse() } else { cmp }
+    });
+}
+
+fn paper_orders(state: &PaperState, filter_pair: Option<&str>, sort_by: Option<&str>, sort_order: Option<&str>) -> Result<CommandOutput, IndodaxError> {
+    let mut filtered: Vec<&PaperOrder> = state
         .orders
         .iter()
         .filter(|o| o.status == "open")
         .filter(|o| filter_pair.map_or(true, |p| o.pair == p))
         .collect();
+
+    sort_paper_orders(&mut filtered, sort_by, sort_order);
 
     let headers = vec![
         "Order ID".into(), "Pair".into(), "Side".into(), "Price".into(),
@@ -620,7 +644,7 @@ fn paper_cancel_all(state: &mut PaperState) -> Result<CommandOutput, IndodaxErro
     Ok(CommandOutput::json(data).with_addendum(format!("[PAPER] Cancelled {} orders", count)))
 }
 
-fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<f64>, fill_all: bool) -> Result<CommandOutput, IndodaxError> {
+pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<f64>, fill_all: bool) -> Result<CommandOutput, IndodaxError> {
     if fill_all {
         let open_ids: Vec<u64> = state.orders.iter()
             .filter(|o| o.status == "open")
@@ -727,7 +751,10 @@ fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<
         .with_addendum(format!("[PAPER] Order {} filled at {}", order_id, price)))
 }
 
-fn paper_history(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
+fn paper_history(state: &PaperState, sort_by: Option<&str>, sort_order: Option<&str>) -> Result<CommandOutput, IndodaxError> {
+    let mut sorted: Vec<&PaperOrder> = state.orders.iter().collect();
+    sort_paper_orders(&mut sorted, sort_by, sort_order);
+
     let headers = vec![
         "Order ID".into(),
         "Pair".into(),
@@ -736,8 +763,7 @@ fn paper_history(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
         "Amount".into(),
         "Status".into(),
     ];
-    let rows: Vec<Vec<String>> = state
-        .orders
+    let rows: Vec<Vec<String>> = sorted
         .iter()
         .map(|o| {
             vec![
@@ -847,7 +873,7 @@ async fn fetch_market_prices(client: &IndodaxClient, state: &PaperState) -> Resu
     Ok(prices)
 }
 
-async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, prices: Option<&str>, fetch: bool) -> Result<CommandOutput, IndodaxError> {
+pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, prices: Option<&str>, fetch: bool) -> Result<CommandOutput, IndodaxError> {
     let market_prices: HashMap<String, f64> = if fetch {
         fetch_market_prices(client, state).await?
     } else if let Some(p) = prices {
@@ -1188,7 +1214,7 @@ mod tests {
     #[test]
     fn test_paper_orders_empty() {
         let state = PaperState::default();
-        let output = paper_orders(&state, None).unwrap();
+        let output = paper_orders(&state, None, None, None).unwrap();
         assert!(output.render().len() > 0);
     }
 
@@ -1198,7 +1224,7 @@ mod tests {
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "btc_idr", "sell", Some(110_000_000.0), 0.3).unwrap();
         
-        let output = paper_orders(&state, None).unwrap();
+        let output = paper_orders(&state, None, None, None).unwrap();
         let rendered = output.render();
         assert!(rendered.contains("btc_idr"));
     }
@@ -1209,7 +1235,7 @@ mod tests {
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "eth_idr", "buy", Some(10_000_000.0), 1.0).unwrap();
         
-        let output = paper_orders(&state, Some("btc_idr")).unwrap();
+        let output = paper_orders(&state, Some("btc_idr"), None, None).unwrap();
         let rendered = output.render();
         assert!(rendered.contains("btc_idr"));
         assert!(!rendered.contains("eth_idr"));
@@ -1274,7 +1300,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         
-        let output = paper_history(&state).unwrap();
+        let output = paper_history(&state, None, None).unwrap();
         assert!(output.render().len() > 0);
     }
 
@@ -1573,10 +1599,10 @@ mod tests {
         assert!(result.is_err());
 
         // Orders listing now only shows open orders
-        let output = paper_orders(&state, None).unwrap();
+        let output = paper_orders(&state, None, None, None).unwrap();
         assert!(!output.render().contains("filled"));
         // History should still show all orders
-        let history = paper_history(&state).unwrap();
+        let history = paper_history(&state, None, None).unwrap();
         assert!(history.render().contains("filled"));
     }
 

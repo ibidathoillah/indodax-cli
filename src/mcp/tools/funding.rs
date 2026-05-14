@@ -68,13 +68,13 @@ impl IndodaxMcp {
         network: Option<&str>,
     ) -> CallToolResult {
         if currency.is_empty() {
-            return Self::error_result("Missing required parameter: currency".into());
+            return Self::validation_error_result("Missing required parameter: currency".into());
         }
         if amount <= 0.0 || !amount.is_finite() {
-            return Self::error_result(format!("Amount must be positive and finite, got {}", amount));
+            return Self::validation_error_result(format!("Amount must be positive and finite, got {}", amount));
         }
         if address.is_empty() {
-            return Self::error_result("Missing required parameter: address".into());
+            return Self::validation_error_result("Missing required parameter: address".into());
         }
         let mut params = HashMap::new();
         params.insert("currency".to_string(), currency.to_string());

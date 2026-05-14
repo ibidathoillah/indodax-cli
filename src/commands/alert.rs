@@ -1,0 +1,487 @@
+use crate::client::IndodaxClient;
+use crate::commands::helpers;
+use crate::output::CommandOutput;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceAlert {
+    pub id: u64,
+    pub pair: String,
+    pub condition: AlertCondition,
+    pub created_at: u64,
+    pub triggered_at: Option<u64>,
+    pub status: AlertStatus,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum AlertCondition {
+    #[serde(rename = "above")]
+    Above { price: f64 },
+    #[serde(rename = "below")]
+    Below { price: f64 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertStatus {
+    Active,
+    Triggered,
+    Cancelled,
+}
+
+#[derive(Debug, clap::Subcommand)]
+pub enum AlertCommand {
+    #[command(name = "add", about = "Add a price alert")]
+    Add {
+        #[arg(short = 'p', long, help = "Trading pair (e.g. btc_idr)")]
+        pair: String,
+        #[arg(long, help = "Alert when price goes above this value")]
+        above: Option<f64>,
+        #[arg(long, help = "Alert when price goes below this value")]
+        below: Option<f64>,
+        #[arg(short = 'n', long, help = "Note for this alert")]
+        note: Option<String>,
+    },
+
+    #[command(name = "list", about = "List all price alerts")]
+    List {
+        #[arg(long, help = "Include triggered and cancelled alerts")]
+        history: bool,
+    },
+
+    #[command(name = "cancel", about = "Cancel a price alert")]
+    Cancel {
+        #[arg(short = 'i', long, help = "Alert ID to cancel")]
+        id: Option<u64>,
+        #[arg(long, help = "Cancel all alerts")]
+        all: bool,
+    },
+
+    #[command(name = "check", about = "Check alerts against current prices")]
+    Check {
+        #[arg(short = 'i', long, help = "Check specific alert by ID")]
+        id: Option<u64>,
+        #[arg(short = 'p', long, help = "Filter by pair (e.g. btc_idr)")]
+        pair: Option<String>,
+    },
+
+    #[command(name = "triggered", about = "Show triggered alerts")]
+    Triggered,
+}
+
+pub async fn execute(
+    client: &IndodaxClient,
+    _creds: &Option<crate::config::ResolvedCredentials>,
+    cmd: &AlertCommand,
+) -> Result<CommandOutput> {
+    match cmd {
+        AlertCommand::Add { pair, above, below, note } => {
+            let pair = helpers::normalize_pair(pair);
+            alert_add(&pair, *above, *below, note.clone())
+        }
+        AlertCommand::List { history } => alert_list(*history),
+        AlertCommand::Cancel { id, all } => alert_cancel(*id, *all),
+        AlertCommand::Check { id, pair } => {
+            let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
+            alert_check(client, *id, pair.as_deref()).await
+        }
+        AlertCommand::Triggered => alert_triggered(),
+    }
+}
+
+pub fn alerts_path() -> PathBuf {
+    let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    let indodax_dir = config_dir.join("indodax");
+    fs::create_dir_all(&indodax_dir).ok();
+    indodax_dir.join("alerts.json")
+}
+
+fn load_alerts() -> Vec<PriceAlert> {
+    let path = alerts_path();
+    if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    }
+}
+
+fn save_alerts(alerts: &[PriceAlert]) -> Result<()> {
+    let path = alerts_path();
+    let content = serde_json::to_string_pretty(alerts)?;
+    fs::write(path, content)?;
+    Ok(())
+}
+
+fn get_next_id(alerts: &[PriceAlert]) -> u64 {
+    alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn alert_add(pair: &str, above: Option<f64>, below: Option<f64>, note: Option<String>) -> Result<CommandOutput> {
+    if above.is_none() && below.is_none() {
+        return Err(anyhow::anyhow!(
+            "Must specify either --above or --below"
+        ));
+    }
+
+    let condition = if let Some(price) = above {
+        if price <= 0.0 {
+            return Err(anyhow::anyhow!("Price must be positive, got {}", price));
+        }
+        AlertCondition::Above { price }
+    } else {
+        let price = below.unwrap();
+        if price <= 0.0 {
+            return Err(anyhow::anyhow!("Price must be positive, got {}", price));
+        }
+        AlertCondition::Below { price }
+    };
+
+    let mut alerts = load_alerts();
+    let id = get_next_id(&alerts);
+    let alert = PriceAlert {
+        id,
+        pair: pair.to_string(),
+        condition,
+        created_at: now_millis(),
+        triggered_at: None,
+        status: AlertStatus::Active,
+        note,
+    };
+
+    alerts.push(alert.clone());
+    save_alerts(&alerts)?;
+
+    let condition_str = match &alert.condition {
+        AlertCondition::Above { price } => format!("above {}", format_number(*price)),
+        AlertCondition::Below { price } => format!("below {}", format_number(*price)),
+    };
+
+    let data = serde_json::json!({
+        "status": "ok",
+        "id": id,
+        "pair": pair,
+        "condition": condition_str,
+        "created_at": alert.created_at,
+    });
+
+    let headers = vec!["Field".into(), "Value".into()];
+    let rows = vec![
+        vec!["Alert ID".into(), id.to_string()],
+        vec!["Pair".into(), pair.to_string()],
+        vec!["Condition".into(), condition_str.clone()],
+        vec!["Created".into(), chrono::DateTime::from_timestamp_millis(alert.created_at as i64)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_default()],
+    ];
+
+    Ok(CommandOutput::new(data, headers, rows)
+        .with_addendum(format!("[ALERT] Created {} alert for {} @ {}", id, pair, condition_str)))
+}
+
+fn alert_list(include_history: bool) -> Result<CommandOutput> {
+    let alerts = load_alerts();
+
+    let filtered: Vec<&PriceAlert> = if include_history {
+        alerts.iter().collect()
+    } else {
+        alerts.iter().filter(|a| a.status == AlertStatus::Active).collect()
+    };
+
+    if filtered.is_empty() {
+        return Ok(CommandOutput::json(serde_json::json!({
+            "status": "ok",
+            "message": if include_history { "No alerts" } else { "No active alerts" },
+            "alerts": [],
+        })));
+    }
+
+    let mut headers = vec!["ID".into(), "Pair".into(), "Condition".into(), "Status".into(), "Created".into()];
+    if include_history {
+        headers.push("Triggered".into());
+    }
+
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for alert in &filtered {
+        let condition_str = match &alert.condition {
+            AlertCondition::Above { price } => format!("> {}", format_number(*price)),
+            AlertCondition::Below { price } => format!("< {}", format_number(*price)),
+        };
+
+        let mut row = vec![
+            alert.id.to_string(),
+            alert.pair.clone(),
+            condition_str.clone(),
+            format!("{:?}", alert.status),
+            chrono::DateTime::from_timestamp_millis(alert.created_at as i64)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_default(),
+        ];
+
+        if include_history {
+            let triggered = alert.triggered_at.map(|t| {
+                chrono::DateTime::from_timestamp_millis(t as i64)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_default()
+            }).unwrap_or_else(|| "-".to_string());
+            row.push(triggered);
+        }
+
+        rows.push(row);
+    }
+
+    let data = serde_json::json!({
+        "status": "ok",
+        "count": filtered.len(),
+    });
+
+    Ok(CommandOutput::new(data, headers, rows)
+        .with_addendum(format!("[ALERT] {} alert(s)", filtered.len())))
+}
+
+fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> {
+    let mut alerts = load_alerts();
+
+    if cancel_all {
+        let count = alerts.iter().filter(|a| a.status == AlertStatus::Active).count();
+        for alert in alerts.iter_mut() {
+            if alert.status == AlertStatus::Active {
+                alert.status = AlertStatus::Cancelled;
+            }
+        }
+        save_alerts(&alerts)?;
+
+        return Ok(CommandOutput::json(serde_json::json!({
+            "status": "ok",
+            "message": format!("Cancelled {} alert(s)", count),
+            "cancelled": count,
+        })).with_addendum(format!("[ALERT] Cancelled {} alert(s)", count)));
+    }
+
+    if let Some(target_id) = id {
+        let alert = alerts.iter_mut().find(|a| a.id == target_id);
+        match alert {
+            Some(a) if a.status == AlertStatus::Active => {
+                a.status = AlertStatus::Cancelled;
+                save_alerts(&alerts)?;
+
+                Ok(CommandOutput::json(serde_json::json!({
+                    "status": "ok",
+                    "message": format!("Cancelled alert {}", target_id),
+                    "id": target_id,
+                })).with_addendum(format!("[ALERT] Cancelled alert {}", target_id)))
+            }
+            Some(_) => Err(anyhow::anyhow!("Alert {} is already cancelled or triggered", target_id)),
+            None => Err(anyhow::anyhow!("Alert {} not found", target_id)),
+        }
+    } else {
+        Err(anyhow::anyhow!("Must specify --id or --all"))
+    }
+}
+
+async fn alert_check(
+    client: &IndodaxClient,
+    id: Option<u64>,
+    pair_filter: Option<&str>,
+) -> Result<CommandOutput> {
+    let mut alerts = load_alerts();
+
+    let to_check: Vec<&mut PriceAlert> = if let Some(target_id) = id {
+        alerts.iter_mut().filter(|a| a.id == target_id && a.status == AlertStatus::Active).collect()
+    } else {
+        let filter = pair_filter.unwrap_or("*");
+        alerts.iter_mut()
+            .filter(|a| a.status == AlertStatus::Active && (filter == "*" || a.pair == filter))
+            .collect()
+    };
+
+    if to_check.is_empty() {
+        return Ok(CommandOutput::json(serde_json::json!({
+            "status": "ok",
+            "message": "No active alerts to check",
+            "triggered": [],
+        })));
+    }
+
+    let mut triggered_alerts: Vec<PriceAlert> = Vec::new();
+
+    for alert in to_check {
+        let price = match fetch_price(client, &alert.pair).await {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        let should_trigger = match &alert.condition {
+            AlertCondition::Above { price: threshold } => price >= *threshold,
+            AlertCondition::Below { price: threshold } => price <= *threshold,
+        };
+
+        if should_trigger {
+            alert.status = AlertStatus::Triggered;
+            alert.triggered_at = Some(now_millis());
+            triggered_alerts.push(alert.clone());
+        }
+    }
+
+    save_alerts(&alerts)?;
+
+    if triggered_alerts.is_empty() {
+        return Ok(CommandOutput::json(serde_json::json!({
+            "status": "ok",
+            "message": "No alerts triggered",
+            "triggered": [],
+        })).with_addendum("[ALERT] No alerts triggered"));
+    }
+
+    let headers = vec!["ID".into(), "Pair".into(), "Condition".into(), "Price".into(), "Triggered At".into()];
+    let mut rows: Vec<Vec<String>> = Vec::new();
+
+    for alert in &triggered_alerts {
+        let current_price = fetch_price(client, &alert.pair).await.unwrap_or(0.0);
+        let condition_str = match &alert.condition {
+            AlertCondition::Above { price } => format!("> {}", format_number(*price)),
+            AlertCondition::Below { price } => format!("< {}", format_number(*price)),
+        };
+
+        rows.push(vec![
+            alert.id.to_string(),
+            alert.pair.clone(),
+            condition_str,
+            format_number(current_price),
+            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap() as i64)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_default(),
+        ]);
+    }
+
+    let data = serde_json::json!({
+        "status": "ok",
+        "triggered": triggered_alerts,
+        "count": triggered_alerts.len(),
+    });
+
+    Ok(CommandOutput::new(data, headers, rows)
+        .with_addendum(format!("[ALERT] {} alert(s) triggered!", triggered_alerts.len())))
+}
+
+fn alert_triggered() -> Result<CommandOutput> {
+    let alerts = load_alerts();
+    let triggered: Vec<&PriceAlert> = alerts.iter()
+        .filter(|a| a.status == AlertStatus::Triggered)
+        .collect();
+
+    if triggered.is_empty() {
+        return Ok(CommandOutput::json(serde_json::json!({
+            "status": "ok",
+            "message": "No triggered alerts",
+            "count": 0,
+        })));
+    }
+
+    let headers = vec!["ID".into(), "Pair".into(), "Condition".into(), "Triggered At".into()];
+    let mut rows: Vec<Vec<String>> = Vec::new();
+
+    for alert in &triggered {
+        let condition_str = match &alert.condition {
+            AlertCondition::Above { price } => format!("> {}", format_number(*price)),
+            AlertCondition::Below { price } => format!("< {}", format_number(*price)),
+        };
+
+        rows.push(vec![
+            alert.id.to_string(),
+            alert.pair.clone(),
+            condition_str,
+            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap() as i64)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_default(),
+        ]);
+    }
+
+    Ok(CommandOutput::new(
+        serde_json::json!({"status": "ok", "count": triggered.len()}),
+        headers,
+        rows,
+    ).with_addendum(format!("[ALERT] {} triggered alert(s)", triggered.len())))
+}
+
+async fn fetch_price(client: &IndodaxClient, pair: &str) -> Result<f64> {
+    let response: serde_json::Value = client.public_get(&format!("/api/ticker/{}", pair)).await?;
+
+    let price = response.get("ticker")
+        .and_then(|t| t.get("last"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<f64>().ok())
+        .or_else(|| {
+            response.get("ticker")
+                .and_then(|t| t.get("last"))
+                .and_then(|v| v.as_f64())
+        })
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse price for {}", pair))?;
+
+    Ok(price)
+}
+
+fn format_number(n: f64) -> String {
+    if n >= 1_000_000_000.0 {
+        format!("{:.2}B", n / 1_000_000_000.0)
+    } else if n >= 1_000_000.0 {
+        format!("{:.2}M", n / 1_000_000.0)
+    } else if n >= 1_000.0 {
+        format!("{:.2}K", n / 1_000.0)
+    } else if n >= 1.0 {
+        format!("{:.2}", n)
+    } else {
+        format!("{:.8}", n)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_number() {
+        assert_eq!(format_number(1_500_000_000.0), "1.50B");
+        assert_eq!(format_number(100_000_000.0), "100.00M");
+        assert_eq!(format_number(50_000.0), "50.00K");
+        assert_eq!(format_number(1_000.0), "1.00K");
+        assert_eq!(format_number(100.0), "100.00");
+        assert_eq!(format_number(0.00001), "0.00001000");
+    }
+
+    #[test]
+    fn test_alert_condition_serialization() {
+        let above = AlertCondition::Above { price: 100000000.0 };
+        let json = serde_json::to_string(&above).unwrap();
+        assert!(json.contains("\"type\":\"above\""));
+
+        let below = AlertCondition::Below { price: 50000000.0 };
+        let json = serde_json::to_string(&below).unwrap();
+        assert!(json.contains("\"type\":\"below\""));
+    }
+
+    #[test]
+    fn test_alert_status_serialization() {
+        let active = AlertStatus::Active;
+        let json = serde_json::to_string(&active).unwrap();
+        assert_eq!(json, "\"active\"");
+
+        let triggered = AlertStatus::Triggered;
+        let json = serde_json::to_string(&triggered).unwrap();
+        assert_eq!(json, "\"triggered\"");
+    }
+}

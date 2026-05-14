@@ -1,4 +1,5 @@
 pub mod account;
+pub mod alert;
 pub mod auth;
 pub mod funding;
 pub mod helpers;

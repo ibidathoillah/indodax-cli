@@ -319,19 +319,19 @@ async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
                 id.clone(),
                 tx_type.into(),
                 helpers::value_to_string(
-                    priv_get(entry, &["currency", "asset", "coin"]),
+                    priv_get(&entry, &["currency", "asset", "coin"]),
                 ),
                 helpers::value_to_string(
-                    priv_get(entry, &["amount", "value"]),
+                    priv_get(&entry, &["amount", "value"]),
                 ),
                 helpers::value_to_string(
-                    priv_get(entry, &["fee", "withdraw_fee"]),
+                    priv_get(&entry, &["fee", "withdraw_fee"]),
                 ),
                 helpers::value_to_string(
-                    priv_get(entry, &["status", "state"]),
+                    priv_get(&entry, &["status", "state"]),
                 ),
                 helpers::value_to_string(
-                    priv_get(entry, &["submit_time", "timestamp", "time", "submitted"]),
+                    priv_get(&entry, &["submit_time", "timestamp", "time", "submitted"]),
                 ),
             ]);
         }

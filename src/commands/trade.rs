@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::output::CommandOutput;
@@ -53,6 +55,8 @@ pub enum TradeCommand {
     CancelAll {
         #[arg(short, long, help = "Only cancel orders for this trading pair (e.g. btc_idr)")]
         pair: Option<String>,
+        #[arg(long, help = "Skip confirmation prompt (required in non-interactive mode)")]
+        force: bool,
     },
 
     #[command(name = "countdown", about = "Start deadman switch countdown")]
@@ -84,9 +88,9 @@ pub async fn execute(
         TradeCommand::CancelByClientId { client_order_id } => {
             cancel_by_client_id(client, client_order_id).await
         }
-        TradeCommand::CancelAll { pair } => {
+        TradeCommand::CancelAll { pair, force } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
-            cancel_all_orders(client, pair.as_deref()).await
+            cancel_all_orders(client, pair.as_deref(), *force).await
         }
         TradeCommand::CountdownCancelAll { pair, countdown_time } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
@@ -275,8 +279,14 @@ async fn cancel_by_client_id(
 async fn cancel_all_orders(
     client: &IndodaxClient,
     pair: Option<&str>,
+    force: bool,
 ) -> Result<CommandOutput> {
-    if pair.is_none() {
+    if pair.is_none() && !force {
+        if !std::io::stdin().is_terminal() {
+            return Err(anyhow::anyhow!(
+                "Non-interactive mode detected. Use --force to cancel all orders without a pair filter."
+            ));
+        }
         use dialoguer::Confirm;
         let confirmed = Confirm::new()
             .with_prompt("No --pair filter specified. This will cancel ALL orders across ALL pairs. Continue?")
@@ -301,6 +311,21 @@ async fn cancel_all_orders(
     let mut failed_ids: Vec<String> = Vec::new();
 
     if let serde_json::Value::Object(orders_map) = orders {
+        let total = orders_map.len();
+        let show_progress = std::io::stderr().is_terminal();
+        let pb = if show_progress {
+            let pb = indicatif::ProgressBar::new(total as u64);
+            pb.set_style(
+                indicatif::ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{bar:40}] {pos}/{len} orders cancelled")
+                    .unwrap()
+                    .progress_chars("=> "),
+            );
+            pb.enable_steady_tick(std::time::Duration::from_millis(100));
+            Some(pb)
+        } else {
+            None
+        };
         for (order_id, order_val) in orders_map {
             let order_pair = helpers::value_to_string(
                 order_val.get("pair")
@@ -322,6 +347,12 @@ async fn cancel_all_orders(
                 Ok(_) => cancelled_ids.push(order_id.clone()),
                 Err(e) => failed_ids.push(format!("{} ({})", order_id, e)),
             }
+            if let Some(ref pb) = pb {
+                pb.inc(1);
+            }
+        }
+        if let Some(pb) = pb {
+            pb.finish_and_clear();
         }
     }
 
@@ -395,6 +426,7 @@ mod tests {
         };
         let _cmd5 = TradeCommand::CancelAll { 
             pair: Some("btc_idr".into()),
+            force: false,
         };
         let _cmd6 = TradeCommand::CountdownCancelAll { 
             pair: Some("btc_idr".into()), 
@@ -468,10 +500,12 @@ mod tests {
     fn test_trade_cancel_all_parse() {
         let cmd = TradeCommand::CancelAll { 
             pair: Some("btc_idr".into()),
+            force: false,
         };
         match cmd {
-            TradeCommand::CancelAll { pair } => {
+            TradeCommand::CancelAll { pair, force } => {
                 assert_eq!(pair, Some("btc_idr".into()));
+                assert!(!force);
             }
             _ => assert!(false, "Expected CancelAll command, got {:?}", cmd),
         }
@@ -481,10 +515,12 @@ mod tests {
     fn test_trade_cancel_all_no_pair_filter() {
         let cmd = TradeCommand::CancelAll { 
             pair: None,
+            force: false,
         };
         match cmd {
-            TradeCommand::CancelAll { pair } => {
+            TradeCommand::CancelAll { pair, force } => {
                 assert!(pair.is_none());
+                assert!(!force);
             }
             _ => assert!(false, "Expected CancelAll command, got {:?}", cmd),
         }

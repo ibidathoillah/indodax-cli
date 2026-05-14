@@ -139,6 +139,17 @@ impl IndodaxMcp {
         )])
     }
 
+    pub fn validation_error_result(text: String) -> CallToolResult {
+        let envelope = serde_json::json!({
+            "error": true,
+            "message": text,
+            "error_type": "validation_error",
+        });
+        CallToolResult::error(vec![Content::text(
+            serde_json::to_string_pretty(&envelope).unwrap_or(text),
+        )])
+    }
+
     pub fn error_from_indodax(err: &IndodaxError) -> CallToolResult {
         let envelope = serde_json::json!({
             "error": true,
@@ -222,6 +233,41 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             }
             "price_increments" => self.handle_price_increments().await,
 
+            // Trade
+            "buy_order" => {
+                let acknowledged = Self::get_bool(&args, "acknowledged");
+                if let Err(msg) =
+                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
+                {
+                    return Ok(Self::error_result(msg));
+                }
+                let pair = helpers::normalize_pair(
+                    &Self::get_str(&args, "pair").unwrap_or_default()
+                );
+                let idr = Self::get_num(&args, "idr").unwrap_or(0.0);
+                let price = Self::get_num(&args, "price");
+                self.handle_buy_order(&pair, idr, price).await
+            }
+            "sell_order" => {
+                let acknowledged = Self::get_bool(&args, "acknowledged");
+                if let Err(msg) =
+                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
+                {
+                    return Ok(Self::error_result(msg));
+                }
+                let pair = helpers::normalize_pair(
+                    &Self::get_str(&args, "pair").unwrap_or_default()
+                );
+                let price = Self::get_num(&args, "price");
+                let amount = match Self::get_num(&args, "amount") {
+                    Some(v) if v > 0.0 => v,
+                    Some(v) => return Ok(Self::validation_error_result(format!("Amount must be positive, got {}", v))),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: amount".into())),
+                };
+                let order_type = Self::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
+                self.handle_sell_order(&pair, price, amount, &order_type).await
+            }
+
             // Account
             "account_info" => self.handle_account_info().await,
             "balance" => self.handle_balance().await,
@@ -247,18 +293,19 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let order_id = match Self::get_num(&args, "order_id") {
                     Some(v) => {
                         if v.fract() != 0.0 {
-                            return Ok(Self::error_result(format!("order_id must be a whole number, got {}", v)));
+                            return Ok(Self::validation_error_result(format!("order_id must be a whole number, got {}", v)));
                         }
                         v
                     }
-                    None => return Ok(Self::error_result("Missing required parameter: order_id".into())),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: order_id".into())),
                 };
                 let pair = match Self::get_str(&args, "pair") {
                     Some(v) => helpers::normalize_pair(&v),
-                    None => return Ok(Self::error_result("Missing required parameter: pair".into())),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: pair".into())),
                 };
                 self.handle_get_order(order_id, &pair).await
             }
+            "trans_history" => self.handle_trans_history().await,
             "cancel_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
                 if let Err(msg) =
@@ -269,15 +316,15 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let order_id = match Self::get_num(&args, "order_id") {
                     Some(v) => {
                         if v.fract() != 0.0 {
-                            return Ok(Self::error_result(format!("order_id must be a whole number, got {}", v)));
+                            return Ok(Self::validation_error_result(format!("order_id must be a whole number, got {}", v)));
                         }
                         v
                     }
-                    None => return Ok(Self::error_result("Missing required parameter: order_id".into())),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: order_id".into())),
                 };
                 let pair = match Self::get_str(&args, "pair") {
                     Some(v) => helpers::normalize_pair(&v),
-                    None => return Ok(Self::error_result("Missing required parameter: pair".into())),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: pair".into())),
                 };
                 let order_type = Self::get_str(&args, "order_type").unwrap_or_default();
                 self.handle_cancel_order(order_id, &pair, &order_type).await
@@ -330,8 +377,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let price = Self::get_num(&args, "price");
                 let amount = match Self::get_num(&args, "amount") {
                     Some(v) if v > 0.0 => v,
-                    Some(v) => return Ok(Self::error_result(format!("Amount must be positive, got {}", v))),
-                    None => return Ok(Self::error_result("Missing required parameter: amount".into())),
+                    Some(v) => return Ok(Self::validation_error_result(format!("Amount must be positive, got {}", v))),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: amount".into())),
                 };
                 let side = if name == "paper_buy" {
                     "buy"
@@ -345,17 +392,28 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let order_id = match Self::get_num(&args, "order_id") {
                     Some(v) => {
                         if v.fract() != 0.0 {
-                            return Ok(Self::error_result(format!("order_id must be a whole number, got {}", v)));
+                            return Ok(Self::validation_error_result(format!("order_id must be a whole number, got {}", v)));
                         }
                         v as u64
                     }
-                    None => return Ok(Self::error_result("Missing required parameter: order_id".into())),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: order_id".into())),
                 };
                 self.handle_paper_cancel(order_id).await
             }
             "paper_cancel_all" => self.handle_paper_cancel_all().await,
             "paper_history" => self.handle_paper_history().await,
             "paper_status" => self.handle_paper_status().await,
+            "paper_fill" => {
+                let order_id = Self::get_num(&args, "order_id");
+                let price = Self::get_num(&args, "price");
+                let all = Self::get_bool(&args, "all");
+                self.handle_paper_fill(order_id, price, all).await
+            }
+            "paper_check_fills" => {
+                let prices = Self::get_str(&args, "prices");
+                let fetch = Self::get_bool(&args, "fetch");
+                self.handle_paper_check_fills(prices.as_deref(), fetch).await
+            }
 
             // Auth
             "auth_show" => self.handle_auth_show().await,
@@ -528,6 +586,15 @@ fn test_mcp() -> IndodaxMcp {
     fn test_error_result_contains_error() {
         let result = IndodaxMcp::error_result("something failed".into());
         assert_eq!(result.is_error, Some(true));
+    }
+
+    #[test]
+    fn test_validation_error_result_contains_validation_type() {
+        let result = IndodaxMcp::validation_error_result("bad input".into());
+        assert_eq!(result.is_error, Some(true));
+        let content = &result.content;
+        let text = content.first().and_then(|c| c.as_text()).map(|t| t.text.as_str()).unwrap_or("");
+        assert!(text.contains("validation_error"));
     }
 
     #[test]

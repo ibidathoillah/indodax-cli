@@ -114,7 +114,7 @@ impl IndodaxMcp {
         let start = now - helpers::ONE_DAY_MS;
         let limit_val = match limit {
             Some(v) if v.fract() != 0.0 || v <= 0.0 => {
-                return Self::error_result(format!("limit must be a positive whole number, got {}", v));
+                return Self::validation_error_result(format!("limit must be a positive whole number, got {}", v));
             }
             Some(v) => v as u32,
             None => 100,
@@ -141,7 +141,7 @@ impl IndodaxMcp {
         let start = now - helpers::ONE_DAY_MS;
         let limit_val = match limit {
             Some(v) if v.fract() != 0.0 || v <= 0.0 => {
-                return Self::error_result(format!("limit must be a positive whole number, got {}", v));
+                return Self::validation_error_result(format!("limit must be a positive whole number, got {}", v));
             }
             Some(v) => v as u32,
             None => 100,

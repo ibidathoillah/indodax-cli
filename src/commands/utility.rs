@@ -26,7 +26,7 @@ pub async fn execute(
 async fn setup() -> Result<CommandOutput> {
     use dialoguer::{Confirm, Input, Password};
 
-    println!("=== Indodax CLI Setup Wizard ===\n");
+    eprintln!("=== Indodax CLI Setup Wizard ===\n");
 
     let api_key: String = Input::new()
         .with_prompt("Enter your Indodax API key")
@@ -54,7 +54,7 @@ async fn setup() -> Result<CommandOutput> {
             config.callback_url = Some(callback_url);
         }
         config.save()?;
-        println!("\nConfiguration saved to {:?}", crate::config::IndodaxConfig::config_path());
+        eprintln!("\nConfiguration saved to {:?}", crate::config::IndodaxConfig::config_path());
     }
 
     let data = serde_json::json!({
@@ -119,44 +119,9 @@ let client = crate::client::IndodaxClient::new(signer)?;
     Ok(CommandOutput::json(data))
 }
 
-/// Splits a shell-style command line into argv-like tokens.
+/// Splits a shell-style command line into argv-like tokens using shlex.
 fn shell_parse(input: &str) -> Vec<String> {
-    let mut parts: Vec<String> = Vec::new();
-    let mut current = String::new();
-    let mut in_quote = false;
-    let mut has_token = false;
-    let mut chars = input.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            '"' => {
-                in_quote = !in_quote;
-                has_token = true;
-            }
-            '\\' if in_quote => match chars.peek() {
-                Some('"') | Some('\\') => {
-                    current.push(chars.next().unwrap());
-                }
-                _ => current.push(ch),
-            },
-            c if c.is_whitespace() && !in_quote => {
-                if has_token {
-                    parts.push(std::mem::take(&mut current));
-                    has_token = false;
-                }
-            }
-            c => {
-                current.push(c);
-                has_token = true;
-            }
-        }
-    }
-
-    if has_token {
-        parts.push(current);
-    }
-
-    parts
+    shlex::split(input).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -242,9 +207,10 @@ mod tests {
     }
 
     #[test]
-    fn test_shell_parse_unclosed_quote_keeps_token() {
+    fn test_shell_parse_unclosed_quote_returns_empty() {
         let result = shell_parse(r#"foo "bar baz"#);
-        assert_eq!(result, vec!["foo", "bar baz"]);
+        // shlex returns None on parse error (unclosed quotes), unwrap_or_default gives empty vec
+        assert!(result.is_empty());
     }
 
     #[test]

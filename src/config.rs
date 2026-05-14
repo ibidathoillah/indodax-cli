@@ -64,10 +64,6 @@ impl IndodaxConfig {
             Some(dir) => dir,
             None => {
                 let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                eprintln!(
-                    "Warning: Could not determine user config directory. Falling back to current directory: {}",
-                    cwd.display()
-                );
                 cwd
             }
         }
@@ -93,6 +89,12 @@ impl IndodaxConfig {
 
     pub fn save(&self) -> Result<(), anyhow::Error> {
         let dir = Self::config_dir();
+        if dirs::config_dir().is_none() {
+            eprintln!(
+                "Warning: Could not determine user config directory. Falling back to current directory: {}",
+                dir.parent().unwrap_or(&dir).display()
+            );
+        }
         fs::create_dir_all(&dir)?;
         let path = Self::config_path();
         let content = toml::to_string_pretty(self)?;

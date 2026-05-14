@@ -6,7 +6,7 @@
 
 - [x] **MCP `handle_withdraw` `request_id` still hardcoded to `"1"`** — `src/mcp/tools/funding.rs`: Fixed to use `chrono::Utc::now().timestamp_millis()`, aligning MCP handler with CLI fix.
 
-- [x] **MCP `handle_sell_order` ignores `order_type` parameter** — `src/mcp/tools/trade.rs`: Now respects `order_type` parameter. If `order_type` is `"market"`, treats as market order; if `"limit"`, treats as limit order; otherwise falls back to `price.is_none()` behavior.
+- [x] **MCP `handle_sell_order` ignores `order_type` parameter** — `src/mcp/tools/trade.rs`: Now respects `order_type` parameter. If `order_type` is `"market"`, treats as market order; if `"limit"`, treats as limit order (requires price); otherwise returns validation error.
 
 - [x] **Balance check precedes positivity validation** — `src/commands/trade.rs`: Reordered positivity checks (`<= 0.0`) to occur before balance sufficiency checks in both `place_buy_order` and `place_sell_order`.
 
@@ -30,29 +30,65 @@
 
 - [x] **`cancel_all_orders` uses `value_to_string` for order_type from API** — `src/commands/trade.rs`: Changed to use `as_str()` with fallback to empty string instead of `value_to_string` which can produce multi-word strings for object values.
 
+## Completed (this review session)
+
+### High Priority
+
+- [x] **Paper `place_paper_order_idr` market buy with no price gives free crypto** — `src/commands/paper.rs:441-458`: Rejected market buys via `--idr` unless a limit price is specified.
+
+- [x] **Paper `place_paper_order_idr` division by zero on insufficient balance path** — `src/commands/paper.rs:451-454`: Eliminated by rejecting market buys via `--idr` without a limit price.
+
+### Medium Priority
+
+- [x] **`countdown_cancel_all` bypasses rate limiter and retry logic** — `src/client.rs`: Now uses `send_with_retry()` which calls `rate_limiter.acquire()` and retries on failure.
+
+- [x] **`generate_ws_token` bypasses rate limiter and retry logic** — `src/client.rs`: Changed to use `send_with_retry()` for rate limiting and retry protection.
+
+- [x] **Rate limiter `acquire` has racy refill logic** — `src/client.rs`: Simplified to single mutex-protected state, eliminating the race between atomic load and mutex lock.
+
+### Low Priority / Polish
+
+- [x] **`cancel_all_orders` fetches all orders then cancels one-by-one with no progress indicator** — `src/commands/trade.rs`: Added `indicatif` progress bar showing cancellation progress.
+
+- [x] **`serve_callback` stdin read silently swallows errors** — `src/commands/funding.rs`: Added `eprintln!` warning on both stdin I/O errors and spawn_blocking failures.
+
+- [x] **Paper P&L on migrated state shows inflated profits** — `src/commands/paper.rs`: When loading state with missing `initial_balances`, snapshots current balances and warns user.
+
+- [x] **MCP `handle_paper_init` duplicates default balance constants** — `src/mcp/tools/paper.rs`: Now imports and uses `DEFAULT_BALANCE_IDR`/`DEFAULT_BALANCE_BTC` from `commands/paper.rs`.
+
+- [x] **WebSocket ticker timestamp overflow from u64 to i64** — `src/commands/websocket.rs:230-234`: Added saturating conversion via `ts.min(i64::MAX as u64) as i64`.
+
+## Completed (this review session, continued)
+
+### High Priority
+
+- [x] **MCP `sell_order` `order_type` semantics mismatch** — `src/mcp/tools/trade.rs:149-165`: Changed `_` catch-all fallback from `price.is_none()` (silent market order guess) to explicit validation error. Only `"limit"` and `"market"` are now accepted.
+
+### Medium Priority
+
+- [x] **Default rate limit 10 RPS → 5 RPS** — `src/client.rs:45`: Changed from 10 to 5. `max(1)` clamp was already present.
+
+### Low Priority / Polish
+
+- [x] **Config directory warning fires for public-only commands** — `src/config.rs:72-88`: Removed warning from `config_path()`/`config_dir()`. Warning is now emitted only in `save()` when a write is actually needed.
+
+- [x] **MCP `buy_order`/`sell_order` unreachable in call_tool dispatch** — `src/mcp/tools/mod.rs`: Had no dispatch entries for `"buy_order"` or `"sell_order"`, making MCP tools visible but unusable. Added dispatch entries with safety `acknowledged` checks and pair normalization.
+
 ## New Issues (current review)
 
 ### High Priority
 
-- [x] **CLI `funding withdraw` lacks input validation** — `src/commands/funding.rs:84-134`: Added validation for `currency`, `amount`, and `address` to provide clear error messages.
-
-- [ ] **`paper_fill all=true` accumulates `_skipped` counter but never reports it** — `src/commands/paper.rs:519-520`: The `_skipped` variable is incremented when an order goes missing during batch fill but is never included in output, silently hiding partial failures.
-
 ### Medium Priority
 
-- [ ] **`account info` joins all balances into a single line** — `src/commands/account.rs:92-99`: Balances are joined with `"  "` into one row instead of individual rows. With many currencies this becomes unreadable in table mode. Should show each balance as its own row like `balance` subcommand does.
-
-- [ ] **`trans_history` shows only one transaction type at a time** — `src/commands/account.rs:303-306`: Uses `or_else` chaining on `get("withdraw")`, `get("deposit")`, and `get("transactions")`, so if multiple types are present in the response, only the first one checked is displayed.
-
-- [ ] **`cancel_all_orders` doesn't validate pair filter scope** — `src/commands/trade.rs:275-339`: Cancel all with no `--pair` filter cancels ALL open orders across all pairs. No confirmation prompt or `--dry-run` flag exists to preview which orders would be cancelled.
+- [ ] **MCP `cancel_all_orders` tool missing** — No MCP tool equivalent for the CLI's `cancel_all_orders` exists. MCP clients can only cancel individual orders via `cancel_order`. Fix: add tool definition in `trade_tools()` and handler calling existing `cancel_all_orders` logic.
 
 ### Low Priority / Polish
 
-- [x] **`funding.rs:98` uses `format!` for timestamp when `.to_string()` suffices** — `src/commands/funding.rs:98`: Changed to `.to_string()` for consistency.
+- [ ] **MCP `cancel_order` lacks `order_type` validation** — `src/mcp/tools/trade.rs:186`: `handle_cancel_order` passes `order_type` to API without validating it's `"buy"` or `"sell"`. An invalid value gets a raw API error instead of a clear validation error.
 
-- [ ] **MCP tool validation errors all report `mcp_error` type** — `src/mcp/tools/mod.rs:136`: Validation errors in MCP handlers (missing params, non-positive amounts, etc.) all use `error_type: "mcp_error"` instead of more specific types that would help AI agents distinguish validation failures from system errors.
+- [ ] **`normalize_pair` base-currency stripping for unconventional pairs** — `src/commands/helpers.rs:78-84`: `strip_suffix`-based logic would misinterpret a hypothetical pair like `usdtbtc` as `usdt_btc` (correct) but `idrbtc` as `idr_btc` (unlikely but no guard). No real pairs affected.
 
-- [ ] **WebSocket `CommandOutput` discards all streamed data** — `src/commands/websocket.rs:202`: After disconnect, returns `{"status": "disconnected"}` regardless of the data received during the session. In JSON mode, data is printed directly to stdout, making it impossible for callers to distinguish streaming events from the final result.
+- [ ] **Paper trading uses f64 for IDR balances** — `src/commands/paper.rs`: IDR amounts up to billions (e.g., 100M+) use f64, which loses integer precision above 2^53 (~9 quadrillion for smallest fractional). For typical IDR balances this is unlikely to cause visible issues, but could manifest as tiny rounding errors in fee calculations.
 
 ## Known / Intentional
 

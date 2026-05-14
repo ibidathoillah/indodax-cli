@@ -80,6 +80,12 @@ pub enum Command {
         cmd: commands::auth::AuthCommand,
     },
 
+    #[command(name = "alert", about = "Price alert management")]
+    Alert {
+        #[command(subcommand)]
+        cmd: commands::alert::AlertCommand,
+    },
+
     #[command(name = "setup", about = "Interactive setup wizard")]
     Setup,
 
@@ -113,6 +119,8 @@ pub async fn dispatch(
             .map_err(|e| map_anyhow_error(e))?,
         Command::Paper { cmd } => commands::paper::execute(client, config, &cmd).await?,
         Command::Auth { cmd } => commands::auth::execute(client, config, &cmd).await
+            .map_err(|e| map_anyhow_error(e))?,
+        Command::Alert { cmd } => commands::alert::execute(client, &None, &cmd).await
             .map_err(|e| map_anyhow_error(e))?,
         Command::Setup | Command::Shell | Command::Mcp { .. } => {
             return Err(IndodaxError::Other("This command is handled separately".into()));

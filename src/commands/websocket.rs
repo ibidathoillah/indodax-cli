@@ -79,7 +79,7 @@ async fn ws_connect_and_listen(
     ws_url: &str,
     token: &str,
     channel: &str,
-    handler: impl Fn(serde_json::Value),
+    handler: impl Fn(serde_json::Value) -> Option<serde_json::Value>,
     output_format: OutputFormat,
 ) -> Result<CommandOutput> {
     let spinner = if output_format == OutputFormat::Json {
@@ -113,6 +113,8 @@ async fn ws_connect_and_listen(
         .await?;
 
     let mut authed = false;
+
+    let mut events: Vec<serde_json::Value> = Vec::new();
 
     loop {
         tokio::select! {
@@ -169,7 +171,9 @@ async fn ws_connect_and_listen(
                         if val.get("id").and_then(|v| v.as_i64()) == Some(2) {
                             // subscription confirmation, skip
                         } else if val.get("result").is_some() {
-                            handler(val);
+                            if let Some(event) = handler(val) {
+                                events.push(event);
+                            }
                         }
                     }
                     Ok(Message::Ping(_)) => {
@@ -199,7 +203,11 @@ async fn ws_connect_and_listen(
         }
     }
 
-    Ok(CommandOutput::json(serde_json::json!({"status": "disconnected"})))
+    Ok(CommandOutput::json(serde_json::json!({
+        "status": "disconnected",
+        "events": events,
+        "event_count": events.len(),
+    })))
 }
 
 fn format_ws_price(val: &serde_json::Value) -> Option<String> {
@@ -214,13 +222,14 @@ async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputForm
     let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let rows = &val["result"]["data"]["data"];
+        let mut last_event = None;
         if let serde_json::Value::Array(arr) = rows {
             for row in arr {
                 if let serde_json::Value::Array(fields) = row {
                     if fields.len() >= 4 {
                         let ts = fields[0].as_u64().unwrap_or(0);
                         let price = format_ws_price(&fields[2]).unwrap_or_default();
-                        let time_str = chrono::DateTime::from_timestamp(ts as i64, 0)
+                        let time_str = chrono::DateTime::from_timestamp(ts.min(i64::MAX as u64) as i64, 0)
                             .map(|d| d.format("%H:%M:%S").to_string())
                             .unwrap_or_default();
                         if output_format == OutputFormat::Json {
@@ -230,10 +239,14 @@ async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputForm
                         } else {
                             println!("[{}] {}  {}", time_str, pair, price);
                         }
+                        last_event = Some(serde_json::json!({
+                            "event": "ticker", "pair": pair, "time": time_str, "price": price
+                        }));
                     }
                 }
             }
         }
+        last_event
     }, output_format)
     .await
 }
@@ -243,6 +256,7 @@ async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputForm
     let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let rows = &val["result"]["data"]["data"];
+        let mut last_event = None;
         if let serde_json::Value::Array(arr) = rows {
             for row in arr {
                 if let serde_json::Value::Array(fields) = row {
@@ -262,10 +276,15 @@ async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputForm
                         } else {
                             println!("[{}] {} {} @ {} vol: {}", time_str, side, pair, price, volume);
                         }
+                        last_event = Some(serde_json::json!({
+                            "event": "trade", "pair": pair, "time": time_str,
+                            "side": side, "price": price, "volume": volume
+                        }));
                     }
                 }
             }
         }
+        last_event
     }, output_format)
     .await
 }
@@ -299,12 +318,13 @@ async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat
                 Some((p, a))
             })
         });
+        let event = serde_json::json!({
+            "event": "orderbook", "pair": pair,
+            "ask": ask_price.clone().map(|(p, a)| serde_json::json!({"price": p, "amount": a})),
+            "bid": bid_price.clone().map(|(p, a)| serde_json::json!({"price": p, "amount": a})),
+        });
         if output_format == OutputFormat::Json {
-            println!("{}", serde_json::json!({
-                "event": "orderbook", "pair": pair,
-                "ask": ask_price.map(|(p, a)| serde_json::json!({"price": p, "amount": a})),
-                "bid": bid_price.map(|(p, a)| serde_json::json!({"price": p, "amount": a})),
-            }));
+            println!("{}", event);
         } else if std::io::stdout().is_terminal() {
             if let Some((price, amount)) = ask_price {
                 print!("\r\x1b[KAsk: {} @ {} | ", price, amount);
@@ -320,6 +340,7 @@ async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat
                 println!("Bid: {} @ {}", price, amount);
             }
         }
+        Some(event)
     }, output_format)
     .await
 }
@@ -328,6 +349,7 @@ async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Resu
     let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, "market:summary-24h", |val| {
         let rows = &val["result"]["data"]["data"];
+        let mut last_event = None;
         if let serde_json::Value::Array(arr) = rows {
             for row in arr {
                 if let serde_json::Value::Array(fields) = row {
@@ -353,10 +375,15 @@ async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Resu
                         } else {
                             println!("{:15}  last: {:>15}  high: {:>15}  low: {:>15}  change: {}", pair, last, high, low, change);
                         }
+                        last_event = Some(serde_json::json!({
+                            "event": "summary", "pair": pair, "last": last,
+                            "high": high, "low": low, "change": change
+                        }));
                     }
                 }
             }
         }
+        last_event
     }, output_format)
     .await
 }
@@ -377,7 +404,7 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
     let channel = "private:orders";
     ws_connect_and_listen(PRIVATE_WS_URL, &token, channel, |val| {
         let data = &val["result"]["data"];
-        if let Some(order_id) = data.get("order_id").and_then(|v| v.as_u64()) {
+        let event = if let Some(order_id) = data.get("order_id").and_then(|v| v.as_u64()) {
             let pair = data.get("pair").and_then(|v| v.as_str()).unwrap_or("?");
             let side = data.get("side").and_then(|v| v.as_str()).unwrap_or("?");
             let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("?");
@@ -392,13 +419,21 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
                 println!("ID={} Pair={} Side={} Status={} Price={} Amount={}",
                     order_id, pair, side, status, price, amount);
             }
+            Some(serde_json::json!({
+                "event": "order_update", "order_id": order_id, "pair": pair,
+                "side": side, "status": status, "price": price, "amount": amount
+            }))
         } else {
             if output_format == OutputFormat::Json {
-                println!("{}", serde_json::json!({"event": "order_update_raw", "data": &val["result"]}));
+                let raw = serde_json::json!({"event": "order_update_raw", "data": &val["result"]});
+                println!("{}", raw);
+                Some(raw)
             } else {
                 println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
+                None
             }
-        }
+        };
+        event
     }, output_format)
     .await
 }
