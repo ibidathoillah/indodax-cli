@@ -2,9 +2,12 @@ use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::output::CommandOutput;
 use anyhow::Result;
+use colored::*;
+use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceAlert {
@@ -78,6 +81,16 @@ pub enum AlertCommand {
         pair: Option<String>,
     },
 
+    #[command(name = "watch", about = "Monitor alerts in real-time via WebSocket")]
+    Watch {
+        #[arg(short = 'i', long, help = "Filter by alert ID")]
+        id: Option<u64>,
+        #[arg(short = 'p', long, help = "Filter by pair (e.g. btc_idr)")]
+        pair: Option<String>,
+        #[arg(long, default_value = "60", help = "Price change threshold (%) to trigger")]
+        threshold: f64,
+    },
+
     #[command(name = "triggered", about = "Show triggered alerts")]
     Triggered,
 }
@@ -97,6 +110,10 @@ pub async fn execute(
         AlertCommand::Check { id, pair } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
             alert_check(client, *id, pair.as_deref()).await
+        }
+        AlertCommand::Watch { id, pair, threshold } => {
+            let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
+            alert_watch(client, *id, pair.as_deref(), *threshold).await
         }
         AlertCommand::Triggered => alert_triggered(),
     }
@@ -471,6 +488,7 @@ fn alert_triggered() -> Result<CommandOutput> {
     ).with_addendum(format!("[ALERT] {} triggered alert(s)", triggered.len())))
 }
 
+#[allow(unused_variables)]
 async fn fetch_price(client: &IndodaxClient, pair: &str) -> Result<f64> {
     let response: serde_json::Value = client.public_get(&format!("/api/ticker/{}", pair)).await?;
 
@@ -486,6 +504,179 @@ async fn fetch_price(client: &IndodaxClient, pair: &str) -> Result<f64> {
         .ok_or_else(|| anyhow::anyhow!("Failed to parse price for {}", pair))?;
 
     Ok(price)
+}
+
+async fn alert_watch(
+    client: &IndodaxClient,
+    id: Option<u64>,
+    pair_filter: Option<&str>,
+    _threshold: f64,
+) -> Result<CommandOutput> {
+    let alerts = load_alerts();
+
+    let to_watch: Vec<&PriceAlert> = if let Some(target_id) = id {
+        alerts.iter().filter(|a| a.id == target_id && a.status == AlertStatus::Active).collect()
+    } else {
+        let filter = pair_filter.unwrap_or("*");
+        alerts.iter()
+            .filter(|a| a.status == AlertStatus::Active && (filter == "*" || a.pair == filter))
+            .collect()
+    };
+
+    if to_watch.is_empty() {
+        return Ok(CommandOutput::json(serde_json::json!({
+            "status": "ok",
+            "message": "No active alerts to watch",
+            "watching": [],
+        })));
+    }
+
+    let pairs: Vec<String> = to_watch.iter().map(|a| a.pair.clone()).collect();
+    let pair_set: std::collections::HashSet<String> = pairs.iter().cloned().collect();
+    let watching = pair_set.len();
+
+    eprintln!("[ALERT] Watching {} alerts for {} pair(s): {}", to_watch.len(), watching, pairs.join(", "));
+    eprintln!("[ALERT] Press Ctrl+C to stop monitoring");
+    eprintln!();
+
+    const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
+    const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
+
+    let token_resp = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await
+        .map_err(|e| anyhow::anyhow!("Failed to fetch WebSocket token: {}", e))?;
+    let token_text = token_resp.text().await
+        .map_err(|e| anyhow::anyhow!("Failed to read token response: {}", e))?;
+    let token_val: serde_json::Value = serde_json::from_str(&token_text)
+        .map_err(|e| anyhow::anyhow!("Invalid token response: {}", e))?;
+    let token = token_val.get("token").and_then(|t| t.as_str()).map(|t| t.to_string())
+        .or_else(|| token_val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()).map(|t| t.to_string()))
+        .ok_or_else(|| anyhow::anyhow!("No token in response: {}", token_text))?;
+
+    let (ws_stream, _) = connect_async(PUBLIC_WS_URL).await
+        .map_err(|e| anyhow::anyhow!("Failed to connect to WebSocket: {}", e))?;
+
+    let (mut write, mut read) = ws_stream.split();
+
+    let auth_msg = serde_json::json!({
+        "params": { "token": token },
+        "id": 1
+    });
+    write.send(Message::Text(auth_msg.to_string())).await
+        .map_err(|e| anyhow::anyhow!("Failed to authenticate: {}", e))?;
+
+    let mut authed = false;
+    let mut last_prices: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    let mut triggered_count = 0;
+
+    while let Some(msg) = read.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if !authed {
+                        if let Some(result) = data.get("result").or(data.get("data")) {
+                            if result.get("status").and_then(|s| s.as_str()) == Some("ok") ||
+                               result.get("success").and_then(|s| s.as_bool()) == Some(true) {
+                                authed = true;
+                                eprintln!("[WS] Authenticated, subscribing to pairs...");
+                                for pair in &pairs {
+                                    let sub_msg = serde_json::json!({
+                                        "method": "subscribe",
+                                        "params": { "channel": format!("chart:tick-{}", pair) },
+                                        "id": 2
+                                    });
+                                    write.send(Message::Text(sub_msg.to_string().into())).await.ok();
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if let Some(result) = data.get("result").or(data.get("data")) {
+                        let pair = result.get("pair").or(data.get("pair")).and_then(|v| v.as_str()).unwrap_or("");
+                        let price = result.get("price").or(result.get("c")).or(result.get("close"))
+                            .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+                            .or_else(|| result.get("price").or(result.get("c")).and_then(|v| v.as_f64()));
+
+                        if let Some(price) = price {
+                            let prev_price = last_prices.get(pair).copied();
+                            last_prices.insert(pair.to_string(), price);
+
+                            if let Some(prev) = prev_price {
+                                let change_pct = ((price - prev) / prev * 100.0).abs();
+                                if change_pct > 0.1 {
+                                    eprintln!("[PRICE] {} {} (change: {:.2}%)",
+                                        pair,
+                                        format_number(price),
+                                        if price > prev { '+' } else { '-' });
+                                }
+                            }
+
+                            for alert in to_watch.iter().filter(|a| a.pair == pair) {
+                                let should_trigger = match &alert.condition {
+                                    AlertCondition::Above { price: threshold } => price >= *threshold,
+                                    AlertCondition::Below { price: threshold } => price <= *threshold,
+                                    AlertCondition::ChangeUp { percent, from_price } => {
+                                        let change = ((price - from_price) / from_price) * 100.0;
+                                        change >= *percent
+                                    }
+                                    AlertCondition::ChangeDown { percent, from_price } => {
+                                        let change = ((from_price - price) / from_price) * 100.0;
+                                        change >= *percent
+                                    }
+                                };
+
+                                if should_trigger {
+                                    triggered_count += 1;
+                                    let condition_str = match &alert.condition {
+                                        AlertCondition::Above { price } => format!("> {}", format_number(*price)),
+                                        AlertCondition::Below { price } => format!("< {}", format_number(*price)),
+                                        AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+                                        AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
+                                    };
+                                    eprintln!();
+                                    eprintln!("{}", "=".repeat(60).yellow());
+                                    eprintln!("{} TRIGGERED {} {}", "[ALERT]".bold().green(), format!("#{}", alert.id).bold(), "!".green().bold());
+                                    eprintln!("  Pair:      {}", pair);
+                                    eprintln!("  Condition: {}", condition_str);
+                                    eprintln!("  Price:     {} (triggered)", format_number(price));
+                                    if let Some(note) = &alert.note {
+                                        eprintln!("  Note:      {}", note);
+                                    }
+                                    eprintln!("{}", "=".repeat(60).yellow());
+                                    eprintln!();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(Message::Ping(data)) => {
+                write.send(Message::Pong(data)).await.ok();
+            }
+            Ok(Message::Close(_)) => {
+                break;
+            }
+            Err(e) => {
+                eprintln!("[WARN] WebSocket error: {}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    eprintln!("\n[ALERT] Monitoring stopped. {} alert(s) triggered.", triggered_count);
+
+    let data = serde_json::json!({
+        "status": "ok",
+        "watching": to_watch.len(),
+        "pairs": pairs,
+        "triggered": triggered_count,
+    });
+
+    Ok(CommandOutput::new(data, vec![], vec![]).with_addendum(format!(
+        "[ALERT] Watched {} alert(s) for {} pair(s). {} triggered.",
+        to_watch.len(), watching, triggered_count
+    )))
 }
 
 fn format_number(n: f64) -> String {
