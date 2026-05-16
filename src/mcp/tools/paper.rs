@@ -178,15 +178,22 @@ impl IndodaxMcp {
                 if let Err(e) = self.save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
                 }
-                let effective_amount = amount.unwrap_or(0.0);
-                Self::json_result(serde_json::json!({
+                let response_amount = state.orders.last()
+                    .map(|o| o.amount)
+                    .or(amount)
+                    .unwrap_or(0.0);
+                let mut response = serde_json::json!({
                     "mode": "paper",
                     "side": side,
                     "pair": pair,
                     "price": price,
-                    "amount": effective_amount,
+                    "amount": response_amount,
                     "status": "open",
-                }))
+                });
+                if idr.is_some() {
+                    response["idr_spent"] = serde_json::json!(idr);
+                }
+                Self::json_result(response)
             }
             Err(e) => Self::error_from_indodax(&e),
         }
