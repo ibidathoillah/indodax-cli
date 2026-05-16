@@ -128,7 +128,14 @@ impl IndodaxMcp {
         }
 
         let is_market = match order_type {
-            "market" => true,
+            "market" => {
+                if price.is_some() {
+                    return Self::validation_error_result(
+                        "Cannot specify 'price' for a 'market' sell order. Market orders use the current best available price.".into(),
+                    );
+                }
+                true
+            }
             "limit" => {
                 if price.is_none() {
                     return Self::validation_error_result(
