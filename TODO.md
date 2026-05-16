@@ -67,7 +67,7 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 - [x] **`format_ws_price` now uses epsilon for floating-point comparison** — `src/commands/websocket.rs:210`: Large whole numbers may have `fract() != 0.0` due to floating-point representation. Use `(f - f.round()).abs() < f64::EPSILON`.
 
-- [ ] **MCP `get_bool` silently defaults to `false` for missing parameters** — `src/mcp/tools/mod.rs:121-125`: Cannot distinguish between `false` and absent. Safety checks for dangerous operations exist separately but this limits API usability.
+- [x] **MCP `get_bool` refactored to `get_opt_bool` to distinguish between `false` and absent** — `src/mcp/tools/mod.rs:121-125`: Cannot distinguish between `false` and absent. Safety checks for dangerous operations exist separately but this limits API usability.
 
 - [ ] **`round_balance` does not handle stablecoins beyond USDT/USDC** — `src/commands/paper.rs:530-541`: Only `idr`, `usdt`, `usdc` get 2-decimal rounding. Other fiat-pegged tokens (DAI, BUSD) get 8-decimal rounding.
 
