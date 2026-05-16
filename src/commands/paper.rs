@@ -278,20 +278,24 @@ fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<Co
             format!("[PAPER] Amount must be positive, got {}", amount)
         ));
     }
-    let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
-    *balance += amount;
+    let balance_val = {
+        let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
+        *balance += amount;
+        *balance
+    };
     round_balance(&mut state.balances, &currency.to_lowercase());
+    let current_balance = *state.balances.get(&currency.to_lowercase()).unwrap_or(&balance_val);
     let data = serde_json::json!({
         "mode": "paper",
         "currency": currency.to_uppercase(),
         "amount_added": amount,
-        "new_balance": balance,
+        "new_balance": current_balance,
     });
     Ok(CommandOutput::json(data).with_addendum(format!(
         "[PAPER] Added {} to {} balance. New balance: {}",
         format_balance(currency, amount),
         currency.to_uppercase(),
-        format_balance(currency, *balance)
+        format_balance(currency, current_balance)
     )))
 }
 

@@ -537,6 +537,6 @@ mod tests {
 
     #[test]
     fn test_public_ws_token_url() {
-        assert!(PUBLIC_WS_TOKEN_URL.contains("indodax.com"));
+        assert!(crate::commands::helpers::PUBLIC_WS_TOKEN_URL.contains("indodax.com"));
     }
 }

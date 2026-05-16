@@ -528,16 +528,17 @@ async fn alert_watch(
 ) -> Result<CommandOutput> {
     let mut alerts = load_alerts();
 
-    let to_watch: Vec<&mut PriceAlert> = if let Some(target_id) = id {
-        alerts.iter_mut().filter(|a| a.id == target_id && a.status == AlertStatus::Active).collect()
+    let target_ids: std::collections::HashSet<u64> = if let Some(target_id) = id {
+        alerts.iter().filter(|a| a.id == target_id && a.status == AlertStatus::Active).map(|a| a.id).collect()
     } else {
         let filter = pair_filter.unwrap_or("*");
-        alerts.iter_mut()
+        alerts.iter()
             .filter(|a| a.status == AlertStatus::Active && (filter == "*" || a.pair == filter))
+            .map(|a| a.id)
             .collect()
     };
 
-    if to_watch.is_empty() {
+    if target_ids.is_empty() {
         return Ok(CommandOutput::json(serde_json::json!({
             "status": "ok",
             "message": "No active alerts to watch",
@@ -545,11 +546,14 @@ async fn alert_watch(
         })));
     }
 
-    let pairs: Vec<String> = to_watch.iter().map(|a| a.pair.clone()).collect();
+    let pairs: Vec<String> = alerts.iter()
+        .filter(|a| target_ids.contains(&a.id))
+        .map(|a| a.pair.clone())
+        .collect();
     let pair_set: std::collections::HashSet<String> = pairs.iter().cloned().collect();
     let watching = pair_set.len();
 
-    eprintln!("[ALERT] Watching {} alerts for {} pair(s): {}", to_watch.len(), watching, pairs.join(", "));
+    eprintln!("[ALERT] Watching {} alerts for {} pair(s): {}", target_ids.len(), watching, pairs.join(", "));
     eprintln!("[ALERT] Press Ctrl+C to stop monitoring");
     eprintln!();
 
@@ -573,6 +577,8 @@ async fn alert_watch(
     let mut last_prices: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
     let mut triggered_count = 0;
 
+    let mut triggered_ids = std::collections::HashSet::new();
+
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
@@ -583,7 +589,7 @@ async fn alert_watch(
                         {
                             authed = true;
                             eprintln!("[WS] Authenticated, subscribing to pairs...");
-                            for pair in &pairs {
+                            for pair in &pair_set {
                                 let sub_msg = serde_json::json!({
                                     "method": "subscribe",
                                     "params": { "channel": format!("chart:tick-{}", pair) },
@@ -615,7 +621,7 @@ async fn alert_watch(
                                 }
                             }
 
-                            for alert in to_watch.iter_mut().filter(|a| a.pair == pair) {
+                            for alert in alerts.iter_mut().filter(|a| a.pair == pair && target_ids.contains(&a.id) && a.status == AlertStatus::Active) {
                                 let should_trigger = match &alert.condition {
                                     AlertCondition::Above { price: threshold } => price >= *threshold,
                                     AlertCondition::Below { price: threshold } => price <= *threshold,
@@ -632,6 +638,7 @@ async fn alert_watch(
                                 if should_trigger {
                                     alert.status = AlertStatus::Triggered;
                                     alert.triggered_at = Some(now_millis());
+                                    triggered_ids.insert(alert.id);
                                     triggered_count += 1;
                                     let condition_str = match &alert.condition {
                                         AlertCondition::Above { price } => format!("> {}", format_number(*price)),
