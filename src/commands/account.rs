@@ -413,7 +413,22 @@ fn save_equity_history(data: &EquityHistoryData) -> Result<()> {
     let dir = IndodaxConfig::config_dir();
     std::fs::create_dir_all(&dir)?;
     let content = serde_json::to_string_pretty(data)?;
-    std::fs::write(equity_history_path(), content)?;
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(equity_history_path())?;
+        file.write_all(content.as_bytes())?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(equity_history_path(), content)?;
+    }
     Ok(())
 }
 
@@ -473,6 +488,8 @@ async fn calculate_equity(client: &IndodaxClient) -> Result<f64> {
                 total += amount * price * usdt_idr;
             } else if let Some(price) = prices.get(&pair_eth) {
                 total += amount * price * eth_idr;
+            } else {
+                eprintln!("[EQUITY] Warning: No known price pair for {} (value: {}). Contribution set to 0.", currency.to_uppercase(), amount);
             }
         }
     }

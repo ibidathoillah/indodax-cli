@@ -255,7 +255,7 @@ async fn alert_add(
         vec!["Alert ID".into(), id.to_string()],
         vec!["Pair".into(), pair.to_string()],
         vec!["Condition".into(), condition_str.clone()],
-        vec!["Created".into(), chrono::DateTime::from_timestamp_millis(alert.created_at as i64)
+        vec!["Created".into(), chrono::DateTime::from_timestamp_millis(alert.created_at.min(i64::MAX as u64) as i64)
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
             .unwrap_or_default()],
     ];

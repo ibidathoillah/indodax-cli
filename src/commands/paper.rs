@@ -767,6 +767,19 @@ pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Opt
             price
         )));
     }
+    if let Some(fp) = fill_price {
+        let should_fill = match side.as_str() {
+            "buy" => fp <= order_price,
+            "sell" => fp >= order_price,
+            _ => false,
+        };
+        if !should_fill {
+            return Err(IndodaxError::Other(format!(
+                "[PAPER] Fill price {} does not match order condition ({} side, limit {}). Use --all to skip non-matching orders.",
+                fp, side, order_price
+            )));
+        }
+    }
     let base = pair.split('_').next().unwrap_or("btc");
     let quote = pair.split('_').next_back().unwrap_or("idr");
 

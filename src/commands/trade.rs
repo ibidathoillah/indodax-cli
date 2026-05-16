@@ -273,18 +273,22 @@ async fn cancel_all_orders(
     pair: Option<&str>,
     force: bool,
 ) -> Result<CommandOutput> {
-    if pair.is_none() && !force && std::io::stdin().is_terminal() {
-        use dialoguer::Confirm;
-        let confirmed = Confirm::new()
-            .with_prompt("No --pair filter specified. This will cancel ALL orders across ALL pairs. Continue?")
-            .default(false)
-            .interact()
-            .unwrap_or(false);
-        if !confirmed {
-            return Ok(CommandOutput::json(serde_json::json!({
-                "cancelled": false,
-                "reason": "user_cancelled",
-            })).with_addendum("Cancel all orders aborted by user."));
+    if pair.is_none() && !force {
+        if std::io::stdin().is_terminal() {
+            use dialoguer::Confirm;
+            let confirmed = Confirm::new()
+                .with_prompt("No --pair filter specified. This will cancel ALL orders across ALL pairs. Continue?")
+                .default(false)
+                .interact()
+                .unwrap_or(false);
+            if !confirmed {
+                return Ok(CommandOutput::json(serde_json::json!({
+                    "cancelled": false,
+                    "reason": "user_cancelled",
+                })).with_addendum("Cancel all orders aborted by user."));
+            }
+        } else {
+            return Err(anyhow::anyhow!("No --pair filter specified and --force not used in non-interactive mode. Refusing to cancel all orders across all pairs."));
         }
     }
 

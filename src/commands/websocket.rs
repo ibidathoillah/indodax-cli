@@ -167,8 +167,8 @@ async fn ws_connect_and_listen(
                             }
                         }
                     }
-                    Ok(Message::Ping(_)) => {
-                        let _ = ws_stream.send(Message::Pong(vec![])).await;
+                    Ok(Message::Ping(data)) => {
+                        let _ = ws_stream.send(Message::Pong(data)).await;
                     }
                     Ok(Message::Close(_)) => {
                         if let Some(ref pb) = spinner {
@@ -263,7 +263,7 @@ async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputForm
                         let side = fields[3].as_str().unwrap_or("?");
                         let price = fields[4].as_f64().unwrap_or(0.0);
                         let volume = fields[6].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                        let time_str = chrono::DateTime::from_timestamp(ts as i64, 0)
+                        let time_str = chrono::DateTime::from_timestamp(ts.min(i64::MAX as u64) as i64, 0)
                             .map(|d| d.format("%H:%M:%S").to_string())
                             .unwrap_or_default();
                         if output_format == OutputFormat::Json {
@@ -293,7 +293,7 @@ async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let data = &val["result"]["data"]["data"];
         let ask_price = data["ask"].as_array().and_then(|asks| {
-            asks.last().and_then(|best| {
+            asks.first().and_then(|best| {
                 let p = helpers::value_to_string(best.get("price").unwrap_or(&serde_json::Value::Null));
                 let a = helpers::value_to_string(
                     best.get("btc_volume")
