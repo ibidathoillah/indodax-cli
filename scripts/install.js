@@ -40,7 +40,7 @@ function getBinaryUrl() {
 }
 
 const binDir = path.join(__dirname, '..', 'bin');
-const binName = os.platform() === 'win32' ? 'indodax-native.exe' : 'indodax-native';
+const binName = os.platform() === 'win32' ? 'indodax.exe' : 'indodax';
 const binPath = path.join(binDir, binName);
 
 if (!fs.existsSync(binDir)) {
