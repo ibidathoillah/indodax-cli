@@ -94,7 +94,7 @@ pub fn normalize_pair(pair: &str) -> String {
     let quote_currencies = ["usdt", "idr", "btc"];
     for quote in &quote_currencies {
         if let Some(base) = pair.strip_suffix(quote) {
-            if !base.is_empty() && !quote_currencies.contains(&base) {
+            if !base.is_empty() {
                 return format!("{}_{}", base, quote);
             }
         }
