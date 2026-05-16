@@ -196,7 +196,8 @@ async fn orderbook(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> 
 }
 
 async fn trades(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
-    let data: Value = client.public_get(&format!("/api/trades/{}", pair)).await?;
+    let pair_v2 = pair.replace('_', "");
+    let data: Value = client.public_get(&format!("/api/trades/{}", pair_v2)).await?;
     let headers = vec!["TID".into(), "Date".into(), "Price".into(), "Amount".into(), "Type".into()];
     let mut rows: Vec<Vec<String>> = Vec::new();
     if let Value::Array(arr) = &data {
@@ -259,7 +260,23 @@ async fn ohlc(
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
-    if let Value::Object(ref map) = data {
+    if let Value::Array(ref arr) = data {
+        // Handle array of objects format (modern)
+        for item in arr {
+            rows.push(vec![
+                helpers::format_timestamp(
+                    item.get("Time").or(item.get("t")).and_then(|v| v.as_u64()).unwrap_or(0),
+                    false
+                ),
+                helpers::value_to_string(item.get("Open").or(item.get("o")).unwrap_or(&Value::Null)),
+                helpers::value_to_string(item.get("High").or(item.get("h")).unwrap_or(&Value::Null)),
+                helpers::value_to_string(item.get("Low").or(item.get("l")).unwrap_or(&Value::Null)),
+                helpers::value_to_string(item.get("Close").or(item.get("c")).unwrap_or(&Value::Null)),
+                helpers::value_to_string(item.get("Volume").or(item.get("v")).unwrap_or(&Value::Null)),
+            ]);
+        }
+    } else if let Value::Object(ref map) = data {
+        // Handle parallel arrays format (legacy)
         let times = map.get("t").and_then(|v| v.as_array());
         let opens = map.get("o").and_then(|v| v.as_array());
         let highs = map.get("h").and_then(|v| v.as_array());

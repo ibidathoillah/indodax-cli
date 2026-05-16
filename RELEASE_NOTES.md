@@ -11,6 +11,8 @@ The unofficial, fast, and feature-rich command-line interface for **Indodax**, I
   - **Flexible Auth**: Introduced `ws_token` configuration. Prioritizes dynamic fetching, followed by user-defined tokens in `config.toml`, with a reliable hardcoded default fallback.
 - **🐛 Bug Fixes**:
   - **Market Pairs**: Fixed an issue where `indodax market pairs` returned an empty table due to an unhandled API response format (JSON array).
+  - **Market Trades**: Resolved empty output by correcting the trading pair format (no underscore) required by the trades API.
+  - **Market OHLC**: Refactored parser to support the modern array-of-objects response format, ensuring historical candle data is correctly displayed.
 - **🛡️ Security & Configuration**:
   - Added `ws_token` field to `IndodaxConfig` for custom WebSocket authentication tokens.
   - Improved credential resolution priority to ensure consistency across CLI, ENV, and Config file.
