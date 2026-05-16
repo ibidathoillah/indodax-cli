@@ -87,15 +87,15 @@ pub fn format_timestamp(ts: u64, millis: bool) -> String {
 }
 
 pub fn normalize_pair(pair: &str) -> String {
-    let pair = pair.to_lowercase().replace('-', "").replace('_', "");
-    if pair.is_empty() {
+    let pair = pair.to_lowercase().replace('-', "_");
+    if pair.contains('_') || pair.is_empty() {
         return pair;
     }
     let quote_currencies = ["usdt", "idr", "btc"];
     for quote in &quote_currencies {
         if let Some(base) = pair.strip_suffix(quote) {
             if !base.is_empty() && !quote_currencies.contains(&base) {
-                return format!("{}{}", base, quote);
+                return format!("{}_{}", base, quote);
             }
         }
     }
@@ -103,7 +103,7 @@ pub fn normalize_pair(pair: &str) -> String {
 }
 
 pub fn normalize_pair_v2(pair: &str) -> String {
-    normalize_pair(pair)
+    normalize_pair(pair).replace('_', "")
 }
 
 pub fn first_of<'a>(val: &'a Value, keys: &[&str]) -> &'a Value {
@@ -242,31 +242,38 @@ mod tests {
 
     #[test]
     fn test_normalize_pair_already_normalized() {
-        assert_eq!(normalize_pair("btc_idr"), "btcidr");
-        assert_eq!(normalize_pair("eth_btc"), "ethbtc");
-        assert_eq!(normalize_pair("usdt_idr"), "usdtidr");
+        assert_eq!(normalize_pair("btc_idr"), "btc_idr");
+        assert_eq!(normalize_pair("eth_btc"), "eth_btc");
+        assert_eq!(normalize_pair("usdt_idr"), "usdt_idr");
     }
 
     #[test]
     fn test_normalize_pair_no_underscore() {
-        assert_eq!(normalize_pair("btcidr"), "btcidr");
-        assert_eq!(normalize_pair("ethidr"), "ethidr");
-        assert_eq!(normalize_pair("ethbtc"), "ethbtc");
-        assert_eq!(normalize_pair("solusdt"), "solusdt");
+        assert_eq!(normalize_pair("btcidr"), "btc_idr");
+        assert_eq!(normalize_pair("ethidr"), "eth_idr");
+        assert_eq!(normalize_pair("ethbtc"), "eth_btc");
+        assert_eq!(normalize_pair("solusdt"), "sol_usdt");
     }
 
     #[test]
     fn test_normalize_pair_uppercase() {
-        assert_eq!(normalize_pair("BTC_IDR"), "btcidr");
-        assert_eq!(normalize_pair("BTCIDR"), "btcidr");
-        assert_eq!(normalize_pair("ETH_BTC"), "ethbtc");
+        assert_eq!(normalize_pair("BTC_IDR"), "btc_idr");
+        assert_eq!(normalize_pair("BTCIDR"), "btc_idr");
+        assert_eq!(normalize_pair("ETH_BTC"), "eth_btc");
     }
 
     #[test]
     fn test_normalize_pair_dash_separator() {
-        assert_eq!(normalize_pair("btc-idr"), "btcidr");
-        assert_eq!(normalize_pair("ETH-IDR"), "ethidr");
-        assert_eq!(normalize_pair("sol-usdt"), "solusdt");
+        assert_eq!(normalize_pair("btc-idr"), "btc_idr");
+        assert_eq!(normalize_pair("ETH-IDR"), "eth_idr");
+        assert_eq!(normalize_pair("sol-usdt"), "sol_usdt");
+    }
+
+    #[test]
+    fn test_normalize_pair_v2() {
+        assert_eq!(normalize_pair_v2("btc_idr"), "btcidr");
+        assert_eq!(normalize_pair_v2("BTCIDR"), "btcidr");
+        assert_eq!(normalize_pair_v2("sol-usdt"), "solusdt");
     }
 
     #[test]
