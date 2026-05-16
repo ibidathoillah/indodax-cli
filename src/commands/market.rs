@@ -28,6 +28,8 @@ pub enum MarketCommand {
     Orderbook {
         #[arg(default_value = "btc_idr")]
         pair: String,
+        #[arg(long, default_value = "20", help = "Number of bid/ask levels to show")]
+        levels: usize,
     },
 
     #[command(name = "trades", about = "Get recent trades for a pair")]
@@ -65,9 +67,9 @@ pub async fn execute(
         }
         MarketCommand::TickerAll => ticker_all(client).await,
         MarketCommand::Summaries => summaries(client).await,
-        MarketCommand::Orderbook { pair: p } => {
+        MarketCommand::Orderbook { pair: p, levels } => {
             let pair = helpers::normalize_pair(p);
-            orderbook(client, &pair).await
+            orderbook(client, &pair, *levels).await
         }
         MarketCommand::Trades { pair: p } => {
             let pair = helpers::normalize_pair(p);
@@ -170,21 +172,21 @@ async fn summaries(client: &IndodaxClient) -> Result<CommandOutput> {
     }
 }
 
-async fn orderbook(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
+async fn orderbook(client: &IndodaxClient, pair: &str, levels: usize) -> Result<CommandOutput> {
     let data: Value = client.public_get(&format!("/api/depth/{}", pair)).await?;
     let headers = vec!["Side".into(), "Price".into(), "Amount".into()];
     let mut rows: Vec<Vec<String>> = Vec::new();
     let buys = &data["buy"];
     let sells = &data["sell"];
     if let Value::Array(arr) = buys {
-        for entry in arr.iter().take(20) {
+        for entry in arr.iter().take(levels) {
             if let Some(row_arr) = entry.as_array().filter(|a| a.len() >= 2) {
                 rows.push(vec!["BUY".into(), helpers::value_to_string(&row_arr[0]), helpers::value_to_string(&row_arr[1])]);
             }
         }
     }
     if let Value::Array(arr) = sells {
-        for entry in arr.iter().rev().take(20) {
+        for entry in arr.iter().rev().take(levels) {
             if let Some(row_arr) = entry.as_array().filter(|a| a.len() >= 2) {
                 rows.push(vec!["SELL".into(), helpers::value_to_string(&row_arr[0]), helpers::value_to_string(&row_arr[1])]);
             }
@@ -225,18 +227,18 @@ async fn ohlc(
     from: Option<u64>,
     to: Option<u64>,
 ) -> Result<CommandOutput> {
-    if let Some(v) = from {
-        if v > 1_000_000_000_000 {
-            eprintln!("[MARKET] Warning: --from timestamp ({}) looks like milliseconds. OHLC API expects seconds.", v);
+    fn normalize_ohlc_ts(ts: u64, label: &str) -> u64 {
+        let mut ts = ts;
+        if ts > 1_000_000_000_000 {
+            eprintln!("[MARKET] Warning: {} timestamp ({}) looks like milliseconds. Converting to seconds.", label, ts);
+            ts /= 1000;
         }
-    }
-    if let Some(v) = to {
-        if v > 1_000_000_000_000 {
-            eprintln!("[MARKET] Warning: --to timestamp ({}) looks like milliseconds. OHLC API expects seconds.", v);
-        }
+        ts
     }
 
     let now_secs = crate::auth::Signer::now_millis() / 1000;
+    let from = from.map(|v| normalize_ohlc_ts(v, "--from"));
+    let to = to.map(|v| normalize_ohlc_ts(v, "--to"));
     let from_val = from.map(|v| v.to_string()).unwrap_or_else(|| {
         (now_secs - crate::commands::helpers::ONE_DAY_SECS).to_string()
     });
@@ -334,7 +336,7 @@ mod tests {
         let _cmd3 = MarketCommand::Ticker { pair: "btc_idr".into() };
         let _cmd4 = MarketCommand::TickerAll;
         let _cmd5 = MarketCommand::Summaries;
-        let _cmd6 = MarketCommand::Orderbook { pair: "btcidr".into() };
+        let _cmd6 = MarketCommand::Orderbook { pair: "btcidr".into(), levels: 20 };
         let _cmd7 = MarketCommand::Trades { pair: "btcidr".into() };
         let _cmd8 = MarketCommand::Ohlc { 
             symbol: "BTCIDR".into(), 

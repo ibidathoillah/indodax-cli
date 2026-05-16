@@ -151,12 +151,21 @@ impl IndodaxMcp {
         from: Option<f64>,
         to: Option<f64>,
     ) -> CallToolResult {
+        fn normalize_ts(v: f64, label: &str) -> u64 {
+            let mut ts = v as u64;
+            if ts > 1_000_000_000_000 {
+                eprintln!("[MCP] Warning: {} timestamp ({}) looks like milliseconds. Converting to seconds.", label, ts);
+                ts /= 1000;
+            }
+            ts
+        }
+
         let now_secs = Signer::now_millis() / 1000;
         let from_val = from
-            .map(|v| v.to_string())
+            .map(|v| normalize_ts(v, "from").to_string())
             .unwrap_or_else(|| (now_secs.saturating_sub(helpers::ONE_DAY_SECS)).to_string());
         let to_val = to
-            .map(|v| v.to_string())
+            .map(|v| normalize_ts(v, "to").to_string())
             .unwrap_or_else(|| now_secs.to_string());
 
         match self

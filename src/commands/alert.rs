@@ -212,7 +212,8 @@ async fn alert_add(
         let from_price = fetch_price(client, pair).await?;
         AlertCondition::ChangeUp { percent, from_price }
     } else {
-        let percent = percent_down.unwrap();
+        let percent = percent_down
+            .ok_or_else(|| anyhow::anyhow!("Internal error: no condition specified"))?;
         if percent <= 0.0 || percent > 1000.0 {
             return Err(anyhow::anyhow!("Percent must be between 0 and 1000, got {}", percent));
         }
@@ -445,7 +446,7 @@ async fn alert_check(
             alert.pair.clone(),
             condition_str.clone(),
             format_number(current_price),
-            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap().min(i64::MAX as u64) as i64)
+            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap_or(0).min(i64::MAX as u64) as i64)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default(),
         ]);
@@ -490,7 +491,7 @@ fn alert_triggered() -> Result<CommandOutput> {
             alert.id.to_string(),
             alert.pair.clone(),
             condition_str.clone(),
-            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap().min(i64::MAX as u64) as i64)
+            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap_or(0).min(i64::MAX as u64) as i64)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default(),
         ]);

@@ -305,25 +305,10 @@ fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<Co
     });
     Ok(CommandOutput::json(data).with_addendum(format!(
         "[PAPER] Added {} to {} balance. New balance: {}",
-        format_balance(currency, amount),
+        helpers::format_balance(currency, amount),
         currency.to_uppercase(),
-        format_balance(currency, current_balance)
+        helpers::format_balance(currency, current_balance)
     )))
-}
-
-fn is_fiat_or_stable(currency: &str) -> bool {
-    match currency.to_lowercase().as_str() {
-        "idr" | "usdt" | "usdc" | "dai" | "busd" | "pax" | "usde" | "gusd" | "tusd" => true,
-        _ => false,
-    }
-}
-
-pub fn format_balance(currency: &str, value: f64) -> String {
-    if is_fiat_or_stable(currency) {
-        format!("{:.2}", value)
-    } else {
-        format!("{:.8}", value)
-    }
 }
 
 fn paper_balance(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
@@ -331,7 +316,7 @@ fn paper_balance(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
     let mut rows_with_balance: Vec<(f64, Vec<String>)> = state
         .balances
         .iter()
-        .map(|(k, v)| (*v, vec![k.to_uppercase(), format_balance(k, *v)]))
+        .map(|(k, v)| (*v, vec![k.to_uppercase(), helpers::format_balance(k, *v)]))
         .collect();
     rows_with_balance.sort_by(|a, b| {
         b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
@@ -373,7 +358,7 @@ pub fn place_paper_order(
             if *quote_balance <= 0.0 {
                 return Err(IndodaxError::Other(
                     format!("[PAPER] Insufficient {} balance for market buy. Need positive balance, have {}",
-                        quote.to_uppercase(), format_balance(quote, *quote_balance))
+                        quote.to_uppercase(), helpers::format_balance(quote, *quote_balance))
                 ));
             }
         } else {
@@ -381,7 +366,7 @@ pub fn place_paper_order(
             if *quote_balance + BALANCE_EPSILON < total_cost {
                 return Err(IndodaxError::Other(
                     format!("[PAPER] Insufficient {} balance. Need {}, have {}",
-                        quote.to_uppercase(), format_balance(quote, total_cost), format_balance(quote, *quote_balance))
+                        quote.to_uppercase(), helpers::format_balance(quote, total_cost), helpers::format_balance(quote, *quote_balance))
                 ));
             }
             *quote_balance -= total_cost;
@@ -392,7 +377,7 @@ pub fn place_paper_order(
         if *base_balance + BALANCE_EPSILON < amount {
             return Err(IndodaxError::Other(
                 format!("[PAPER] Insufficient {} balance. Need {}, have {}",
-                    base.to_uppercase(), format_balance(base, amount), format_balance(base, *base_balance))
+                    base.to_uppercase(), helpers::format_balance(base, amount), helpers::format_balance(base, *base_balance))
             ));
         }
         *base_balance -= amount;
@@ -485,7 +470,7 @@ pub fn place_paper_order_idr(
         if *quote_balance + BALANCE_EPSILON < idr_amount {
                 return Err(IndodaxError::Other(
                     format!("[PAPER] Insufficient {} balance. Need {}, have {}",
-                        quote.to_uppercase(), format_balance(quote, idr_amount), format_balance(quote, *quote_balance))
+                        quote.to_uppercase(), helpers::format_balance(quote, idr_amount), helpers::format_balance(quote, *quote_balance))
                 ));
         }
         *quote_balance -= idr_amount;
@@ -549,7 +534,7 @@ pub fn place_paper_order_idr(
 
 fn round_balance(balances: &mut HashMap<String, f64>, currency: &str) {
     if let Some(balance) = balances.get_mut(currency) {
-        if is_fiat_or_stable(currency) {
+        if helpers::is_fiat_or_stable(currency) {
             *balance = (*balance * 100.0).round() / 100.0;
         } else {
             *balance = (*balance * 100_000_000.0).round() / 100_000_000.0;
@@ -957,7 +942,7 @@ fn paper_status(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
                 let diff = *v - init;
                 Some((
                     k.to_uppercase(),
-                    format!("{} ({})", format_balance(k, *v), format!("{:+.8}", diff)),
+                    format!("{} ({})", helpers::format_balance(k, *v), format!("{:+.8}", diff)),
                 ))
             } else {
                 None
@@ -973,7 +958,7 @@ fn paper_status(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
         vec!["Orders cancelled".into(), cancelled_count.to_string()],
         vec![
             "Total fees paid".into(),
-            format!("{:.8}", state.total_fees_paid),
+            format!("{:.2}", state.total_fees_paid),
         ],
     ];
     for (currency, bal) in &pnl_parts {
@@ -1012,9 +997,9 @@ async fn paper_watch(
                 let data = &output.data;
                 let filled = data["filled_count"].as_u64().unwrap_or(0);
 
+                state.save(config)?;
                 if filled > 0 {
                     eprintln!("{}", output.addendum.as_deref().unwrap_or("[PAPER] Orders filled"));
-                    state.save(config)?;
                     if once {
                         return Ok(output);
                     }
@@ -1147,9 +1132,10 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
 pub fn paper_balance_value(state: &PaperState) -> serde_json::Value {
     let rounded: std::collections::HashMap<String, f64> = state.balances.iter()
         .map(|(k, v)| {
-            let val = match k.as_str() {
-                "idr" | "usdt" | "usdc" => (*v * 100.0).round() / 100.0,
-                _ => (*v * 100_000_000.0).round() / 100_000_000.0,
+            let val = if is_fiat_or_stable(k) {
+                (*v * 100.0).round() / 100.0
+            } else {
+                (*v * 100_000_000.0).round() / 100_000_000.0
             };
             (k.clone(), val)
         })
@@ -1267,10 +1253,10 @@ fn refund_and_cancel(state: &mut PaperState, order_id: u64) -> Result<(), Indoda
 
     let base = order.pair.split('_').next().unwrap_or("btc");
     let quote = order.pair.split('_').next_back().unwrap_or("idr");
-    let refund = order.price * order.remaining;
     let remaining = order.remaining;
 
     if order.side == "buy" {
+        let refund = order.price * remaining;
         *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
         round_balance(&mut state.balances, quote);
     } else {
@@ -1802,14 +1788,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_paper_check_fills_fetch_not_available() {
+    async fn test_paper_check_fills_no_matching_prices() {
         let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000_000.0), 0.5).unwrap();
-        // With --fetch but no network, the function handles gracefully — fetch errors
-        // are non-fatal (printed as warnings), so the result should be Ok with no fills
-        let result = paper_check_fills(&client, &mut state, None, true).await;
-        assert!(result.is_ok(), "Should handle fetch failure without error: {:?}", result.err());
+        // Empty prices map means no orders match — result should be Ok with no fills
+        let result = paper_check_fills(&client, &mut state, Some(r#"{}"#), false).await;
+        assert!(result.is_ok(), "Should handle no matching prices: {:?}", result.err());
         assert_eq!(state.orders[0].status, "open", "Order should remain open when prices unavailable");
         assert_eq!(state.orders[0].remaining, 0.5, "Remaining amount should be unchanged");
     }

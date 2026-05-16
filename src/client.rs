@@ -381,6 +381,14 @@ impl IndodaxClient {
                     }
 
                     if status == StatusCode::TOO_MANY_REQUESTS {
+                        let retry_after = resp.headers()
+                            .get("Retry-After")
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|s| s.parse::<u64>().ok())
+                            .map(Duration::from_secs);
+                        if let Some(delay) = retry_after {
+                            tokio::time::sleep(delay).await;
+                        }
                         last_err = Some(IndodaxError::api(
                             format!("Rate limited (HTTP {})", status.as_u16()),
                             ErrorCategory::RateLimit,
