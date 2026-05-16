@@ -57,12 +57,12 @@ cargo install --path .
 
 ---
 
-## 🚀 Recent Highlights (v0.1.2)
+## 🚀 Recent Highlights (v0.1.3)
 
-- **🐛 Fixed `trade buy` Bug**: Switched to the native `idr` parameter for buy orders, resolving the "Minimum order 10,000 IDR" error caused by client-side rounding issues.
-- **⚡ Performance Optimizations**: Cleaned up code with Clippy and optimized internal data transformation pipelines.
-- **🧪 Stable Paper Trading**: Fixed initialization issues and stabilized the simulated trading environment.
-- **📦 Multi-Platform Support**: Now distributed via Crates.io, NPM, and Docker Hub for easier installation.
+- **🔐 Fixed API v2 Authentication**: Corrected HMAC-SHA512 signature encoding from Base64 to hex lowercase, resolving 401 Unauthorized errors on order and trade history.
+- **🌐 Improved Connection Stability**: Migrated API v2 endpoints to `tapi.btcapi.net` to bypass Cloudflare 403 Forbidden issues common on some network ranges.
+- **📊 Strict TradeAPI-2 Compliance**: Normalized symbol formats (e.g., `btcidr`) and enforced minimum limits to match official Indodax v2 specifications.
+- **🧹 Dependency Cleanup**: Removed unused dependencies to reduce binary size and improve build times.
 
 ---
 
@@ -486,7 +486,7 @@ cargo tarpaulin --out stdout
 | `lib.rs` | 20+ | ✅ 100% |
 | `commands/*` | 90+ | ✅ 100% |
 | `mcp/*` | 20+ | ✅ 100% |
-| **Total** | **295** | **✅ 100%** |
+| **Total** | **299+** | **✅ 100%** |
 
 ### E2E Testing
 
