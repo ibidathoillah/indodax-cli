@@ -6,6 +6,7 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 ## Completed (this session)
 
+- [x] **WebSocket Reliability Overhaul (v0.1.13)** — Implemented Pings, automatic reconnection, and Private WS rewrite for real-time order/balance updates.
 - [x] All 22 issues from previous TODO.md — verified fixed in source code
 - [x] **Checklist: Build** — `cargo build` passes with Rust 1.95.0
 - [x] **Checklist: Tests** — All 300 tests pass

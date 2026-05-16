@@ -57,7 +57,7 @@ cargo install --path .
 
 ---
 
-## 🚀 Recent Highlights (v0.1.12)
+## 🚀 Recent Highlights (v0.1.13)
 
 - **🔥 WebSocket Reliability Overhaul**: Implemented application-level Pings, automatic reconnection with exponential backoff, and a complete rewrite of the Private WebSocket to support real-time order and balance updates.
 - **🔐 Secure Authentication**: Added support for user-configurable WebSocket tokens with fallback to a reliable hardcoded default, ensuring stable connections even if official tokens change.
