@@ -158,33 +158,7 @@ impl IndodaxClient {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(payload);
         let resp = self.send_with_retry(req).await?;
-
-        let body_text = resp.text().await?;
-        let data: serde_json::Value = serde_json::from_str(&body_text)?;
-
-        if let Some(success) = data.get("success").and_then(|v| v.as_i64()) {
-            if success == 1 {
-                Ok(data)
-            } else {
-                let error_msg = data
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                let error_code = data
-                    .get("error_code")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let category = match error_code.as_deref() {
-                    Some("invalid_credentials") => ErrorCategory::Authentication,
-                    Some("rate_limit") => ErrorCategory::RateLimit,
-                    Some(c) if c.contains("invalid") => ErrorCategory::Validation,
-                    _ => ErrorCategory::Unknown,
-                };
-                Err(IndodaxError::api(error_msg, category, error_code))
-            }
-        } else {
-            Ok(data)
-        }
+        self.handle_v1_response(resp).await
     }
 
     pub async fn generate_ws_token(&self) -> Result<String, IndodaxError> {
@@ -224,30 +198,10 @@ impl IndodaxClient {
         self.handle_response(resp).await
     }
 
-    pub async fn private_post_v1<T: DeserializeOwned>(
+    async fn handle_v1_response<T: DeserializeOwned>(
         &self,
-        method: &str,
-        params: &HashMap<String, String>,
+        resp: Response,
     ) -> Result<T, IndodaxError> {
-        let signer = self.signer.as_ref().ok_or_else(|| {
-            IndodaxError::Config("API credentials required for private endpoints".into())
-        })?;
-
-        let mut full_params: BTreeMap<String, String> = params
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        
-        full_params.insert("method".into(), method.to_string());
-        full_params.insert("nonce".into(), signer.next_nonce_str());
-
-        let body = serde_urlencoded_str(&full_params);
-        let (_, signature) = signer.sign_v1(&body)?;
-
-        let resp = self
-            .retry_post(PRIVATE_V1_URL, &body, signer.api_key(), &signature)
-            .await?;
-
         let body_text = resp.text().await?;
         let envelope: IndodaxV1Response<T> = serde_json::from_str(&body_text).map_err(|e| {
             IndodaxError::Parse(format!(
@@ -272,6 +226,33 @@ impl IndodaxClient {
                 envelope.error_code,
             ))
         }
+    }
+
+    pub async fn private_post_v1<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: &HashMap<String, String>,
+    ) -> Result<T, IndodaxError> {
+        let signer = self.signer.as_ref().ok_or_else(|| {
+            IndodaxError::Config("API credentials required for private endpoints".into())
+        })?;
+
+        let mut full_params: BTreeMap<String, String> = params
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        
+        full_params.insert("method".into(), method.to_string());
+        full_params.insert("nonce".into(), signer.next_nonce_str());
+
+        let body = serde_urlencoded_str(&full_params);
+        let (_, signature) = signer.sign_v1(&body)?;
+
+        let resp = self
+            .retry_post(PRIVATE_V1_URL, &body, signer.api_key(), &signature)
+            .await?;
+
+        self.handle_v1_response(resp).await
     }
 
     pub async fn private_get_v2<T: DeserializeOwned>(
