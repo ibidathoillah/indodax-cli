@@ -299,10 +299,18 @@ fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<Co
     )))
 }
 
-pub fn format_balance(currency: &str, value: f64) -> String {
+fn is_fiat_or_stable(currency: &str) -> bool {
     match currency.to_lowercase().as_str() {
-        "idr" | "usdt" | "usdc" => format!("{:.2}", value),
-        _ => format!("{:.8}", value),
+        "idr" | "usdt" | "usdc" | "dai" | "busd" | "pax" | "usde" | "gusd" | "tusd" => true,
+        _ => false,
+    }
+}
+
+pub fn format_balance(currency: &str, value: f64) -> String {
+    if is_fiat_or_stable(currency) {
+        format!("{:.2}", value)
+    } else {
+        format!("{:.8}", value)
     }
 }
 
@@ -529,13 +537,10 @@ pub fn place_paper_order_idr(
 
 fn round_balance(balances: &mut HashMap<String, f64>, currency: &str) {
     if let Some(balance) = balances.get_mut(currency) {
-        match currency {
-            "idr" | "usdt" | "usdc" => {
-                *balance = (*balance * 100.0).round() / 100.0;
-            }
-            _ => {
-                *balance = (*balance * 100_000_000.0).round() / 100_000_000.0;
-            }
+        if is_fiat_or_stable(currency) {
+            *balance = (*balance * 100.0).round() / 100.0;
+        } else {
+            *balance = (*balance * 100_000_000.0).round() / 100_000_000.0;
         }
     }
 }
