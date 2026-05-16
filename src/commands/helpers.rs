@@ -135,6 +135,23 @@ pub fn first_of<'a>(val: &'a Value, keys: &[&str]) -> &'a Value {
     &Value::Null
 }
 
+/// Check if a currency is fiat (IDR) or a stablecoin.
+pub fn is_fiat_or_stable(currency: &str) -> bool {
+    matches!(
+        currency.to_lowercase().as_str(),
+        "idr" | "usdt" | "usdc" | "dai" | "busd" | "pax" | "usde" | "gusd" | "tusd"
+    )
+}
+
+/// Currency-aware balance formatting: 2 decimals for IDR/fiat/stablecoins, 8 for crypto.
+pub fn format_balance(currency: &str, value: f64) -> String {
+    if is_fiat_or_stable(currency) {
+        format!("{:.2}", value)
+    } else {
+        format!("{:.8}", value)
+    }
+}
+
 /// Parse a balance value for a given currency from API account info response.
 pub fn parse_balance(info: &serde_json::Value, currency: &str) -> f64 {
     info["balance"][currency]

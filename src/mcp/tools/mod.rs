@@ -31,6 +31,7 @@ pub struct IndodaxMcp {
     pub config: Arc<Mutex<IndodaxConfig>>,
     pub safety: SafetyConfig,
     pub enabled_groups: Vec<ServiceGroup>,
+    pub paper_mutex: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl IndodaxMcp {
@@ -45,6 +46,7 @@ impl IndodaxMcp {
             config: Arc::new(Mutex::new(config)),
             safety,
             enabled_groups,
+            paper_mutex: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -419,7 +421,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let order_id = Self::get_num(&args, "order_id");
                 let price = Self::get_num(&args, "price");
                 let all = Self::get_bool(&args, "all");
-                self.handle_paper_fill(order_id, price, all).await
+                let fetch = Self::get_bool(&args, "fetch");
+                self.handle_paper_fill(order_id, price, all, fetch).await
             }
             "paper_check_fills" => {
                 let prices = Self::get_str(&args, "prices");

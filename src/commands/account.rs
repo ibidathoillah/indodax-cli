@@ -108,10 +108,19 @@ async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
 
     let balance = &data["balance"];
     if let serde_json::Value::Object(bal_map) = balance {
-        let mut entries: Vec<(&String, &serde_json::Value)> = bal_map.iter().collect();
+        let mut entries: Vec<(&String, f64)> = bal_map
+            .iter()
+            .map(|(k, v)| {
+                let val = v.as_str().and_then(|s| s.parse::<f64>().ok())
+                    .or_else(|| v.as_f64())
+                    .unwrap_or(0.0);
+                (k, val)
+            })
+            .collect();
         entries.sort_by(|a, b| a.0.cmp(b.0));
-        for (k, v) in entries {
-            rows.push(vec![k.clone(), helpers::value_to_string(v)]);
+        for (k, amount) in entries {
+            let formatted = helpers::format_balance(k, amount);
+            rows.push(vec![k.clone(), formatted]);
         }
     }
 
@@ -138,7 +147,8 @@ async fn balance(client: &IndodaxClient) -> Result<CommandOutput> {
             .collect();
         entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (currency, amount) in entries {
-            rows.push(vec![currency, amount.to_string()]);
+            let formatted = helpers::format_balance(&currency, amount);
+            rows.push(vec![currency, formatted]);
         }
     }
 

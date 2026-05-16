@@ -223,14 +223,23 @@ impl IndodaxMcp {
         &self,
         pair: Option<&str>,
     ) -> CallToolResult {
+        let scope_warning = if pair.is_none() {
+            Some("[WARN] No pair filter specified — cancelling ALL open orders across all pairs. This is a global operation.")
+        } else {
+            None
+        };
         match crate::commands::helpers::cancel_all_open_orders(&self.client, pair).await {
             Ok((cancelled_ids, failed_ids)) => {
-                let result = serde_json::json!({
+                let mut result = serde_json::json!({
                     "cancelled_count": cancelled_ids.len(),
                     "cancelled_ids": cancelled_ids,
                     "failed_count": failed_ids.len(),
                     "failed_ids": failed_ids,
                 });
+                if let Some(warning) = scope_warning {
+                    result["warning"] = serde_json::Value::String(warning.to_string());
+                    eprintln!("[MCP] {}", warning);
+                }
                 Self::json_result(result)
             }
             Err(e) => Self::error_from_indodax(&e),
