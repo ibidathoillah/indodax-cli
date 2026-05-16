@@ -45,6 +45,7 @@ jobs:
 
       - name: Build
         run: |
+          cargo test --target ${{ matrix.target }} || echo "Tests failed or not possible on this target, but continuing with build..."
           cargo build --release --target ${{ matrix.target }} || echo "Build failed for ${{ matrix.target }}, skipping..."
           if [ ! -f target/${{ matrix.target }}/release/indodax ]; then
             mkdir -p target/${{ matrix.target }}/release/

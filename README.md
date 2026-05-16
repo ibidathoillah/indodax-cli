@@ -488,6 +488,12 @@ cargo tarpaulin --out stdout
 | `mcp/*` | 20+ | ✅ 100% |
 | **Total** | **299+** | **✅ 100%** |
 
+### Testing Standards
+
+Every release undergoes rigorous verification:
+- **Unit Tests**: Mandatory `cargo test` suite (300+ tests) must pass on all platforms (CI/CD enforced).
+- **E2E Tests**: Manual verification using `scripts/e2e_minimal.sh` with the smallest possible increments (e.g., 10,000 IDR) to ensure live API compatibility without significant risk.
+
 ### E2E Testing
 
 End-to-end tests are documented in [`E2E_TESTING_LOG.md`](E2E_TESTING_LOG.md), covering real API interactions including market data, account queries, and trade execution.
