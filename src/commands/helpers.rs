@@ -5,16 +5,32 @@ use crate::errors::IndodaxError;
 
 pub const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
 
+/// Default static token from official Indodax Market Data WebSocket documentation.
+/// Used for authenticating with the Public Market Data WebSocket (ws3).
+pub const DEFAULT_STATIC_WS_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE5NDY2MTg0MTV9.UR1lBM6Eqh0yWz-PVirw1uPCxe60FdchR8eNVdsskeo";
+
+/// Fetch a public WebSocket token, with fallback to user configuration and then a hardcoded default.
 pub async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String, anyhow::Error> {
-    let resp = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await
-        .map_err(|e| anyhow::anyhow!("Failed to fetch WebSocket token: {}", e))?;
-    let text = resp.text().await
-        .map_err(|e| anyhow::anyhow!("Failed to read token response: {}", e))?;
-    let val: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| anyhow::anyhow!("Invalid token response: {}", e))?;
-    val.get("token").and_then(|t| t.as_str()).map(|t| t.to_string())
-        .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()).map(|t| t.to_string()))
-        .ok_or_else(|| anyhow::anyhow!("No token in response: {}", text))
+    // 1. Try to fetch dynamically (some Indodax environments support this)
+    let resp_res = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await;
+    if let Ok(resp) = resp_res {
+        if let Ok(text) = resp.text().await {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(token) = val.get("token").and_then(|t| t.as_str())
+                    .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str())) {
+                    return Ok(token.to_string());
+                }
+            }
+        }
+    }
+
+    // 2. Try to use user-configured token from config/env
+    if let Some(token) = client.ws_token() {
+        return Ok(token.to_string());
+    }
+    
+    // 3. Fallback to hardcoded default
+    Ok(DEFAULT_STATIC_WS_TOKEN.to_string())
 }
 
 pub const ONE_DAY_MS: u64 = 24 * 60 * 60 * 1000;
@@ -551,5 +567,14 @@ mod tests {
         let data = json!([]);
         let pairs = extract_pairs(&data);
         assert!(pairs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_public_ws_token_default() {
+        let client = IndodaxClient::new(None).unwrap();
+        let token = fetch_public_ws_token(&client).await.unwrap();
+        // Since we are not in an environment where the dynamic URL necessarily works,
+        // it should at least return the default token if it fails.
+        assert!(!token.is_empty());
     }
 }

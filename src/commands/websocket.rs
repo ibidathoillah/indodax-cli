@@ -12,25 +12,6 @@ use tracing;
 const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
 const PRIVATE_WS_URL: &str = "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true";
 
-/// Default static token from official Indodax Market Data WebSocket documentation.
-/// Used for authenticating with the Public Market Data WebSocket (ws3).
-const DEFAULT_STATIC_WS_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE5NDY2MTg0MTV9.UR1lBM6Eqh0yWz-PVirw1uPCxe60FdchR8eNVdsskeo";
-
-async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String> {
-    // 1. Try to fetch dynamically (requires API credentials)
-    if let Ok(token) = helpers::fetch_public_ws_token(client).await {
-        return Ok(token);
-    }
-
-    // 2. Try to use user-configured token from config
-    if let Some(token) = client.ws_token() {
-        return Ok(token.to_string());
-    }
-    
-    // 3. Fallback to hardcoded default
-    Ok(DEFAULT_STATIC_WS_TOKEN.to_string())
-}
-
 #[derive(Debug, clap::Subcommand)]
 pub enum WebSocketCommand {
     #[command(name = "ticker", about = "Stream real-time ticker for a pair")]
@@ -274,7 +255,7 @@ fn format_ws_price(val: &serde_json::Value) -> Option<String> {
 
 async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputFormat) -> Result<CommandOutput> {
     let channel = format!("chart:tick-{}", pair);
-    let token = fetch_public_ws_token(client).await?;
+    let token = helpers::fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let rows = &val["result"]["data"]["data"];
         let mut last_event = None;
@@ -308,7 +289,7 @@ async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputForm
 
 async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputFormat) -> Result<CommandOutput> {
     let channel = format!("market:trade-activity-{}", pair);
-    let token = fetch_public_ws_token(client).await?;
+    let token = helpers::fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let rows = &val["result"]["data"]["data"];
         let mut last_event = None;
@@ -346,7 +327,7 @@ async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputForm
 
 async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat) -> Result<CommandOutput> {
     let channel = format!("market:order-book-{}", pair);
-    let token = fetch_public_ws_token(client).await?;
+    let token = helpers::fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let data = &val["result"]["data"]["data"];
         
@@ -410,7 +391,7 @@ async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat
 }
 
 async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Result<CommandOutput> {
-    let token = fetch_public_ws_token(client).await?;
+    let token = helpers::fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, "market:summary-24h", |val| {
         let rows = &val["result"]["data"]["data"];
         let mut last_event = None;
@@ -797,7 +778,7 @@ mod tests {
     fn test_fetch_public_ws_token_precedence() {
         // We can't easily mock the IndodaxClient's network call here without more refactoring,
         // but we can test the logic of fetch_public_ws_token if we extract it slightly.
-        let default_token = DEFAULT_STATIC_WS_TOKEN;
+        let default_token = helpers::DEFAULT_STATIC_WS_TOKEN;
         assert!(default_token.starts_with("eyJ"));
     }
 }
