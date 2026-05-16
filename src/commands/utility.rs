@@ -14,13 +14,13 @@ pub enum UtilityCommand {
 }
 
 pub async fn execute(
-    _client: &IndodaxClient,
-    _creds: &Option<ResolvedCredentials>,
+    client: &IndodaxClient,
+    creds: &Option<ResolvedCredentials>,
     cmd: &UtilityCommand,
 ) -> Result<CommandOutput> {
     match cmd {
         UtilityCommand::Setup => setup().await,
-        UtilityCommand::Shell => shell().await,
+        UtilityCommand::Shell => shell(client, creds).await,
     }
 }
 
@@ -91,7 +91,7 @@ async fn setup() -> Result<CommandOutput> {
     Ok(CommandOutput::json(data))
 }
 
-async fn shell() -> Result<CommandOutput> {
+async fn shell(client: &IndodaxClient, creds: &Option<ResolvedCredentials>) -> Result<CommandOutput> {
     use crate::Cli;
     use clap::Parser;
     use rustyline::DefaultEditor;
@@ -102,12 +102,7 @@ async fn shell() -> Result<CommandOutput> {
 
     let mut rl = DefaultEditor::new()?;
     let mut config = crate::config::IndodaxConfig::load()?;
-    let creds = config.resolve_credentials(None, None)?;
-    let signer = creds.as_ref().map(|c| {
-        crate::auth::Signer::new(c.api_key.as_str(), c.api_secret.as_str())
-    });
-let client = crate::client::IndodaxClient::new(signer)?;
-    let client_ref = &client;
+    let client_ref = client;
 
     loop {
         let line = rl.readline("indodax> ");
