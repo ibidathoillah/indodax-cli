@@ -1,6 +1,10 @@
-## 🚀 Welcome to Indodax CLI v0.1.12
+## 🚀 Welcome to Indodax CLI v0.1.13
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
+
+### 🆕 What's New in v0.1.13
+
+- **🔒 SSL/TLS Fix**: Switched to `rustls-tls-native-roots` for both HTTP and WebSocket connections. This resolves `UnknownIssuer` errors by correctly loading the system's root certificates from the OS trust store.
 
 ### 🆕 What's New in v0.1.12
 
