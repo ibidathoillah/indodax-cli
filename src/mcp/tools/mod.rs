@@ -119,9 +119,11 @@ impl IndodaxMcp {
     }
 
     pub fn get_bool(args: &Map<String, Value>, name: &str) -> bool {
-        args.get(name)
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+        Self::get_opt_bool(args, name).unwrap_or(false)
+    }
+
+    pub fn get_opt_bool(args: &Map<String, Value>, name: &str) -> Option<bool> {
+        args.get(name).and_then(|v| v.as_bool())
     }
 
     pub fn ok_result(text: String) -> CallToolResult {
@@ -534,6 +536,17 @@ fn test_mcp() -> IndodaxMcp {
     fn test_get_bool_missing_defaults_false() {
         let args = Map::new();
         assert!(!IndodaxMcp::get_bool(&args, "missing"));
+    }
+
+    #[test]
+    fn test_get_opt_bool() {
+        let mut args = Map::new();
+        args.insert("true_val".into(), json!(true));
+        args.insert("false_val".into(), json!(false));
+        
+        assert_eq!(IndodaxMcp::get_opt_bool(&args, "true_val"), Some(true));
+        assert_eq!(IndodaxMcp::get_opt_bool(&args, "false_val"), Some(false));
+        assert_eq!(IndodaxMcp::get_opt_bool(&args, "missing"), None);
     }
 
     #[test]
