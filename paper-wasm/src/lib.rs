@@ -113,12 +113,25 @@ impl PaperTrader {
         self.place_order_internal(pair, "sell", price, amount)
     }
 
-    fn place_order_internal(&mut self, pair: &str, side: &str, price: f64, amount: f64) -> Result<JsValue, JsValue> {
+    fn place_order_internal(&mut self, pair_in: &str, side: &str, price: f64, amount: f64) -> Result<JsValue, JsValue> {
         if price <= 0.0 { return Err(JsValue::from_str("Price must be greater than 0")); }
         if amount <= 0.0 { return Err(JsValue::from_str("Amount must be greater than 0")); }
 
-        let base = pair.split('_').next().unwrap_or(pair);
-        let quote = pair.split('_').last().unwrap_or("idr");
+        let pair = pair_in.to_lowercase().replace('-', "").replace('_', "");
+        let quote_currencies = ["usdt", "idr", "btc"];
+        let mut quote = "idr".to_string();
+        let mut base = pair.clone();
+
+        for q in &quote_currencies {
+            if let Some(b) = pair.strip_suffix(q) {
+                if !b.is_empty() {
+                    base = b.to_string();
+                    quote = q.to_string();
+                    break;
+                }
+            }
+        }
+        
         let total = price * amount;
 
         if side == "buy" {
@@ -203,11 +216,23 @@ impl PaperTrader {
         let (base, quote, side, price, amount) = {
             let order = self.state.orders.iter().find(|o| o.id == order_id)
                 .ok_or_else(|| JsValue::from_str("Order not found"))?;
-            (order.pair.split('_').next().unwrap_or("btc").to_string(),
-             order.pair.split('_').last().unwrap_or("idr").to_string(),
-             order.side.clone(),
-             order.price,
-             order.remaining)
+            
+            let pair = order.pair.to_lowercase().replace('-', "").replace('_', "");
+            let quote_currencies = ["usdt", "idr", "btc"];
+            let mut q_str = "idr".to_string();
+            let mut b_str = pair.clone();
+
+            for q in &quote_currencies {
+                if let Some(b) = pair.strip_suffix(q) {
+                    if !b.is_empty() {
+                        b_str = b.to_string();
+                        q_str = q.to_string();
+                        break;
+                    }
+                }
+            }
+
+            (b_str, q_str, order.side.clone(), order.price, order.remaining)
         };
 
         let total = price * amount;
@@ -247,8 +272,21 @@ impl PaperTrader {
             return Err(JsValue::from_str(&format!("Order already {}", order.status)));
         }
 
-        let base = order.pair.split('_').next().unwrap_or("btc").to_string();
-        let quote = order.pair.split('_').last().unwrap_or("idr").to_string();
+        let pair = order.pair.to_lowercase().replace('-', "").replace('_', "");
+        let quote_currencies = ["usdt", "idr", "btc"];
+        let mut quote = "idr".to_string();
+        let mut base = pair.clone();
+
+        for q in &quote_currencies {
+            if let Some(b) = pair.strip_suffix(q) {
+                if !b.is_empty() {
+                    base = b.to_string();
+                    quote = q.to_string();
+                    break;
+                }
+            }
+        }
+
         let refund = order.price * order.remaining;
 
         if order.side == "buy" {
@@ -339,6 +377,7 @@ mod tests {
     #[test]
     fn test_execute_fill_malformed_pair() {
         let mut trader = PaperTrader::new();
+        trader.state.balances.insert("idr".into(), 1_000_000.0);
         trader.state.orders.push(PaperOrder {
             id: 1, pair: "btcidr".into(), // no underscore
             side: "buy".into(), price: 100_000.0,
@@ -347,7 +386,8 @@ mod tests {
             filled_price: 0.0, total_spent: 0.0,
         });
         
-        // This should not panic
-        let _ = trader.execute_fill(1);
+        let result = trader.execute_fill(1);
+        assert!(result.is_ok());
+        assert_eq!(*trader.state.balances.get("btc").unwrap(), 1.0 + 1.0); // Default 1.0 + 1.0 from fill
     }
 }
