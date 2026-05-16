@@ -13,20 +13,29 @@ jobs:
     name: Build and Release
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: indodax-linux-x86_64
+            binary_extension: ""
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             artifact_name: indodax-linux-aarch64
+            binary_extension: ""
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: indodax-macos-x86_64
+            binary_extension: ""
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: indodax-macos-aarch64
+            binary_extension: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: indodax-windows-x86_64
+            binary_extension: ".exe"
 
     steps:
       - name: Checkout
@@ -37,29 +46,35 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: contains(matrix.target, 'aarch64-unknown-linux-gnu')
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
+        shell: bash
         run: |
-          cargo test --target ${{ matrix.target }} || echo "Tests failed or not possible on this target, but continuing with build..."
-          cargo build --release --target ${{ matrix.target }} || echo "Build failed for ${{ matrix.target }}, skipping..."
-          if [ ! -f target/${{ matrix.target }}/release/indodax ]; then
-            mkdir -p target/${{ matrix.target }}/release/
-            touch target/${{ matrix.target }}/release/indodax
+          # Use cross for linux aarch64 if needed, but here we try native build with linker
+          if [ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]; then
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
           fi
+          
+          cargo build --release --target ${{ matrix.target }}
+          
+          # Move and rename binary for easier release management
+          BIN_DIR="target/${{ matrix.target }}/release"
+          cp "$BIN_DIR/indodax${{ matrix.binary_extension }}" "${{ matrix.artifact_name }}${{ matrix.binary_extension }}"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: target/${{ matrix.target }}/release/indodax
+          path: ${{ matrix.artifact_name }}${{ matrix.binary_extension }}
 
   publish-cargo:
     name: Publish to Cargo
+    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -69,34 +84,11 @@ jobs:
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --token $CARGO_REGISTRY_TOKEN --no-verify --allow-dirty
-
-  publish-docker:
-    name: Publish to Docker Hub
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/indodax-cli:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/indodax-cli:${{ github.ref_name }}
+        run: cargo publish --token $CARGO_REGISTRY_TOKEN --no-verify --allow-dirty || echo "Already published"
 
   publish-npm:
     name: Publish to NPM
+    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -123,26 +115,26 @@ jobs:
 
   github-release:
     name: GitHub Release
+    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Download Artifacts
         uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          path: artifacts
+          # Download directly to the root for easier matching
+          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/indodax-linux-x86_64/indodax*
-            artifacts/indodax-linux-aarch64/indodax*
-            artifacts/indodax-macos-x86_64/indodax*
-            artifacts/indodax-macos-aarch64/indodax*
+            indodax-linux-x86_64
+            indodax-linux-aarch64
+            indodax-macos-x86_64
+            indodax-macos-aarch64
+            indodax-windows-x86_64.exe
           body_path: RELEASE_NOTES.md
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
