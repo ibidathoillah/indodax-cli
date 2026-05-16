@@ -619,7 +619,7 @@ fn paper_orders(state: &PaperState, filter_pair: Option<&str>, sort_by: Option<&
         .orders
         .iter()
         .filter(|o| o.status == "open")
-        .filter(|o| filter_pair.map_or(true, |p| o.pair == p))
+        .filter(|o| filter_pair.is_none_or(|p| o.pair == p))
         .collect();
 
     sort_paper_orders(&mut filtered, sort_by, sort_order);
@@ -730,10 +730,8 @@ pub async fn paper_fill(
                 Ok::<(String, f64), IndodaxError>((p.clone(), price))
             }).collect();
 
-            for res in join_all(futures).await {
-                if let Ok((pair, price)) = res {
-                    fetched_prices.insert(pair, price);
-                }
+            for (pair, price) in join_all(futures).await.into_iter().flatten() {
+                fetched_prices.insert(pair, price);
             }
         }
     }
@@ -1053,11 +1051,7 @@ client: &IndodaxClient, state: &PaperState) -> Result<HashMap<String, f64>, Indo
                             .and_then(|v| v.as_str())
                             .and_then(|s| s.parse::<f64>().ok())
                             .or_else(|| ticker.get("last").and_then(|v| v.as_f64()));
-                        if let Some(price) = last {
-                            Some((pair, price))
-                        } else {
-                            None
-                        }
+                        last.map(|price| (pair, price))
                     } else {
                         None
                     }

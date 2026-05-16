@@ -61,7 +61,7 @@ async fn main() {
     });
 
     let client = match IndodaxClient::new(signer) {
-        Ok(c) => c,
+        Ok(c) => c.with_ws_token(config.ws_token.as_ref().map(|t| t.as_str().to_string())),
         Err(e) => {
             report_error(&e, output_format);
             process::exit(1);

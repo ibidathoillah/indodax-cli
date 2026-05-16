@@ -108,20 +108,20 @@ pub async fn dispatch(
 ) -> Result<CommandOutput, IndodaxError> {
     let output = match cli.command {
         Command::Market { cmd } => commands::market::execute(client, &cmd).await
-            .map_err(|e| map_anyhow_error(e))?,
+            .map_err(map_anyhow_error)?,
         Command::Account { cmd } => commands::account::execute(client, &cmd).await
-            .map_err(|e| map_anyhow_error(e))?,
+            .map_err(map_anyhow_error)?,
         Command::Trade { cmd } => commands::trade::execute(client, &cmd).await
-            .map_err(|e| map_anyhow_error(e))?,
+            .map_err(map_anyhow_error)?,
         Command::Funding { cmd } => commands::funding::execute(client, config, &cmd, cli.output).await
-            .map_err(|e| map_anyhow_error(e))?,
+            .map_err(map_anyhow_error)?,
         Command::Ws { cmd } => commands::websocket::execute(client, &cmd, cli.output).await
-            .map_err(|e| map_anyhow_error(e))?,
+            .map_err(map_anyhow_error)?,
         Command::Paper { cmd } => commands::paper::execute(client, config, &cmd).await?,
         Command::Auth { cmd } => commands::auth::execute(client, config, &cmd).await
-            .map_err(|e| map_anyhow_error(e))?,
+            .map_err(map_anyhow_error)?,
         Command::Alert { cmd } => commands::alert::execute(client, &None, &cmd).await
-            .map_err(|e| map_anyhow_error(e))?,
+            .map_err(map_anyhow_error)?,
         Command::Setup | Command::Shell | Command::Mcp { .. } => {
             return Err(IndodaxError::Other("This command is handled separately".into()));
         }

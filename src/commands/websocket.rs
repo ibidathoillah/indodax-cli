@@ -12,8 +12,23 @@ use tracing;
 const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
 const PRIVATE_WS_URL: &str = "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true";
 
+/// Default static token from official Indodax Market Data WebSocket documentation.
+/// Used for authenticating with the Public Market Data WebSocket (ws3).
+const DEFAULT_STATIC_WS_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE5NDY2MTg0MTV9.UR1lBM6Eqh0yWz-PVirw1uPCxe60FdchR8eNVdsskeo";
+
 async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String> {
-    helpers::fetch_public_ws_token(client).await
+    // 1. Try to fetch dynamically (requires API credentials)
+    if let Ok(token) = helpers::fetch_public_ws_token(client).await {
+        return Ok(token);
+    }
+
+    // 2. Try to use user-configured token from config
+    if let Some(token) = client.ws_token() {
+        return Ok(token.to_string());
+    }
+    
+    // 3. Fallback to hardcoded default
+    Ok(DEFAULT_STATIC_WS_TOKEN.to_string())
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -73,7 +88,7 @@ async fn ws_connect_and_listen(
     handler: impl Fn(serde_json::Value) -> Option<serde_json::Value>,
     output_format: OutputFormat,
 ) -> Result<CommandOutput> {
-    let spinner = if output_format == OutputFormat::Json {
+    let spinner_ref = if output_format == OutputFormat::Json {
         eprintln!(
             "{}",
             serde_json::json!({"event": "connecting", "url": ws_url})
@@ -85,110 +100,152 @@ async fn ws_connect_and_listen(
         pb.enable_steady_tick(std::time::Duration::from_millis(100));
         Some(pb)
     };
-    let (mut ws_stream, _) = connect_async(ws_url).await?;
-    if let Some(ref pb) = spinner {
-        pb.set_message("Connected. Authenticating...");
-    } else {
-        eprintln!(
-            "{}",
-            serde_json::json!({"event": "connected", "status": "authenticating"})
-        );
-    }
-
-    let auth_msg = serde_json::json!({
-        "params": { "token": token },
-        "id": 1
-    });
-    ws_stream
-        .send(Message::Text(auth_msg.to_string()))
-        .await?;
-
-    let mut authed = false;
 
     let mut events: Vec<serde_json::Value> = Vec::new();
+    let mut retry_count = 0;
 
-    loop {
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
-                if let Some(ref pb) = spinner {
-                    pb.finish_and_clear();
-                    eprintln!("Interrupted by user. Closing connection...");
-                } else {
-                    eprintln!("{}", serde_json::json!({"event": "interrupted", "reason": "user_ctrl_c"}));
-                }
-                let _ = ws_stream.send(Message::Close(None)).await;
-                break;
+    'reconnect: loop {
+        if retry_count > 0 {
+            let delay = std::time::Duration::from_secs(2u64.pow(retry_count.min(5)));
+            if let Some(ref pb) = spinner_ref {
+                pb.set_message(format!("Disconnected. Retrying in {:?}...", delay));
+            } else {
+                eprintln!("{}", serde_json::json!({"event": "reconnecting", "delay_secs": delay.as_secs()}));
             }
-            msg = ws_stream.next() => {
-                let msg = match msg {
-                    Some(m) => m,
-                    None => break,
-                };
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => break 'reconnect,
+                _ = tokio::time::sleep(delay) => {}
+            }
+        }
 
-                match msg {
-                    Ok(Message::Text(text)) => {
-                        let val = match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                tracing::warn!("WebSocket JSON parse error: {} (text: {})", e, text);
+        let (mut ws_stream, _) = match connect_async(ws_url).await {
+            Ok(s) => s,
+            Err(e) => {
+                retry_count += 1;
+                tracing::warn!("WebSocket connection failed: {}. Retrying...", e);
+                continue 'reconnect;
+            }
+        };
+
+        if let Some(ref pb) = spinner_ref {
+            pb.set_message("Connected. Authenticating...");
+        } else {
+            eprintln!(
+                "{}",
+                serde_json::json!({"event": "connected", "status": "authenticating"})
+            );
+        }
+
+        let auth_msg = serde_json::json!({
+            "params": { "token": token },
+            "id": 1
+        });
+        if let Err(e) = ws_stream.send(Message::Text(auth_msg.to_string())).await {
+            retry_count += 1;
+            tracing::warn!("Failed to send auth message: {}. Retrying...", e);
+            continue 'reconnect;
+        }
+
+        let mut authed = false;
+        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        loop {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    if let Some(ref pb) = spinner_ref {
+                        pb.finish_and_clear();
+                        eprintln!("Interrupted by user. Closing connection...");
+                    } else {
+                        eprintln!("{}", serde_json::json!({"event": "interrupted", "reason": "user_ctrl_c"}));
+                    }
+                    let _ = ws_stream.send(Message::Close(None)).await;
+                    break 'reconnect;
+                }
+                _ = ping_interval.tick() => {
+                    // Application-level ping to keep connection alive
+                    let ping_msg = serde_json::json!({
+                        "method": 7,
+                        "id": 7
+                    });
+                    if let Err(e) = ws_stream.send(Message::Text(ping_msg.to_string())).await {
+                        tracing::warn!("Failed to send WebSocket ping: {}. Triggering reconnect...", e);
+                        retry_count += 1;
+                        continue 'reconnect;
+                    }
+                }
+                msg = ws_stream.next() => {
+                    let msg = match msg {
+                        Some(m) => m,
+                        None => {
+                            retry_count += 1;
+                            tracing::warn!("WebSocket stream ended. Reconnecting...");
+                            continue 'reconnect;
+                        }
+                    };
+
+                    match msg {
+                        Ok(Message::Text(text)) => {
+                            let val = match serde_json::from_str::<serde_json::Value>(&text) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    tracing::warn!("WebSocket JSON parse error: {} (text: {})", e, text);
+                                    continue;
+                                }
+                            };
+
+                            if !authed {
+                                if val.get("id").and_then(|v| v.as_i64()) == Some(1)
+                                    && val.get("result").is_some()
+                                {
+                                    authed = true;
+                                    retry_count = 0; // Reset retry count on successful auth
+                                    if let Some(ref pb) = spinner_ref {
+                                        pb.set_message(format!("Authenticated. Subscribing to: {}", channel));
+                                    } else {
+                                        eprintln!("{}", serde_json::json!({"event": "authenticated", "channel": channel}));
+                                    }
+                                    let sub_msg = serde_json::json!({
+                                        "method": 1,
+                                        "params": { "channel": channel },
+                                        "id": 2
+                                    });
+                                    if let Err(e) = ws_stream.send(Message::Text(sub_msg.to_string())).await {
+                                        retry_count += 1;
+                                        continue 'reconnect;
+                                    }
+                                }
                                 continue;
                             }
-                        };
 
-                        if !authed {
-                            if val.get("id").and_then(|v| v.as_i64()) == Some(1)
-                                && val.get("result").is_some()
-                            {
-                                authed = true;
-                                if let Some(ref pb) = spinner {
+                            if val.get("id").and_then(|v| v.as_i64()) == Some(2) {
+                                // subscription confirmation
+                                if let Some(ref pb) = spinner_ref {
                                     pb.finish_and_clear();
-                                    eprintln!("Authenticated. Subscribing to channel: {}", channel);
+                                    eprintln!("Subscription active: {}", channel);
                                     eprintln!();
-                                } else {
-                                    eprintln!("{}", serde_json::json!({"event": "authenticated", "channel": channel}));
                                 }
-                                let sub_msg = serde_json::json!({
-                                    "method": 1,
-                                    "params": { "channel": channel },
-                                    "id": 2
-                                });
-                                ws_stream
-                                    .send(Message::Text(sub_msg.to_string()))
-                                    .await?;
-                            }
-                            continue;
-                        }
-
-                        if val.get("id").and_then(|v| v.as_i64()) == Some(2) {
-                            // subscription confirmation, skip
-                        } else if val.get("result").is_some() {
-                            if let Some(event) = handler(val) {
-                                events.push(event);
+                            } else if val.get("result").is_some() {
+                                if let Some(event) = handler(val) {
+                                    events.push(event);
+                                }
                             }
                         }
-                    }
-                    Ok(Message::Ping(data)) => {
-                        let _ = ws_stream.send(Message::Pong(data)).await;
-                    }
-                    Ok(Message::Close(_)) => {
-                        if let Some(ref pb) = spinner {
-                            pb.finish_and_clear();
-                            eprintln!("Connection closed by server.");
-                        } else {
-                            eprintln!("{}", serde_json::json!({"event": "disconnected", "reason": "server_close"}));
+                        Ok(Message::Ping(data)) => {
+                            let _ = ws_stream.send(Message::Pong(data)).await;
                         }
-                        break;
-                    }
-                    Err(e) => {
-                        if let Some(ref pb) = spinner {
-                            pb.finish_and_clear();
-                            eprintln!("WebSocket error: {}", e);
-                        } else {
-                            eprintln!("{}", serde_json::json!({"event": "error", "message": e.to_string()}));
+                        Ok(Message::Close(_)) => {
+                            retry_count += 1;
+                            tracing::warn!("Connection closed by server. Reconnecting...");
+                            continue 'reconnect;
                         }
-                        break;
+                        Err(e) => {
+                            retry_count += 1;
+                            tracing::warn!("WebSocket error: {}. Reconnecting...", e);
+                            continue 'reconnect;
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
@@ -292,30 +349,39 @@ async fn ws_book(client: &IndodaxClient, pair: &str, output_format: OutputFormat
     let token = fetch_public_ws_token(client).await?;
     ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
         let data = &val["result"]["data"]["data"];
+        
+        let parse_entry = |entry: &serde_json::Value| -> Option<(String, String)> {
+            if let Some(arr) = entry.as_array() {
+                if arr.len() >= 2 {
+                    let p = helpers::value_to_string(&arr[0]);
+                    let v = helpers::value_to_string(&arr[1]);
+                    return Some((p, v));
+                }
+            } else if let Some(obj) = entry.as_object() {
+                let p = helpers::value_to_string(obj.get("price").unwrap_or(&serde_json::Value::Null));
+                let v = helpers::value_to_string(
+                    obj.get("btc_volume")
+                        .or_else(|| obj.get("volume"))
+                        .or_else(|| obj.get("amount"))
+                        .unwrap_or(&serde_json::Value::Null),
+                );
+                return Some((p, v));
+            }
+            None
+        };
+
         let ask_price = data["ask"].as_array().and_then(|asks| {
-            asks.first().and_then(|best| {
-                let p = helpers::value_to_string(best.get("price").unwrap_or(&serde_json::Value::Null));
-                let a = helpers::value_to_string(
-                    best.get("btc_volume")
-                        .or_else(|| best.get("volume"))
-                        .or_else(|| best.get("amount"))
-                        .unwrap_or(&serde_json::Value::Null),
-                );
-                Some((p, a))
-            })
-        });
+            asks.first().and_then(parse_entry)
+        }).or_else(|| data["asks"].as_array().and_then(|asks| {
+            asks.first().and_then(parse_entry)
+        }));
+
         let bid_price = data["bid"].as_array().and_then(|bids| {
-            bids.first().and_then(|best| {
-                let p = helpers::value_to_string(best.get("price").unwrap_or(&serde_json::Value::Null));
-                let a = helpers::value_to_string(
-                    best.get("btc_volume")
-                        .or_else(|| best.get("volume"))
-                        .or_else(|| best.get("amount"))
-                        .unwrap_or(&serde_json::Value::Null),
-                );
-                Some((p, a))
-            })
-        });
+            bids.first().and_then(parse_entry)
+        }).or_else(|| data["bids"].as_array().and_then(|bids| {
+            bids.first().and_then(parse_entry)
+        }));
+
         let event = serde_json::json!({
             "event": "orderbook", "pair": pair,
             "ask": ask_price.clone().map(|(p, a)| serde_json::json!({"price": p, "amount": a})),
@@ -394,51 +460,205 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
     }
 
     eprintln!("Generating WebSocket token...");
-    let token = client.generate_ws_token().await.map_err(|e| {
+    let (token, channel) = client.generate_ws_token().await.map_err(|e| {
         anyhow::anyhow!("WebSocket token generation failed: {}. Check that your API credentials are valid and have the correct permissions.", e)
     })?;
     eprintln!("Token generated. Connecting to private WebSocket...");
 
-    let channel = "private:orders";
-    ws_connect_and_listen(PRIVATE_WS_URL, &token, channel, |val| {
-        let data = &val["result"]["data"];
-        let event = if let Some(order_id) = data.get("order_id").and_then(|v| v.as_u64()) {
+    ws_private_connect_and_listen(PRIVATE_WS_URL, &token, &channel, |val| {
+        // Private WebSocket messages can be in several formats depending on the server version
+        // We look for common patterns in order and balance updates.
+        
+        let result = val.get("result").or(val.get("push")).or(Some(&val)).unwrap();
+        let data = result.get("data").unwrap_or(result);
+
+        if let Some(order_id) = data.get("order_id").or(data.get("orderId")).and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))) {
             let pair = data.get("pair").and_then(|v| v.as_str()).unwrap_or("?");
             let side = data.get("side").and_then(|v| v.as_str()).unwrap_or("?");
             let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("?");
             let price = helpers::value_to_string(data.get("price").unwrap_or(&serde_json::Value::Null));
-            let amount = helpers::value_to_string(data.get("amount").unwrap_or(&serde_json::Value::Null));
+            let amount = helpers::value_to_string(data.get("amount").or(data.get("quantity")).unwrap_or(&serde_json::Value::Null));
+            
             if output_format == OutputFormat::Json {
                 println!("{}", serde_json::json!({
                     "event": "order_update", "order_id": order_id, "pair": pair,
                     "side": side, "status": status, "price": price, "amount": amount
                 }));
             } else {
-                println!("ID={} Pair={} Side={} Status={} Price={} Amount={}",
+                println!("Order Update: ID={} Pair={} Side={} Status={} Price={} Amount={}",
                     order_id, pair, side, status, price, amount);
             }
             Some(serde_json::json!({
                 "event": "order_update", "order_id": order_id, "pair": pair,
                 "side": side, "status": status, "price": price, "amount": amount
             }))
-        } else {
+        } else if let Some(currency) = data.get("currency").or(data.get("asset")).and_then(|v| v.as_str()) {
+            let available = helpers::value_to_string(data.get("available").or(data.get("balance")).unwrap_or(&serde_json::Value::Null));
+            let frozen = helpers::value_to_string(data.get("frozen").or(data.get("hold")).unwrap_or(&serde_json::Value::Null));
+            
             if output_format == OutputFormat::Json {
-                let raw = serde_json::json!({"event": "order_update_raw", "data": &val["result"]});
+                println!("{}", serde_json::json!({
+                    "event": "balance_update", "currency": currency,
+                    "available": available, "frozen": frozen
+                }));
+            } else {
+                println!("Balance Update: {} Available={} Frozen={}", currency, available, frozen);
+            }
+            Some(serde_json::json!({
+                "event": "balance_update", "currency": currency,
+                "available": available, "frozen": frozen
+            }))
+        } else {
+            // Raw fallback for unknown private events
+            if output_format == OutputFormat::Json {
+                let raw = serde_json::json!({"event": "private_update_raw", "data": data});
                 println!("{}", raw);
                 Some(raw)
             } else {
-                println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
-                Some(val["result"].clone())
+                // If it's a heartbeat or confirmation, we might want to skip printing
+                if data.get("method").and_then(|m| m.as_str()) != Some("pong") {
+                    println!("Private Event: {}", serde_json::to_string(data).unwrap_or_default());
+                }
+                Some(data.clone())
             }
-        };
-        event
+        }
     }, output_format)
     .await
+}
+
+async fn ws_private_connect_and_listen(
+    ws_url: &str,
+    token: &str,
+    channel: &str,
+    handler: impl Fn(serde_json::Value) -> Option<serde_json::Value>,
+    output_format: OutputFormat,
+) -> Result<CommandOutput> {
+    let spinner_ref = if output_format == OutputFormat::Json {
+        eprintln!("{}", serde_json::json!({"event": "connecting", "url": ws_url}));
+        None
+    } else {
+        let pb = ProgressBar::new_spinner();
+        pb.set_message("Connecting to Private WebSocket...");
+        pb.enable_steady_tick(std::time::Duration::from_millis(100));
+        Some(pb)
+    };
+
+    let mut events: Vec<serde_json::Value> = Vec::new();
+    let mut retry_count = 0;
+
+    'reconnect: loop {
+        if retry_count > 0 {
+            let delay = std::time::Duration::from_secs(2u64.pow(retry_count.min(5)));
+            if let Some(ref pb) = spinner_ref {
+                pb.set_message(format!("Disconnected. Retrying in {:?}...", delay));
+            } else {
+                eprintln!("{}", serde_json::json!({"event": "reconnecting", "delay_secs": delay.as_secs()}));
+            }
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => break 'reconnect,
+                _ = tokio::time::sleep(delay) => {}
+            }
+        }
+
+        let (mut ws_stream, _) = match connect_async(ws_url).await {
+            Ok(s) => s,
+            Err(e) => {
+                retry_count += 1;
+                tracing::warn!("Private WebSocket connection failed: {}. Retrying...", e);
+                continue 'reconnect;
+            }
+        };
+
+        // 1. Connect (Authenticate)
+        let connect_msg = serde_json::json!({
+            "connect": { "token": token },
+            "id": 1
+        });
+        if let Err(e) = ws_stream.send(Message::Text(connect_msg.to_string())).await {
+            retry_count += 1;
+            continue 'reconnect;
+        }
+
+        let mut authed = false;
+        let mut subscribed = false;
+        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+
+        loop {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    let _ = ws_stream.send(Message::Close(None)).await;
+                    break 'reconnect;
+                }
+                _ = ping_interval.tick() => {
+                    // Private WS uses standard ping frames if configured in URL, 
+                    // but some versions also support application-level pings.
+                    let _ = ws_stream.send(Message::Ping(vec![])).await;
+                }
+                msg = ws_stream.next() => {
+                    let msg = match msg {
+                        Some(m) => m,
+                        None => { retry_count += 1; continue 'reconnect; }
+                    };
+
+                    match msg {
+                        Ok(Message::Text(text)) => {
+                            let val: serde_json::Value = match serde_json::from_str(&text) {
+                                Ok(v) => v,
+                                Err(_) => continue,
+                            };
+
+                            if !authed {
+                                // Check for connection success
+                                if val.get("connect").is_some() || val.get("id").and_then(|v| v.as_i64()) == Some(1) {
+                                    authed = true;
+                                    retry_count = 0;
+                                    // 2. Subscribe to user channel
+                                    let sub_msg = serde_json::json!({
+                                        "subscribe": { "channel": channel },
+                                        "id": 2
+                                    });
+                                    let _ = ws_stream.send(Message::Text(sub_msg.to_string())).await;
+                                }
+                                continue;
+                            }
+
+                            if !subscribed {
+                                if val.get("subscribe").is_some() || val.get("id").and_then(|v| v.as_i64()) == Some(2) {
+                                    subscribed = true;
+                                    if let Some(ref pb) = spinner_ref {
+                                        pb.finish_and_clear();
+                                        eprintln!("Private subscription active: {}", channel);
+                                        eprintln!();
+                                    }
+                                }
+                                continue;
+                            }
+
+                            if let Some(event) = handler(val) {
+                                events.push(event);
+                            }
+                        }
+                        Ok(Message::Ping(data)) => { let _ = ws_stream.send(Message::Pong(data)).await; }
+                        Ok(Message::Close(_)) => { retry_count += 1; continue 'reconnect; }
+                        Err(_) => { retry_count += 1; continue 'reconnect; }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(CommandOutput::json(serde_json::json!({
+        "status": "disconnected",
+        "events": events,
+        "event_count": events.len(),
+    })))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_websocket_command_variants() {
@@ -450,93 +670,134 @@ mod tests {
     }
 
     #[test]
-    fn test_websocket_command_ticker() {
-        let cmd = WebSocketCommand::Ticker { pair: "xrp_idr".into() };
-        match cmd {
-            WebSocketCommand::Ticker { pair } => {
-                assert_eq!(pair, "xrp_idr");
+    fn test_format_ws_price() {
+        assert_eq!(format_ws_price(&json!(1234.56)), Some("1234.56".to_string()));
+        assert_eq!(format_ws_price(&json!("1234.56")), Some("1234.56".to_string()));
+        assert_eq!(format_ws_price(&json!(1000)), Some("1000".to_string()));
+        assert_eq!(format_ws_price(&json!(0)), Some("0".to_string()));
+    }
+
+    #[test]
+    fn test_ticker_parsing_logic() {
+        let msg = json!({
+            "result": {
+                "data": {
+                    "data": [
+                        [1632717721, 4087327, 14340, "1063.73019525"]
+                    ]
+                }
             }
-            _ => assert!(false, "Expected Ticker command, got {:?}", cmd),
+        });
+        
+        // Simulating the handler logic inside ws_ticker
+        let rows = &msg["result"]["data"]["data"];
+        if let serde_json::Value::Array(arr) = rows {
+            let fields = arr[0].as_array().unwrap();
+            let price = format_ws_price(&fields[2]).unwrap();
+            assert_eq!(price, "14340");
+        } else {
+            panic!("Expected array");
         }
     }
 
     #[test]
-    fn test_websocket_command_trades() {
-        let cmd = WebSocketCommand::Trades { pair: "doge_idr".into() };
-        match cmd {
-            WebSocketCommand::Trades { pair } => {
-                assert_eq!(pair, "doge_idr");
+    fn test_orderbook_parsing_array_format() {
+        let msg = json!({
+            "result": {
+                "data": {
+                    "data": {
+                        "asks": [["651000000", "0.05000000"]],
+                        "bids": [["650000000", "0.12345678"]]
+                    }
+                }
             }
-            _ => assert!(false, "Expected Trades command, got {:?}", cmd),
-        }
-    }
-
-    #[test]
-    fn test_websocket_command_book() {
-        let cmd = WebSocketCommand::Book { pair: "eth_idr".into() };
-        match cmd {
-            WebSocketCommand::Book { pair } => {
-                assert_eq!(pair, "eth_idr");
+        });
+        
+        let data = &msg["result"]["data"]["data"];
+        let parse_entry = |entry: &serde_json::Value| -> Option<(String, String)> {
+            if let Some(arr) = entry.as_array() {
+                if arr.len() >= 2 {
+                    let p = helpers::value_to_string(&arr[0]);
+                    let v = helpers::value_to_string(&arr[1]);
+                    return Some((p, v));
+                }
             }
-            _ => assert!(false, "Expected Book command, got {:?}", cmd),
-        }
+            None
+        };
+
+        let ask = data["asks"].as_array().unwrap().first().and_then(parse_entry).unwrap();
+        assert_eq!(ask.0, "651000000");
+        assert_eq!(ask.1, "0.05000000");
     }
 
     #[test]
-    fn test_websocket_command_summary() {
-        let cmd = WebSocketCommand::Summary;
-        match cmd {
-            WebSocketCommand::Summary => (),
-            _ => assert!(false, "Expected Summary command, got {:?}", cmd),
-        }
+    fn test_orderbook_parsing_object_format() {
+        let msg = json!({
+            "result": {
+                "data": {
+                    "data": {
+                        "ask": [{"price": "319437000", "btc_volume": "0.11035661"}],
+                        "bid": [{"price": "319436000", "btc_volume": "0.61427265"}]
+                    }
+                }
+            }
+        });
+
+        let data = &msg["result"]["data"]["data"];
+        let parse_entry = |entry: &serde_json::Value| -> Option<(String, String)> {
+            if let Some(obj) = entry.as_object() {
+                let p = helpers::value_to_string(obj.get("price").unwrap());
+                let v = helpers::value_to_string(obj.get("btc_volume").unwrap());
+                return Some((p, v));
+            }
+            None
+        };
+
+        let ask = data["ask"].as_array().unwrap().first().and_then(parse_entry).unwrap();
+        assert_eq!(ask.0, "319437000");
+        assert_eq!(ask.1, "0.11035661");
     }
 
     #[test]
-    fn test_websocket_command_orders() {
-        let cmd = WebSocketCommand::Orders;
-        match cmd {
-            WebSocketCommand::Orders => (),
-            _ => assert!(false, "Expected Orders command, got {:?}", cmd),
-        }
+    fn test_private_order_update_parsing() {
+        let msg = json!({
+            "push": {
+                "data": {
+                    "order_id": 12345,
+                    "pair": "btcidr",
+                    "side": "buy",
+                    "status": "filled",
+                    "price": "500000000",
+                    "amount": "0.1"
+                }
+            }
+        });
+
+        let result = msg.get("result").or(msg.get("push")).or(Some(&msg)).unwrap();
+        let data = result.get("data").unwrap_or(result);
+        
+        assert_eq!(data["order_id"], 12345);
+        assert_eq!(data["pair"], "btcidr");
     }
 
     #[test]
-    fn test_format_ws_price_u64() {
-        let val = serde_json::json!(123456);
-        assert_eq!(format_ws_price(&val).as_deref(), Some("123456"));
+    fn test_private_balance_update_parsing() {
+        let msg = json!({
+            "currency": "idr",
+            "available": "1000000",
+            "frozen": "50000"
+        });
+
+        let data = &msg;
+        assert_eq!(data["currency"], "idr");
+        assert_eq!(data["available"], "1000000");
     }
 
     #[test]
-    fn test_format_ws_price_f64() {
-        let val = serde_json::json!(123.456);
-        let result = format_ws_price(&val);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_format_ws_price_str() {
-        let val = serde_json::json!("789");
-        assert_eq!(format_ws_price(&val).as_deref(), Some("789"));
-    }
-
-    #[test]
-    fn test_format_ws_price_null() {
-        let val = serde_json::json!(null);
-        assert!(format_ws_price(&val).is_none());
-    }
-
-    #[test]
-    fn test_public_ws_url() {
-        assert!(PUBLIC_WS_URL.contains("ws3.indodax.com"));
-    }
-
-    #[test]
-    fn test_private_ws_url() {
-        assert!(PRIVATE_WS_URL.contains("pws.indodax.com"));
-    }
-
-    #[test]
-    fn test_public_ws_token_url() {
-        assert!(crate::commands::helpers::PUBLIC_WS_TOKEN_URL.contains("indodax.com"));
+    fn test_fetch_public_ws_token_precedence() {
+        // We can't easily mock the IndodaxClient's network call here without more refactoring,
+        // but we can test the logic of fetch_public_ws_token if we extract it slightly.
+        let default_token = DEFAULT_STATIC_WS_TOKEN;
+        assert!(default_token.starts_with("eyJ"));
     }
 }

@@ -79,6 +79,7 @@ pub struct IndodaxClient {
     http: Client,
     signer: Option<Signer>,
     rate_limiter: RateLimiter,
+    ws_token: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -110,11 +111,21 @@ impl IndodaxClient {
             http,
             signer,
             rate_limiter: RateLimiter::from_env(),
+            ws_token: None,
         })
+    }
+
+    pub fn with_ws_token(mut self, token: Option<String>) -> Self {
+        self.ws_token = token;
+        self
     }
 
     pub fn signer(&self) -> Option<&Signer> {
         self.signer.as_ref()
+    }
+
+    pub fn ws_token(&self) -> Option<&str> {
+        self.ws_token.as_deref()
     }
 
     pub fn http_client(&self) -> &Client {
@@ -161,7 +172,7 @@ impl IndodaxClient {
         self.handle_v1_response(resp).await
     }
 
-    pub async fn generate_ws_token(&self) -> Result<String, IndodaxError> {
+    pub async fn generate_ws_token(&self) -> Result<(String, String), IndodaxError> {
         let signer = self.signer.as_ref().ok_or_else(|| {
             IndodaxError::Config("API credentials required for WebSocket token generation".into())
         })?;
@@ -181,11 +192,23 @@ impl IndodaxClient {
         let body_text = resp.text().await?;
         let val: serde_json::Value = serde_json::from_str(&body_text)?;
 
-        val.get("token")
+        let token = val.get("token")
             .and_then(|t| t.as_str())
-            .map(|t| t.to_string())
-            .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()).map(|t| t.to_string()))
-            .ok_or_else(|| IndodaxError::WsToken(format!("No token in response: {}", body_text)))
+            .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()))
+            .or_else(|| val.get("return").and_then(|r| r.get("connToken")).and_then(|t| t.as_str()))
+            .map(|t| t.to_string());
+
+        let channel = val.get("channel")
+            .and_then(|c| c.as_str())
+            .or_else(|| val.get("data").and_then(|d| d.get("channel")).and_then(|c| c.as_str()))
+            .or_else(|| val.get("return").and_then(|r| r.get("channel")).and_then(|c| c.as_str()))
+            .map(|c| c.to_string());
+
+        match (token, channel) {
+            (Some(t), Some(c)) => Ok((t, c)),
+            (Some(t), None) => Ok((t, "private:orders".to_string())), // Fallback channel
+            _ => Err(IndodaxError::WsToken(format!("No token or channel in response: {}", body_text))),
+        }
     }
 
     pub async fn public_get_v2<T: DeserializeOwned>(

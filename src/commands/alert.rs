@@ -595,7 +595,7 @@ async fn alert_watch(
                                     "params": { "channel": format!("chart:tick-{}", pair) },
                                     "id": 2
                                 });
-                                write.send(Message::Text(sub_msg.to_string().into())).await.ok();
+                                write.send(Message::Text(sub_msg.to_string())).await.ok();
                             }
                         }
                         continue;

@@ -6,43 +6,10 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 ## Completed (this session)
 
-### High Priority
-
-- [x] **`paper_fill(all=true)` stops processing on first fill error** — Already fixed in PR #29: uses `match execute_fill(...)` collecting errors into a Vec rather than propagating with `?`.
-
-- [x] **`alert_watch` detects triggers but never persists them to disk** — Already fixed in PR #29: sets `alert.status = AlertStatus::Triggered`, `alert.triggered_at`, and calls `save_alerts(&alerts)` at end of watch loop.
-
-- [x] **u64→i64 timestamp overflow at remaining locations** — Added `.min(i64::MAX as u64)` guards at `alert.rs:258` (`from_timestamp_millis`) and `websocket.rs:266` (`from_timestamp`), completing the partial fix from PR #29.
-
-- [x] **`ws_book` displays worst ask instead of best ask** — `websocket.rs:296`: Changed `asks.last()` to `asks.first()`. The best ask is the lowest price (first element in ascending order), not the highest.
-
-- [x] **`paper_fill` single order ignores price condition matching** — `paper.rs:763-773`: Added the same `should_fill` check (`buy: fp <= order_price`, `sell: fp >= order_price`) that `--all` path uses. Single fills now return an error when `fill_price` doesn't match the order's side condition.
-
-- [x] **MCP `handle_paper_trade` shows `amount: 0` for IDR-based buys** — `mcp/tools/paper.rs:181`: Now reads the actual order amount from `state.orders.last().amount` and includes `idr_spent` in the response for IDR-based purchases.
-
-### Medium Priority
-
-- [x] **Paper buy/sell balance error messages use inconsistent precision** — Already fixed in PR #29: replaced hardcoded `{:.2}`/`{:.8}` with `format_balance()` which dynamically selects precision by currency type.
-
-- [x] **Equity snapshot `calculate_equity` misses pairs not denominated in IDR/BTC/USDT** — The code already handles `_idr`, `_btc`, `_usdt`, and `_eth` pairs. Added a warning at `account.rs:477` via `eprintln!` when a balance cannot be valued through any known pair.
-
-- [x] **`alert_watch` auth/result detection differs from `ws_connect_and_listen`** — Already fixed in PR #29: both now use `id == 1 && result.is_some()` instead of `result.status == "ok"`.
-
-- [x] **`save_alerts` doesn't set restrictive file permissions** — Already fixed in PR #29: uses `0o600` mode on Unix via `OpenOptionsExt::mode`.
-
-- [x] **Duplicate WS token fetching logic** — Already fixed in PR #29: alert.rs now calls `helpers::fetch_public_ws_token(client)` instead of duplicating the fetch logic.
-
-- [x] **WebSocket ping handler sends empty Pong payload** — `websocket.rs:170`: Changed from `Message::Pong(vec![])` to `Message::Pong(data)` to echo the received ping application data per RFC 6455.
-
-- [x] **`save_equity_history` writes without restrictive file permissions** — `account.rs:412`: Now uses `0o600` mode on Unix, consistent with `config.rs`, `alert.rs`, and other sensitive file writes.
-
-### Low Priority / Polish
-
-- [x] **Paper `place_paper_order` sets `total_spent` only for limit buys** — Inherently correct design: market buys have no known price at order placement, so `total_spent` cannot be set. `place_paper_order_idr` always has a known IDR amount.
-
-- [x] **`paper_balance_value` includes raw f64 in JSON** — Already fixed in PR #29: rounds values before serialization using the same precision logic as `format_balance`/`round_balance`.
-
-- [x] **`cancel_all_paper_orders` only reports IDs** — Already fixed in PR #29: now returns `(usize, Vec<(u64, String)>)` including error messages, and `paper_cancel_all` displays them in both JSON and human-readable output.
+- [x] All 22 issues from previous TODO.md — verified fixed in source code
+- [x] **Checklist: Build** — `cargo build` passes with Rust 1.95.0
+- [x] **Checklist: Tests** — All 300 tests pass
+- [x] **Checklist: Clippy** — 14 auto-fixable warnings resolved; remaining 22 are minor (mostly `result_large_err` in `IndodaxError` enum)
 
 ---
 
@@ -50,30 +17,39 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 ### High Priority
 
-- [x] **`cancel_all_orders` silently cancels without `--force` in non-interactive mode** — `src/commands/trade.rs:276-283`: Now requires explicit `--force` when stdin is not a terminal and no pair filter is provided.
+- [ ] **MCP paper state TOCTOU race condition** — `src/mcp/tools/paper.rs:109-117,148-200,208-222,224-240,254-280,282-307`: All MCP paper trade handlers load-modify-save with the `Mutex<IndodaxConfig>` lock released between load and save. Two concurrent requests can interleave, causing silent paper state corruption. The entire read-modify-write cycle must be atomic under the lock.
 
-- [x] **`countdown_cancel_all` duplicates V1 response parsing logic** — `src/client.rs:162-187`: Refactored V1 response parsing into a shared `handle_v1_response` helper, now reused by `private_post_v1` and `countdown_cancel_all`.
+- [ ] **`alert_triggered()` can panic on `unwrap()` of corrupted alerts file** — `src/commands/alert.rs:493`: `alert.triggered_at.unwrap()` panics if a user manually edits `alerts.json` and sets `"triggered_at": null` while `"status": "triggered"`. Same issue at line 448. Fix: use `unwrap_or(0)` or `match` with fallback.
 
 ### Medium Priority
 
+- [ ] **`paper_balance_value()` uses hardcoded stablecoin list, inconsistent with `is_fiat_or_stable()`** — `src/commands/paper.rs:1153-1167`: Only `"idr" | "usdt" | "usdc"` get 2-decimal rounding, while `is_fiat_or_stable()` (line 314) correctly includes `dai`, `busd`, `pax`, `usde`, `gusd`, `tusd`. MCP `paper_balance` formats DAI/BUSD with 8 decimals instead of 2.
 
-- [x] **OHLC `from`/`to` parameters accept seconds but users may pass milliseconds** — `src/commands/market.rs:44-48`: No validation to detect millisecond timestamps (`> 1e12`) and warn the user. A ms timestamp would produce data from 54,000 years in the future.
+- [ ] **Real account `balance` shows raw f64 values with excessive precision** — `src/commands/account.rs:141`: Uses `amount.to_string()` for all currencies. IDR balances show `100000.12345678` instead of `100000.12`. Paper trading has `format_balance()` but real account commands don't.
 
-- [x] **`trans_history` merges maps with fragile type detection** — `src/commands/account.rs:320-355`: Merges `withdraw`/`deposit`/`transactions` maps with potential key collisions. Type detection uses `id.contains("withdraw")` which could break if API changes ID format.
+- [ ] **MCP `paper_fill` cannot use `--fetch` (live price fetching)** — `src/mcp/tools/paper.rs:271`: Hardcodes `fetch: false` when calling `paper_fill()`. Tool definition in `mod.rs:418-423` doesn't expose a `fetch` parameter. MCP users cannot auto-fetch live prices while CLI users can via `paper fill --fetch`.
 
-- [x] **MCP `handle_sell_order` now errors if `price` is provided when `order_type` is `market`** — `src/mcp/tools/trade.rs:169-172`: Added validation to prevent contradictory parameters.
+- [ ] **`paper_status` displays `total_fees_paid` with fixed 8 decimal places** — `src/commands/paper.rs:978`: Uses `{:.8}` regardless of currency. IDR-denominated fees show e.g. `2600.00000000`. Should use `format_balance()`.
+
+- [ ] **Account `info` shows raw balance values without currency-aware formatting** — `src/commands/account.rs:109-116`: Uses `helpers::value_to_string(v)` which calls `serde_json::Value::to_string()` — excessive precision for IDR/large balances.
 
 ### Low Priority / Polish
 
-- [x] **`format_ws_price` now uses epsilon for floating-point comparison** — `src/commands/websocket.rs:210`: Large whole numbers may have `fract() != 0.0` due to floating-point representation. Use `(f - f.round()).abs() < f64::EPSILON`.
+- [ ] **Orderbook depth hardcoded to 20 levels with no user control** — `src/commands/market.rs:180,187`: Both buy/sell sides use `.take(20)`. No `--levels` or `--depth` parameter exposed to user.
 
-- [x] **MCP `get_bool` refactored to `get_opt_bool` to distinguish between `false` and absent** — `src/mcp/tools/mod.rs:121-125`: Cannot distinguish between `false` and absent. Safety checks for dangerous operations exist separately but this limits API usability.
+- [ ] **MCP `cancel_all_orders` lacks warning when no pair filter specified** — `src/mcp/tools/trade.rs:222-238`: CLI version shows interactive confirmation + requires `--force` in non-interactive mode. MCP silently proceeds with no explicit messaging about global scope.
 
-- [x] **`round_balance` and `format_balance` now support more stablecoins (DAI, BUSD, etc.) with 2-decimal precision** — `src/commands/paper.rs:530-541`: Only `idr`, `usdt`, `usdc` get 2-decimal rounding. Other fiat-pegged tokens (DAI, BUSD) get 8-decimal rounding.
+- [ ] **Paper state stored in config.toml (mixing config with runtime data)** — `src/commands/paper.rs:89-93`: Paper balances/orders/trade count serialized into `IndodaxConfig.paper_balances` and saved alongside credentials in `config.toml`. Sharing config leaks paper data; paper state cannot be backed up independently.
 
-- [x] **`ws_orders` now collects all events in history regardless of `order_id` presence** — `src/commands/websocket.rs:403-433`: When `result.data` lacks `order_id`, the event is printed but not collected in the `events` vector returned on disconnect.
+- [ ] **`send_with_retry` doesn't honor `Retry-After` header on 429 responses** — `src/client.rs:337-397`: Uses hardcoded exponential backoff starting at 500ms. Ignores any `Retry-After` header, potentially exacerbating rate-limiting.
 
-- [x] **Account `show` now uses proportional masking for API keys for better security on short keys** — `src/commands/auth.rs:90-94`: Shows first 4 chars + `"****"`. For < 8 char keys this reveals >50% of the key.
+- [ ] **`refund_and_cancel` computes unused `refund` variable for sell orders** — `src/commands/paper.rs:1276`: `let refund = order.price * order.remaining;` computed for all sides but only used for buys. Dead code for sell cancels — minor clarity issue.
+
+- [ ] **`paper_watch` doesn't save state when no fills occur** — `src/commands/paper.rs:1002-1031`: State loaded fresh each iteration, only saved if `filled > 0`. If MCP tools modify paper state between watch iterations, those changes are discarded on next iteration.
+
+- [ ] **`test_paper_check_fills_fetch_not_available` makes real network calls** — `src/commands/paper.rs:1811-1821`: Creates `IndodaxClient::new(None)` and calls with `fetch: true`, triggering real HTTP GET requests. Tests should use mocked clients if run in offline environments.
+
+- [ ] **No upper-bound validation for OHLC `from`/`to` timestamps** — `src/commands/market.rs:227-236`, `src/mcp/tools/market.rs:154-160`: Millisecond warning exists but no rejection. API returns empty data for out-of-range timestamps without meaningful error.
 
 ## Known / Intentional
 
@@ -87,3 +63,4 @@ Issues identified during comprehensive code/business/UI/UX review.
 - **`paper_fill(all=true)` with explicit `fill_price` skips non-matching orders** — Acts as a price filter. Intentional behavior.
 - **Rate limiter `as_millis()` minimal truncation guard** — Uses `.min(u128::from(u64::MAX))` before `as u64` cast. Sufficient for all practical purposes.
 - **MCP paper response amount for non-IDR orders** — Uses `amount` parameter directly since `place_paper_order` knows the exact amount. Only IDR-based buys need to derive amount from state.
+- **`IndodaxError` is large (~136 bytes)** — The `WebSocket` variant boxes `tokio_tungstenite::tungstenite::Error`. Consider boxing other large variants to reduce function return sizes.

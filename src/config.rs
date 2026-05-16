@@ -47,6 +47,7 @@ impl From<&str> for SecretValue {
 pub struct IndodaxConfig {
     pub api_key: Option<SecretValue>,
     pub api_secret: Option<SecretValue>,
+    pub ws_token: Option<SecretValue>,
     pub callback_url: Option<String>,
     pub paper_balances: Option<serde_json::Value>,
 }
@@ -63,8 +64,8 @@ impl IndodaxConfig {
         match dirs::config_dir() {
             Some(dir) => dir,
             None => {
-                let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                cwd
+                
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
             }
         }
     }
