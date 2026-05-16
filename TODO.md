@@ -6,8 +6,8 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 ## Completed (this session)
 
+- [x] **`helpers::format_balance` duplicated in `paper.rs`** — Consolidated `format_balance` and `is_fiat_or_stable` into `helpers.rs`. Added new stablecoins (USDE, GUSD, TUSD) and updated all call sites.
 - [x] **WebSocket Reliability Overhaul (v0.1.13)** — Implemented Pings, automatic reconnection, and Private WS rewrite for real-time order/balance updates.
-- [x] All 22 issues from previous TODO.md — verified fixed in source code
 - [x] **Checklist: Build** — `cargo build` passes with Rust 1.95.0
 - [x] **Checklist: Tests** — All 296 tests pass
 - [x] **Checklist: Clippy** — 14 auto-fixable warnings resolved; remaining 24 are minor (mostly `result_large_err` in `IndodaxError` enum)
@@ -32,7 +32,6 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 ### Medium Priority
 
-- [ ] **`helpers::format_balance` duplicated in `paper.rs`** — Both files define the same currency list. Add new stablecoins to both.
 - [ ] **`alert.rs:210-218` fragile `unwrap()` chain** — `percent_down.unwrap()` is guarded by `condition_count` but could panic if if-else chain is refactored. Uses `ok_or_else` now but pattern is brittle throughout the function.
 - [ ] **`websocket.rs:453` clippy `or_then_unwrap`** — `.or(Some(&val)).unwrap()` pattern should use `.or_else(|| ...).unwrap_or(&val)`.
 
