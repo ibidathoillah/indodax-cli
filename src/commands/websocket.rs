@@ -428,7 +428,7 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
                 Some(raw)
             } else {
                 println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
-                None
+                Some(val["result"].clone())
             }
         };
         event
