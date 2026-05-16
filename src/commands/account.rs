@@ -234,7 +234,7 @@ async fn order_history(
     let start = now - crate::commands::helpers::ONE_DAY_MS;
 
     let mut params = HashMap::new();
-    params.insert("symbol".into(), symbol.replace('_', ""));
+    params.insert("symbol".into(), crate::commands::helpers::normalize_pair_v2(symbol));
     params.insert("limit".into(), limit.max(10).to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
@@ -275,7 +275,7 @@ async fn trade_history(
     let start = now - crate::commands::helpers::ONE_DAY_MS;
 
     let mut params = HashMap::new();
-    params.insert("symbol".into(), symbol.replace('_', ""));
+    params.insert("symbol".into(), crate::commands::helpers::normalize_pair_v2(symbol));
     params.insert("limit".into(), limit.max(10).to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
