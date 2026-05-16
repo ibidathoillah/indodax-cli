@@ -59,7 +59,7 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 - [x] **OHLC `from`/`to` parameters accept seconds but users may pass milliseconds** — `src/commands/market.rs:44-48`: No validation to detect millisecond timestamps (`> 1e12`) and warn the user. A ms timestamp would produce data from 54,000 years in the future.
 
-- [ ] **`trans_history` merges maps with fragile type detection** — `src/commands/account.rs:320-355`: Merges `withdraw`/`deposit`/`transactions` maps with potential key collisions. Type detection uses `id.contains("withdraw")` which could break if API changes ID format.
+- [x] **`trans_history` merges maps with fragile type detection** — `src/commands/account.rs:320-355`: Merges `withdraw`/`deposit`/`transactions` maps with potential key collisions. Type detection uses `id.contains("withdraw")` which could break if API changes ID format.
 
 - [ ] **MCP `handle_sell_order` silently ignores `price` when `order_type` is `market`** — `src/mcp/tools/trade.rs:169-172`: When both `order_type: "market"` and `price` are provided, price is silently dropped. Should warn or error.
 
