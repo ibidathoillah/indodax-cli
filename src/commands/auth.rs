@@ -87,8 +87,9 @@ pub async fn execute(
 
             let masked_key = config.api_key.as_ref().map(|k| {
                 let s = k.as_str();
-                if s.len() > 4 {
-                    format!("{}****", &s[..4])
+                let visible_len = (s.len() / 4).min(4);
+                if visible_len > 0 {
+                    format!("{}****", &s[..visible_len])
                 } else {
                     "****".to_string()
                 }
