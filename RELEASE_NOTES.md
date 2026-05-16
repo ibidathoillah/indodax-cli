@@ -1,4 +1,4 @@
-## 🚀 Welcome to Indodax CLI v0.1.11
+## 🚀 Welcome to Indodax CLI v0.1.12
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
