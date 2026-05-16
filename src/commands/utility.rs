@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::client::IndodaxClient;
 use crate::config::ResolvedCredentials;
 use crate::output::CommandOutput;
@@ -20,6 +21,29 @@ pub async fn execute(
     match cmd {
         UtilityCommand::Setup => setup().await,
         UtilityCommand::Shell => shell().await,
+    }
+}
+
+async fn test_credentials(api_key: &str, api_secret: &str) {
+    use crate::auth::Signer;
+    let signer = Signer::new(api_key, api_secret);
+    match IndodaxClient::new(Some(signer)) {
+        Ok(client) => {
+            match client.private_post_v1::<serde_json::Value>("getInfo", &HashMap::new()).await {
+                Ok(info) => {
+                    let name = info.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let user_id = info.get("user_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    eprintln!("  Credentials validated: logged in as '{}' (user ID: {})", name, user_id);
+                }
+                Err(e) => {
+                    eprintln!("  Warning: Credentials saved but validation failed: {}", e);
+                    eprintln!("  Check that your API key and secret are correct.");
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("  Warning: Could not create client for validation: {}", e);
+        }
     }
 }
 
@@ -56,6 +80,9 @@ async fn setup() -> Result<CommandOutput> {
         config.save()?;
         eprintln!("\nConfiguration saved to {:?}", crate::config::IndodaxConfig::config_path());
     }
+
+    eprintln!("\nValidating credentials...");
+    test_credentials(&api_key, &api_secret).await;
 
     let data = serde_json::json!({
         "status": "ok",

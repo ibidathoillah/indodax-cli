@@ -141,7 +141,22 @@ fn load_alerts() -> Vec<PriceAlert> {
 fn save_alerts(alerts: &[PriceAlert]) -> Result<()> {
     let path = alerts_path();
     let content = serde_json::to_string_pretty(alerts)?;
-    fs::write(path, content)?;
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)?;
+        file.write_all(content.as_bytes())?;
+    }
+    #[cfg(not(unix))]
+    {
+        fs::write(&path, content)?;
+    }
     Ok(())
 }
 
@@ -285,14 +300,14 @@ fn alert_list(include_history: bool) -> Result<CommandOutput> {
             alert.pair.clone(),
             condition_str.clone(),
             format!("{:?}", alert.status),
-            chrono::DateTime::from_timestamp_millis(alert.created_at as i64)
+            chrono::DateTime::from_timestamp_millis(alert.created_at.min(i64::MAX as u64) as i64)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_default(),
         ];
 
         if include_history {
             let triggered = alert.triggered_at.map(|t| {
-                chrono::DateTime::from_timestamp_millis(t as i64)
+                chrono::DateTime::from_timestamp_millis(t.min(i64::MAX as u64) as i64)
                     .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                     .unwrap_or_default()
             }).unwrap_or_else(|| "-".to_string());
@@ -430,7 +445,7 @@ async fn alert_check(
             alert.pair.clone(),
             condition_str.clone(),
             format_number(current_price),
-            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap() as i64)
+            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap().min(i64::MAX as u64) as i64)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default(),
         ]);
@@ -475,7 +490,7 @@ fn alert_triggered() -> Result<CommandOutput> {
             alert.id.to_string(),
             alert.pair.clone(),
             condition_str.clone(),
-            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap() as i64)
+            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap().min(i64::MAX as u64) as i64)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default(),
         ]);
@@ -488,7 +503,6 @@ fn alert_triggered() -> Result<CommandOutput> {
     ).with_addendum(format!("[ALERT] {} triggered alert(s)", triggered.len())))
 }
 
-#[allow(unused_variables)]
 async fn fetch_price(client: &IndodaxClient, pair: &str) -> Result<f64> {
     let response: serde_json::Value = client.public_get(&format!("/api/ticker/{}", pair)).await?;
 
@@ -512,13 +526,13 @@ async fn alert_watch(
     pair_filter: Option<&str>,
     _threshold: f64,
 ) -> Result<CommandOutput> {
-    let alerts = load_alerts();
+    let mut alerts = load_alerts();
 
-    let to_watch: Vec<&PriceAlert> = if let Some(target_id) = id {
-        alerts.iter().filter(|a| a.id == target_id && a.status == AlertStatus::Active).collect()
+    let to_watch: Vec<&mut PriceAlert> = if let Some(target_id) = id {
+        alerts.iter_mut().filter(|a| a.id == target_id && a.status == AlertStatus::Active).collect()
     } else {
         let filter = pair_filter.unwrap_or("*");
-        alerts.iter()
+        alerts.iter_mut()
             .filter(|a| a.status == AlertStatus::Active && (filter == "*" || a.pair == filter))
             .collect()
     };
@@ -540,17 +554,8 @@ async fn alert_watch(
     eprintln!();
 
     const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
-    const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
 
-    let token_resp = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await
-        .map_err(|e| anyhow::anyhow!("Failed to fetch WebSocket token: {}", e))?;
-    let token_text = token_resp.text().await
-        .map_err(|e| anyhow::anyhow!("Failed to read token response: {}", e))?;
-    let token_val: serde_json::Value = serde_json::from_str(&token_text)
-        .map_err(|e| anyhow::anyhow!("Invalid token response: {}", e))?;
-    let token = token_val.get("token").and_then(|t| t.as_str()).map(|t| t.to_string())
-        .or_else(|| token_val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()).map(|t| t.to_string()))
-        .ok_or_else(|| anyhow::anyhow!("No token in response: {}", token_text))?;
+    let token = helpers::fetch_public_ws_token(client).await?;
 
     let (ws_stream, _) = connect_async(PUBLIC_WS_URL).await
         .map_err(|e| anyhow::anyhow!("Failed to connect to WebSocket: {}", e))?;
@@ -573,19 +578,18 @@ async fn alert_watch(
             Ok(Message::Text(text)) => {
                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
                     if !authed {
-                        if let Some(result) = data.get("result").or(data.get("data")) {
-                            if result.get("status").and_then(|s| s.as_str()) == Some("ok") ||
-                               result.get("success").and_then(|s| s.as_bool()) == Some(true) {
-                                authed = true;
-                                eprintln!("[WS] Authenticated, subscribing to pairs...");
-                                for pair in &pairs {
-                                    let sub_msg = serde_json::json!({
-                                        "method": "subscribe",
-                                        "params": { "channel": format!("chart:tick-{}", pair) },
-                                        "id": 2
-                                    });
-                                    write.send(Message::Text(sub_msg.to_string().into())).await.ok();
-                                }
+                        if data.get("id").and_then(|v| v.as_i64()) == Some(1)
+                            && data.get("result").is_some()
+                        {
+                            authed = true;
+                            eprintln!("[WS] Authenticated, subscribing to pairs...");
+                            for pair in &pairs {
+                                let sub_msg = serde_json::json!({
+                                    "method": "subscribe",
+                                    "params": { "channel": format!("chart:tick-{}", pair) },
+                                    "id": 2
+                                });
+                                write.send(Message::Text(sub_msg.to_string().into())).await.ok();
                             }
                         }
                         continue;
@@ -611,7 +615,7 @@ async fn alert_watch(
                                 }
                             }
 
-                            for alert in to_watch.iter().filter(|a| a.pair == pair) {
+                            for alert in to_watch.iter_mut().filter(|a| a.pair == pair) {
                                 let should_trigger = match &alert.condition {
                                     AlertCondition::Above { price: threshold } => price >= *threshold,
                                     AlertCondition::Below { price: threshold } => price <= *threshold,
@@ -626,6 +630,8 @@ async fn alert_watch(
                                 };
 
                                 if should_trigger {
+                                    alert.status = AlertStatus::Triggered;
+                                    alert.triggered_at = Some(now_millis());
                                     triggered_count += 1;
                                     let condition_str = match &alert.condition {
                                         AlertCondition::Above { price } => format!("> {}", format_number(*price)),
@@ -665,6 +671,10 @@ async fn alert_watch(
     }
 
     eprintln!("\n[ALERT] Monitoring stopped. {} alert(s) triggered.", triggered_count);
+
+    if triggered_count > 0 {
+        save_alerts(&alerts)?;
+    }
 
     let data = serde_json::json!({
         "status": "ok",

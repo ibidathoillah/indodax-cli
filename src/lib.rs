@@ -94,7 +94,7 @@ pub enum Command {
 
     #[command(name = "mcp", about = "Start MCP stdio server for AI agent integration")]
     Mcp {
-        #[arg(short = 's', long = "groups", default_value = "market,account,paper", help = "Comma-separated service groups: market, account, trade, funding, paper, auth")]
+        #[arg(short = 's', long = "groups", default_value = "market,account,paper,auth", help = "Comma-separated service groups: market, account, trade, funding, paper, auth")]
         groups: String,
         #[arg(long, help = "Allow dangerous operations (trade, funding) without acknowledged flag")]
         allow_dangerous: bool,

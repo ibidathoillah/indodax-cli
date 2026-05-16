@@ -104,29 +104,7 @@ async fn withdraw(
         ));
     }
 
-    let mut params = HashMap::new();
-    params.insert("currency".into(), currency.to_string());
-    params.insert("amount".into(), amount.to_string());
-
-    if to_username {
-        params.insert(
-            "request_id".into(),
-            chrono::Utc::now().timestamp_millis().to_string(),
-        );
-        params.insert("withdraw_to".into(), address.to_string());
-    } else {
-        params.insert("address".into(), address.to_string());
-    }
-
-    if let Some(m) = memo {
-        params.insert("memo".into(), m.to_string());
-    }
-    if let Some(n) = network {
-        params.insert("network".into(), n.to_string());
-    }
-    if let Some(u) = callback_url {
-        params.insert("callback_url".into(), u.to_string());
-    }
+    let params = helpers::build_withdraw_params(currency, amount, address, to_username, memo, network, callback_url);
 
     let data: serde_json::Value =
         client.private_post_v1("withdrawCoin", &params).await?;

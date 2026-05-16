@@ -27,6 +27,7 @@ pub fn funding_tools() -> Vec<Tool> {
                     IndodaxMcp::bool_param("Withdraw to Indodax username instead of blockchain address"),
                 "memo": IndodaxMcp::str_param("Memo/tag for currencies that require it", false, None),
                 "network": IndodaxMcp::str_param("Blockchain network", false, None),
+                "callback_url": IndodaxMcp::str_param("Callback URL for withdrawal notification", false, None),
                 "acknowledged":
                     IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
             }),
@@ -66,6 +67,7 @@ impl IndodaxMcp {
         to_username: bool,
         memo: Option<&str>,
         network: Option<&str>,
+        callback_url: Option<&str>,
     ) -> CallToolResult {
         if currency.is_empty() {
             return Self::validation_error_result("Missing required parameter: currency".into());
@@ -76,23 +78,7 @@ impl IndodaxMcp {
         if address.is_empty() {
             return Self::validation_error_result("Missing required parameter: address".into());
         }
-        let mut params = HashMap::new();
-        params.insert("currency".to_string(), currency.to_string());
-        params.insert("amount".to_string(), amount.to_string());
-
-        if to_username {
-            params.insert("request_id".to_string(), chrono::Utc::now().timestamp_millis().to_string());
-            params.insert("withdraw_to".to_string(), address.to_string());
-        } else {
-            params.insert("address".to_string(), address.to_string());
-        }
-
-        if let Some(m) = memo {
-            params.insert("memo".to_string(), m.to_string());
-        }
-        if let Some(n) = network {
-            params.insert("network".to_string(), n.to_string());
-        }
+        let params = crate::commands::helpers::build_withdraw_params(currency, amount, address, to_username, memo, network, callback_url);
 
         match self
             .client

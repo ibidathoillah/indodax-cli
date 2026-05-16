@@ -123,28 +123,32 @@ impl IndodaxConfig {
         cli_secret: Option<String>,
     ) -> Result<Option<ResolvedCredentials>, anyhow::Error> {
         let api_key = if let Some(ref key) = cli_key {
-            if key.is_empty() {
+            let trimmed = key.trim();
+            if trimmed.is_empty() {
                 None
             } else {
-                Some(SecretValue::new(key.clone()))
+                Some(SecretValue::new(trimmed.to_string()))
             }
         } else {
             std::env::var("INDODAX_API_KEY")
                 .ok()
+                .map(|k| k.trim().to_string())
                 .filter(|k| !k.is_empty())
                 .map(SecretValue::new)
                 .or_else(|| self.api_key.clone())
         };
 
         let api_secret = if let Some(ref secret) = cli_secret {
-            if secret.is_empty() {
+            let trimmed = secret.trim();
+            if trimmed.is_empty() {
                 None
             } else {
-                Some(SecretValue::new(secret.clone()))
+                Some(SecretValue::new(trimmed.to_string()))
             }
         } else {
             std::env::var("INDODAX_API_SECRET")
                 .ok()
+                .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .map(SecretValue::new)
                 .or_else(|| self.api_secret.clone())

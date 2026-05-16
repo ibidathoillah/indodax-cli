@@ -4,16 +4,12 @@ pub enum ErrorCategory {
     Connection,
     #[error("authentication_error")]
     Authentication,
-    #[error("authorization_error")]
-    Authorization,
     #[error("rate_limit")]
     RateLimit,
     #[error("validation_error")]
     Validation,
     #[error("server_error")]
     Server,
-    #[error("not_found")]
-    NotFound,
     #[error("config_error")]
     Config,
     #[error("unknown_error")]
@@ -49,9 +45,6 @@ pub enum IndodaxError {
     WsToken(String),
 
     #[error("{0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("{0}")]
     Other(String),
 }
 
@@ -78,7 +71,6 @@ impl IndodaxError {
             IndodaxError::Config(_) => "config_error".to_string(),
             IndodaxError::Parse(_) => "validation_error".to_string(),
             IndodaxError::WsToken(_) => "authentication_error".to_string(),
-            IndodaxError::Io(_) => "io_error".to_string(),
             IndodaxError::Other(_) => "unknown_error".to_string(),
         }
     }
@@ -109,12 +101,6 @@ mod tests {
     }
 
     #[test]
-    fn test_error_category_authorization() {
-        let cat = ErrorCategory::Authorization;
-        assert_eq!(format!("{}", cat), "authorization_error");
-    }
-
-    #[test]
     fn test_error_category_rate_limit() {
         let cat = ErrorCategory::RateLimit;
         assert_eq!(format!("{}", cat), "rate_limit");
@@ -130,12 +116,6 @@ mod tests {
     fn test_error_category_server() {
         let cat = ErrorCategory::Server;
         assert_eq!(format!("{}", cat), "server_error");
-    }
-
-    #[test]
-    fn test_error_category_not_found() {
-        let cat = ErrorCategory::NotFound;
-        assert_eq!(format!("{}", cat), "not_found");
     }
 
     #[test]
@@ -206,12 +186,6 @@ mod tests {
         assert_eq!(err.category(), "validation_error");
         let msg = err.to_string();
         assert!(msg.contains("parse error"));
-    }
-
-    #[test]
-    fn test_indodax_error_io() {
-        let err = IndodaxError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
-        assert_eq!(err.category(), "io_error");
     }
 
     #[test]

@@ -223,7 +223,7 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             }
             "ohlc" => {
                 let symbol = helpers::normalize_pair(
-                    &Self::get_str(&args, "symbol").unwrap_or_default()
+                    &Self::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into())
                 ).replace('_', "").to_uppercase();
                 let timeframe =
                     Self::get_str(&args, "timeframe").unwrap_or_else(|| "60".into());
@@ -329,6 +329,17 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let order_type = Self::get_str(&args, "order_type").unwrap_or_default();
                 self.handle_cancel_order(order_id, &pair, &order_type).await
             }
+            "cancel_all_orders" => {
+                let acknowledged = Self::get_bool(&args, "acknowledged");
+                if let Err(msg) =
+                    self.safety.check_operation(&ServiceGroup::Trade, acknowledged)
+                {
+                    return Ok(Self::error_result(msg));
+                }
+                let pair = Self::get_str(&args, "pair")
+                    .map(|p| helpers::normalize_pair(&p));
+                self.handle_cancel_all_orders(pair.as_deref()).await
+            }
 
             // Funding
             "withdraw_fee" => {
@@ -350,6 +361,7 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let to_username = Self::get_bool(&args, "to_username");
                 let memo = Self::get_str(&args, "memo");
                 let network = Self::get_str(&args, "network");
+                let callback_url = Self::get_str(&args, "callback_url");
                 self.handle_withdraw(
                     &currency,
                     amount,
@@ -357,6 +369,7 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     to_username,
                     memo.as_deref(),
                     network.as_deref(),
+                    callback_url.as_deref(),
                 )
                 .await
             }
@@ -375,17 +388,14 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                         .unwrap_or_else(|| "btc_idr".into())
                 );
                 let price = Self::get_num(&args, "price");
-                let amount = match Self::get_num(&args, "amount") {
-                    Some(v) if v > 0.0 => v,
-                    Some(v) => return Ok(Self::validation_error_result(format!("Amount must be positive, got {}", v))),
-                    None => return Ok(Self::validation_error_result("Missing required parameter: amount".into())),
-                };
+                let amount = Self::get_num(&args, "amount");
+                let idr = Self::get_num(&args, "idr");
                 let side = if name == "paper_buy" {
                     "buy"
                 } else {
                     "sell"
                 };
-                self.handle_paper_trade(side, &pair, price, amount).await
+                self.handle_paper_trade(side, &pair, price, amount, idr).await
             }
             "paper_orders" => self.handle_paper_orders().await,
             "paper_cancel" => {
