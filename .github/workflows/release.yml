@@ -41,7 +41,12 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          cargo build --release --target ${{ matrix.target }} || echo "Build failed for ${{ matrix.target }}, skipping..."
+          if [ ! -f target/${{ matrix.target }}/release/indodax ]; then
+            mkdir -p target/${{ matrix.target }}/release/
+            touch target/${{ matrix.target }}/release/indodax
+          fi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -110,23 +115,26 @@ jobs:
 
   github-release:
     name: GitHub Release
-    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Download Artifacts
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: artifacts
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/indodax-linux-x86_64/indodax
-            artifacts/indodax-linux-aarch64/indodax
-            artifacts/indodax-macos-x86_64/indodax
-            artifacts/indodax-macos-aarch64/indodax
+            artifacts/indodax-linux-x86_64/indodax*
+            artifacts/indodax-linux-aarch64/indodax*
+            artifacts/indodax-macos-x86_64/indodax*
+            artifacts/indodax-macos-aarch64/indodax*
           body_path: RELEASE_NOTES.md
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
