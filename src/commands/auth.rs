@@ -107,12 +107,6 @@ pub async fn execute(
         }
 
         AuthCommand::Test => {
-            if config.api_key.is_none() || config.api_secret.is_none() {
-                return Err(anyhow::anyhow!(
-                    "No API credentials configured. Use 'indodax auth set' first."
-                ));
-            }
-
             let test_params = std::collections::HashMap::new();
             let result: serde_json::Value = client.private_post_v1("getInfo", &test_params).await?;
 
