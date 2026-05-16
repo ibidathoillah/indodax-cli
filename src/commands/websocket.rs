@@ -207,7 +207,7 @@ fn format_ws_price(val: &serde_json::Value) -> Option<String> {
     if f == 0.0 {
         return Some("0".into());
     }
-    if f.fract() == 0.0 && f.abs() >= 1.0 {
+    if (f - f.round()).abs() < f64::EPSILON && f.abs() >= 1.0 {
         return Some(format!("{}", f as u64));
     }
     let s = format!("{:.8}", f);
