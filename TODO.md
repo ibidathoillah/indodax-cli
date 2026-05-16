@@ -61,11 +61,11 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 - [x] **`trans_history` merges maps with fragile type detection** — `src/commands/account.rs:320-355`: Merges `withdraw`/`deposit`/`transactions` maps with potential key collisions. Type detection uses `id.contains("withdraw")` which could break if API changes ID format.
 
-- [ ] **MCP `handle_sell_order` silently ignores `price` when `order_type` is `market`** — `src/mcp/tools/trade.rs:169-172`: When both `order_type: "market"` and `price` are provided, price is silently dropped. Should warn or error.
+- [x] **MCP `handle_sell_order` now errors if `price` is provided when `order_type` is `market`** — `src/mcp/tools/trade.rs:169-172`: Added validation to prevent contradictory parameters.
 
 ### Low Priority / Polish
 
-- [ ] **`format_ws_price` uses exact `f.fract() == 0.0` comparison** — `src/commands/websocket.rs:210`: Large whole numbers may have `fract() != 0.0` due to floating-point representation. Use `(f - f.round()).abs() < f64::EPSILON`.
+- [x] **`format_ws_price` now uses epsilon for floating-point comparison** — `src/commands/websocket.rs:210`: Large whole numbers may have `fract() != 0.0` due to floating-point representation. Use `(f - f.round()).abs() < f64::EPSILON`.
 
 - [ ] **MCP `get_bool` silently defaults to `false` for missing parameters** — `src/mcp/tools/mod.rs:121-125`: Cannot distinguish between `false` and absent. Safety checks for dangerous operations exist separately but this limits API usability.
 
