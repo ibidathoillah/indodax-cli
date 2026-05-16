@@ -317,41 +317,51 @@ async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
-    let mut merged = serde_json::Map::new();
-    for key in &["withdraw", "deposit", "transactions"] {
-        if let Some(obj) = data.get(*key).and_then(|v| v.as_object()) {
-            merged.extend(obj.clone());
+    let mut all_trans = Vec::new();
+    
+    if let Some(obj) = data.get("withdraw").and_then(|v| v.as_object()) {
+        for (id, val) in obj {
+            all_trans.push((id, "WITHDRAW", val));
         }
     }
-    let trans_list = if merged.is_empty() { None } else { Some(serde_json::Value::Object(merged)) };
-
-    if let Some(serde_json::Value::Object(map)) = trans_list {
-        for (id, entry) in map {
-            let tx_type = if id.contains("withdraw") || entry.get("withdraw_id").is_some() {
-                "WITHDRAW"
-            } else {
-                "DEPOSIT"
-            };
-            rows.push(vec![
-                id.clone(),
-                tx_type.into(),
-                helpers::value_to_string(
-                    priv_get(&entry, &["currency", "asset", "coin"]),
-                ),
-                helpers::value_to_string(
-                    priv_get(&entry, &["amount", "value"]),
-                ),
-                helpers::value_to_string(
-                    priv_get(&entry, &["fee", "withdraw_fee"]),
-                ),
-                helpers::value_to_string(
-                    priv_get(&entry, &["status", "state"]),
-                ),
-                helpers::value_to_string(
-                    priv_get(&entry, &["submit_time", "timestamp", "time", "submitted"]),
-                ),
-            ]);
+    if let Some(obj) = data.get("deposit").and_then(|v| v.as_object()) {
+        for (id, val) in obj {
+            all_trans.push((id, "DEPOSIT", val));
         }
+    }
+    if let Some(obj) = data.get("transactions").and_then(|v| v.as_object()) {
+        for (id, val) in obj {
+            let tx_type = if id.contains("withdraw") {
+                "WITHDRAW"
+            } else if id.contains("deposit") {
+                "DEPOSIT"
+            } else {
+                "TRANS"
+            };
+            all_trans.push((id, tx_type, val));
+        }
+    }
+
+    for (id, tx_type, entry) in all_trans {
+        rows.push(vec![
+            id.clone(),
+            tx_type.into(),
+            helpers::value_to_string(
+                priv_get(entry, &["currency", "asset", "coin"]),
+            ),
+            helpers::value_to_string(
+                priv_get(entry, &["amount", "value"]),
+            ),
+            helpers::value_to_string(
+                priv_get(entry, &["fee", "withdraw_fee"]),
+            ),
+            helpers::value_to_string(
+                priv_get(entry, &["status", "state"]),
+            ),
+            helpers::value_to_string(
+                priv_get(entry, &["submit_time", "timestamp", "time", "submitted"]),
+            ),
+        ]);
     }
 
     rows.sort_by(|a, b| b[0].cmp(&a[0]));
