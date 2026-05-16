@@ -2,7 +2,7 @@
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### 🆕 What's New in v0.1.11
+### 🆕 What's New in v0.1.12
 
 - **🔥 WebSocket Reliability Overhaul**:
   - **Connection Stability**: Added application-level Ping (method 7) every 30 seconds and automatic reconnection with exponential backoff for all WebSocket streams.
