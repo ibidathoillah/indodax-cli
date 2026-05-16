@@ -224,6 +224,17 @@ async fn ohlc(
     from: Option<u64>,
     to: Option<u64>,
 ) -> Result<CommandOutput> {
+    if let Some(v) = from {
+        if v > 1_000_000_000_000 {
+            eprintln!("[MARKET] Warning: --from timestamp ({}) looks like milliseconds. OHLC API expects seconds.", v);
+        }
+    }
+    if let Some(v) = to {
+        if v > 1_000_000_000_000 {
+            eprintln!("[MARKET] Warning: --to timestamp ({}) looks like milliseconds. OHLC API expects seconds.", v);
+        }
+    }
+
     let now_secs = crate::auth::Signer::now_millis() / 1000;
     let from_val = from.map(|v| v.to_string()).unwrap_or_else(|| {
         (now_secs - crate::commands::helpers::ONE_DAY_SECS).to_string()
