@@ -265,6 +265,7 @@ mod tests {
         let config = IndodaxConfig {
             api_key: Some(SecretValue::new("test_key")),
             api_secret: Some(SecretValue::new("test_secret")),
+            ws_token: None,
             callback_url: Some("http://callback.test".into()),
             paper_balances: None,
         };
@@ -321,6 +322,7 @@ mod tests {
         let config = IndodaxConfig {
             api_key: Some(SecretValue::new("config_key")),
             api_secret: Some(SecretValue::new("config_secret")),
+            ws_token: None,
             callback_url: None,
             paper_balances: None,
         };
@@ -371,6 +373,7 @@ mod tests {
         let config = IndodaxConfig {
             api_key: Some(SecretValue::new("config_key")),
             api_secret: Some(SecretValue::new("config_secret")),
+            ws_token: None,
             callback_url: None,
             paper_balances: None,
         };
@@ -441,6 +444,7 @@ mod tests {
         let config = IndodaxConfig {
             api_key: Some(SecretValue::new("key_only")),
             api_secret: None,
+            ws_token: None,
             callback_url: None,
             paper_balances: None,
         };

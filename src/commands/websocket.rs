@@ -191,7 +191,7 @@ async fn ws_connect_and_listen(
                                         "params": { "channel": channel },
                                         "id": 2
                                     });
-                                    if let Err(e) = ws_stream.send(Message::Text(sub_msg.to_string())).await {
+                                    if let Err(_e) = ws_stream.send(Message::Text(sub_msg.to_string())).await {
                                         retry_count += 1;
                                         continue 'reconnect;
                                     }
@@ -555,7 +555,7 @@ async fn ws_private_connect_and_listen(
             "connect": { "token": token },
             "id": 1
         });
-        if let Err(e) = ws_stream.send(Message::Text(connect_msg.to_string())).await {
+        if let Err(_e) = ws_stream.send(Message::Text(connect_msg.to_string())).await {
             retry_count += 1;
             continue 'reconnect;
         }
