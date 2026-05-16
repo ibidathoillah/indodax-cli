@@ -52,17 +52,17 @@ impl RateLimiter {
         loop {
             let mut state = self.state.lock().await;
             let elapsed = state.last_refill.elapsed();
-            let elapsed_secs = elapsed.as_secs();
-            if elapsed_secs > 0 {
-                let add = self.refill_per_sec.saturating_mul(elapsed_secs);
+            if elapsed >= Duration::from_secs(1) {
+                let secs = elapsed.as_secs();
+                let add = self.refill_per_sec * secs;
                 state.tokens = state.tokens.saturating_add(add).min(self.capacity);
-                state.last_refill = Instant::now();
+                state.last_refill += Duration::from_secs(secs);
             }
             if state.tokens > 0 {
                 state.tokens -= 1;
                 return;
             }
-            let elapsed_ms = elapsed.as_millis() as u64;
+            let elapsed_ms = elapsed.as_millis().min(u128::from(u64::MAX)) as u64;
             let wait = if elapsed_ms < 1000 {
                 Duration::from_millis(1000 - elapsed_ms)
             } else {
@@ -289,7 +289,7 @@ impl IndodaxClient {
             .collect();
         let timestamp = Signer::now_millis();
         qs_parts.push(format!("timestamp={}", timestamp));
-        qs_parts.push("recvWindow=10000".to_string());
+        qs_parts.push("recvWindow=5000".to_string());
         qs_parts.sort();
         let query_string = qs_parts.join("&");
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 use rmcp::model::{CallToolResult, Tool};
 
 use super::IndodaxMcp;
@@ -73,6 +73,16 @@ pub fn account_tools() -> Vec<Tool> {
     ]
 }
 
+fn validate_limit(limit: Option<f64>) -> Result<u32, String> {
+    match limit {
+        Some(v) if v.fract() != 0.0 || v <= 0.0 => {
+            Err(format!("limit must be a positive whole number, got {}", v))
+        }
+        Some(v) => Ok(v as u32),
+        None => Ok(100),
+    }
+}
+
 impl IndodaxMcp {
     pub async fn handle_account_info(&self) -> CallToolResult {
         match self.get_account_info().await {
@@ -84,11 +94,10 @@ impl IndodaxMcp {
     pub async fn handle_balance(&self) -> CallToolResult {
         match self.get_account_info().await {
             Ok(data) => {
-                let balance = data
-                    .get("balance")
-                    .cloned()
-                    .unwrap_or(Value::Object(Map::new()));
-                Self::json_result(balance)
+                match data.get("balance") {
+                    Some(balance) => Self::json_result(balance.clone()),
+                    None => Self::error_result("API response missing 'balance' field".into()),
+                }
             }
             Err(e) => Self::error_from_indodax(&e),
         }
@@ -112,16 +121,13 @@ impl IndodaxMcp {
     pub async fn handle_order_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
         let now = Signer::now_millis();
         let start = now - helpers::ONE_DAY_MS;
-        let limit_val = match limit {
-            Some(v) if v.fract() != 0.0 || v <= 0.0 => {
-                return Self::validation_error_result(format!("limit must be a positive whole number, got {}", v));
-            }
-            Some(v) => v as u32,
-            None => 100,
+        let limit_val = match validate_limit(limit) {
+            Ok(v) => v,
+            Err(e) => return Self::validation_error_result(e),
         };
 
         let mut params = HashMap::new();
-        params.insert("symbol".to_string(), symbol.to_string());
+        params.insert("symbol".to_string(), symbol.replace('_', ""));
         params.insert("limit".to_string(), limit_val.to_string());
         params.insert("startTime".to_string(), start.to_string());
         params.insert("endTime".to_string(), now.to_string());
@@ -139,16 +145,13 @@ impl IndodaxMcp {
     pub async fn handle_trade_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
         let now = Signer::now_millis();
         let start = now - helpers::ONE_DAY_MS;
-        let limit_val = match limit {
-            Some(v) if v.fract() != 0.0 || v <= 0.0 => {
-                return Self::validation_error_result(format!("limit must be a positive whole number, got {}", v));
-            }
-            Some(v) => v as u32,
-            None => 100,
+        let limit_val = match validate_limit(limit) {
+            Ok(v) => v,
+            Err(e) => return Self::validation_error_result(e),
         };
 
         let mut params = HashMap::new();
-        params.insert("symbol".to_string(), symbol.to_string());
+        params.insert("symbol".to_string(), symbol.replace('_', ""));
         params.insert("limit".to_string(), limit_val.to_string());
         params.insert("startTime".to_string(), start.to_string());
         params.insert("endTime".to_string(), now.to_string());

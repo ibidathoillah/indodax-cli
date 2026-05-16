@@ -1,8 +1,10 @@
 use crate::auth::Signer;
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
+use crate::config::IndodaxConfig;
 use crate::output::CommandOutput;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, clap::Subcommand)]
@@ -45,6 +47,17 @@ pub enum AccountCommand {
         #[arg(long)]
         pair: String,
     },
+
+    #[command(name = "equity-snap", about = "Record a portfolio equity snapshot")]
+    EquitySnap,
+
+    #[command(name = "equity-history", about = "View equity snapshot history")]
+    EquityHistory {
+        #[arg(short, long, default_value = "20", help = "Number of snapshots to show")]
+        limit: usize,
+        #[arg(long, help = "Show all snapshots")]
+        all: bool,
+    },
 }
 
 pub async fn execute(
@@ -70,6 +83,10 @@ pub async fn execute(
         AccountCommand::GetOrder { order_id, pair } => {
             let pair = helpers::normalize_pair(pair);
             get_order(client, *order_id, &pair).await
+        }
+        AccountCommand::EquitySnap => equity_snap(client).await,
+        AccountCommand::EquityHistory { limit, all } => {
+            equity_history(*limit, *all)
         }
     }
 }
@@ -217,7 +234,7 @@ async fn order_history(
     let start = now - crate::commands::helpers::ONE_DAY_MS;
 
     let mut params = HashMap::new();
-    params.insert("symbol".into(), symbol.to_string());
+    params.insert("symbol".into(), symbol.replace('_', ""));
     params.insert("limit".into(), limit.to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
@@ -258,7 +275,7 @@ async fn trade_history(
     let start = now - crate::commands::helpers::ONE_DAY_MS;
 
     let mut params = HashMap::new();
-    params.insert("symbol".into(), symbol.to_string());
+    params.insert("symbol".into(), symbol.replace('_', ""));
     params.insert("limit".into(), limit.to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
@@ -361,6 +378,256 @@ fn priv_get<'a>(val: &'a serde_json::Value, keys: &[&str]) -> &'a serde_json::Va
     helpers::first_of(val, keys)
 }
 
+// ---------------------------------------------------------------------------
+// Equity snapshot history
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EquitySnapshot {
+    timestamp: u64,
+    equity: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EquityHistoryData {
+    snapshots: Vec<EquitySnapshot>,
+}
+
+fn equity_history_path() -> std::path::PathBuf {
+    IndodaxConfig::config_dir().join("equity_history.json")
+}
+
+fn load_equity_history() -> EquityHistoryData {
+    let path = equity_history_path();
+    if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(EquityHistoryData { snapshots: vec![] })
+    } else {
+        EquityHistoryData { snapshots: vec![] }
+    }
+}
+
+fn save_equity_history(data: &EquityHistoryData) -> Result<()> {
+    let dir = IndodaxConfig::config_dir();
+    std::fs::create_dir_all(&dir)?;
+    let content = serde_json::to_string_pretty(data)?;
+    std::fs::write(equity_history_path(), content)?;
+    Ok(())
+}
+
+async fn calculate_equity(client: &IndodaxClient) -> Result<f64> {
+    let info: serde_json::Value = client.private_post_v1("getInfo", &HashMap::new()).await?;
+
+    let mut balances: HashMap<String, f64> = HashMap::new();
+    if let Some(bal_map) = info["balance"].as_object() {
+        for (k, v) in bal_map {
+            let val = v
+                .as_str()
+                .and_then(|s| s.parse::<f64>().ok())
+                .or_else(|| v.as_f64())
+                .unwrap_or(0.0);
+            if val > 0.0 {
+                balances.insert(k.clone(), val);
+            }
+        }
+    }
+
+    let tickers: serde_json::Value = client.public_get("/api/ticker_all").await?;
+    let mut prices: HashMap<String, f64> = HashMap::new();
+    if let Some(t) = tickers["tickers"].as_object() {
+        for (k, v) in t {
+            let last = v["last"]
+                .as_str()
+                .and_then(|s| s.parse::<f64>().ok())
+                .or_else(|| v["last"].as_f64())
+                .unwrap_or(0.0);
+            prices.insert(k.clone(), last);
+        }
+    }
+
+    let mut total = 0.0;
+    let btc_idr = prices.get("btc_idr").copied().unwrap_or(0.0);
+    let usdt_idr = prices.get("usdt_idr").copied().unwrap_or(0.0);
+    let eth_idr = prices.get("eth_idr").copied().unwrap_or(0.0);
+
+    for (currency, amount) in &balances {
+        if currency == "idr" {
+            total += amount;
+        } else if currency == "btc" {
+            total += amount * btc_idr;
+        } else if currency == "usdt" {
+            total += amount * usdt_idr;
+        } else {
+            let pair_idr = format!("{}_{}", currency, "idr");
+            let pair_btc = format!("{}_{}", currency, "btc");
+            let pair_usdt = format!("{}_{}", currency, "usdt");
+            let pair_eth = format!("{}_{}", currency, "eth");
+
+            if let Some(price) = prices.get(&pair_idr) {
+                total += amount * price;
+            } else if let Some(price) = prices.get(&pair_btc) {
+                total += amount * price * btc_idr;
+            } else if let Some(price) = prices.get(&pair_usdt) {
+                total += amount * price * usdt_idr;
+            } else if let Some(price) = prices.get(&pair_eth) {
+                total += amount * price * eth_idr;
+            }
+        }
+    }
+
+    Ok(total)
+}
+
+async fn equity_snap(client: &IndodaxClient) -> Result<CommandOutput> {
+    let equity = calculate_equity(client).await?;
+    let timestamp = Signer::now_millis();
+
+    let snap = EquitySnapshot { timestamp, equity };
+    let mut history = load_equity_history();
+    history.snapshots.push(snap);
+
+    if history.snapshots.len() > 1000 {
+        let keep = history.snapshots.split_off(history.snapshots.len() - 1000);
+        history.snapshots = keep;
+    }
+
+    save_equity_history(&history)?;
+
+    let count = history.snapshots.len();
+    let first_equity = history.snapshots.first().map(|s| s.equity).unwrap_or(equity);
+    let peak = history.snapshots.iter().map(|s| s.equity).fold(0.0_f64, f64::max);
+    let change = equity - first_equity;
+    let change_pct = if first_equity > 0.0 { (change / first_equity) * 100.0 } else { 0.0 };
+    let dd_pct = if peak > 0.0 { ((equity / peak) - 1.0) * 100.0 } else { 0.0 };
+
+    let headers = vec!["Metric".into(), "Value".into()];
+    let formatted_time = helpers::format_timestamp(timestamp, true);
+    let rows = vec![
+        vec!["Time".into(), formatted_time],
+        vec!["Equity (IDR)".into(), format_equity(equity)],
+        vec!["Change".into(), format_change(change)],
+        vec!["Change %".into(), format_change_pct(change_pct)],
+        vec!["Peak (IDR)".into(), format_equity(peak)],
+        vec!["Drawdown %".into(), format_change_pct(dd_pct)],
+        vec!["Total Snapshots".into(), count.to_string()],
+    ];
+
+    let data = serde_json::json!({
+        "timestamp": timestamp,
+        "equity": equity,
+        "change": change,
+        "change_pct": change_pct,
+        "peak": peak,
+        "drawdown_pct": dd_pct,
+        "total_snapshots": count,
+    });
+
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+fn equity_history(limit: usize, all: bool) -> Result<CommandOutput> {
+    let history = load_equity_history();
+
+    if history.snapshots.is_empty() {
+        return Ok(CommandOutput::json(serde_json::json!({
+            "status": "ok",
+            "message": "No equity snapshots. Use `indodax account equity-snap` to record one.",
+            "snapshots": [],
+        })));
+    }
+
+    let first_equity = history.snapshots.first().map(|s| s.equity).unwrap_or(0.0);
+
+    let headers = vec![
+        "Time".into(),
+        "Equity (IDR)".into(),
+        "Change".into(),
+        "Change %".into(),
+        "Peak (IDR)".into(),
+        "DD %".into(),
+    ];
+
+    let snapshots_to_show: Vec<&EquitySnapshot> = if all {
+        history.snapshots.iter().collect()
+    } else {
+        let take = limit.min(history.snapshots.len());
+        history.snapshots[history.snapshots.len() - take..]
+            .iter()
+            .collect()
+    };
+
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut peak = 0.0_f64;
+
+    for snap in &snapshots_to_show {
+        if snap.equity > peak {
+            peak = snap.equity;
+        }
+        let change = snap.equity - first_equity;
+        let change_pct = if first_equity > 0.0 {
+            (change / first_equity) * 100.0
+        } else {
+            0.0
+        };
+        let dd_pct = if peak > 0.0 {
+            ((snap.equity / peak) - 1.0) * 100.0
+        } else {
+            0.0
+        };
+
+        rows.push(vec![
+            format_timestamp_short(snap.timestamp),
+            format_equity(snap.equity),
+            format_change(change),
+            format_change_pct(change_pct),
+            format_equity(peak),
+            format_change_pct(dd_pct),
+        ]);
+    }
+
+    let data = serde_json::json!({
+        "count": history.snapshots.len(),
+        "first_equity": first_equity,
+        "snapshots": history.snapshots.iter().map(|s| serde_json::json!({
+            "timestamp": s.timestamp,
+            "equity": s.equity,
+        })).collect::<Vec<_>>(),
+    });
+
+    let count = history.snapshots.len();
+    Ok(CommandOutput::new(data, headers, rows)
+        .with_addendum(format!("[EQUITY] {} snapshot(s) total", count)))
+}
+
+fn format_equity(val: f64) -> String {
+    format!("{:>14.2}", val)
+}
+
+fn format_change(val: f64) -> String {
+    if val >= 0.0 {
+        format!("+{:>10.2}", val)
+    } else {
+        format!("{:>11.2}", val)
+    }
+}
+
+fn format_change_pct(val: f64) -> String {
+    if val >= 0.0 {
+        format!("+{:>7.2}%", val)
+    } else {
+        format!("{:>8.2}%", val)
+    }
+}
+
+fn format_timestamp_short(ts: u64) -> String {
+    let ts_sec = ts / 1000;
+    chrono::DateTime::from_timestamp(ts_sec.min(i64::MAX as u64) as i64, 0)
+        .map(|dt| dt.format("%b %d  %H:%M:%S").to_string())
+        .unwrap_or_else(|| ts.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -424,6 +691,8 @@ mod tests {
         let _cmd5 = AccountCommand::TradeHistory { symbol: "btc_idr".into(), limit: 100 };
         let _cmd6 = AccountCommand::TransHistory;
         let _cmd7 = AccountCommand::GetOrder { order_id: 123, pair: "btc_idr".into() };
+        let _cmd8 = AccountCommand::EquitySnap;
+        let _cmd9 = AccountCommand::EquityHistory { limit: 10, all: false };
     }
 
     #[test]
