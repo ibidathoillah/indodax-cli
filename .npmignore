@@ -15,3 +15,5 @@ install.sh
 .nojekyll
 *.md
 !README.md
+bin/indodax
+bin/indodax-native

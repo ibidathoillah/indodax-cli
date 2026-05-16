@@ -91,7 +91,7 @@ async fn setup() -> Result<CommandOutput> {
     Ok(CommandOutput::json(data))
 }
 
-async fn shell(client: &IndodaxClient, creds: &Option<ResolvedCredentials>) -> Result<CommandOutput> {
+async fn shell(client: &IndodaxClient, _creds: &Option<ResolvedCredentials>) -> Result<CommandOutput> {
     use crate::Cli;
     use clap::Parser;
     use rustyline::DefaultEditor;

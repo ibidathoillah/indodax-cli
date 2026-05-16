@@ -268,7 +268,7 @@ impl IndodaxMcp {
             let config = self.config.lock().await;
             crate::commands::paper::PaperState::load(&config)
         };
-        match crate::commands::paper::paper_fill(&mut state, order_id, fill_price, fill_all) {
+        match crate::commands::paper::paper_fill(&mut state, order_id, fill_price, fill_all, Some(&self.client), false).await {
             Ok(output) => {
                 if let Err(e) = self.save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);

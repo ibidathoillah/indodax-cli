@@ -3,7 +3,7 @@ set -e
 
 DEFAULT_BIN_DIR="/usr/local/bin"
 BIN_DIR="${BIN_DIR:-${DEFAULT_BIN_DIR}}"
-REPO="btcid/indodax-cli"
+REPO="ibidathoillah/indodax-cli"
 
 main() {
     need_cmd uname

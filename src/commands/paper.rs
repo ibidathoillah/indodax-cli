@@ -166,6 +166,8 @@ pub enum PaperCommand {
         price: Option<f64>,
         #[arg(short = 'a', long, help = "Fill all open orders at once")]
         all: bool,
+        #[arg(short = 'f', long, help = "Fetch live prices from Indodax to fill matching orders")]
+        fetch: bool,
     },
 
     #[command(name = "history", about = "Show paper trading history")]
@@ -186,6 +188,14 @@ pub enum PaperCommand {
 
     #[command(name = "status", about = "Show paper trading status summary")]
     Status,
+
+    #[command(name = "watch", about = "Automatically watch market and fill matching orders in real-time")]
+    Watch {
+        #[arg(short, long, default_value = "30", help = "Polling interval in seconds")]
+        interval: u64,
+        #[arg(long, help = "Stop after first fill")]
+        once: bool,
+    },
 }
 
 pub async fn execute(
@@ -194,7 +204,7 @@ pub async fn execute(
     cmd: &PaperCommand,
 ) -> Result<CommandOutput, IndodaxError> {
     let mut state = PaperState::load(config);
-    let result = dispatch_paper(client, &mut state, cmd).await;
+    let result = dispatch_paper(client, &mut state, config, cmd).await;
     state.save(config)?;
     result
 }
@@ -202,6 +212,7 @@ pub async fn execute(
 async fn dispatch_paper(
     client: &IndodaxClient,
     state: &mut PaperState,
+    config: &mut IndodaxConfig,
     cmd: &PaperCommand,
 ) -> Result<CommandOutput, IndodaxError> {
     match cmd {
@@ -229,12 +240,13 @@ async fn dispatch_paper(
         }
         PaperCommand::Cancel { order_id } => paper_cancel(state, *order_id),
         PaperCommand::CancelAll => paper_cancel_all(state),
-        PaperCommand::Fill { order_id, price, all } => paper_fill(state, *order_id, *price, *all),
+        PaperCommand::Fill { order_id, price, all, fetch } => paper_fill(state, *order_id, *price, *all, Some(client), *fetch).await,
         PaperCommand::CheckFills { prices, fetch } => paper_check_fills(client, state, prices.as_deref(), *fetch).await,
         PaperCommand::History { sort_by, sort_order } => {
             paper_history(state, sort_by.as_deref(), sort_order.as_deref())
         }
         PaperCommand::Status => paper_status(state),
+        PaperCommand::Watch { interval, once } => paper_watch(client, config, *interval, *once).await,
     }
 }
 
@@ -681,7 +693,51 @@ fn paper_cancel_all(state: &mut PaperState) -> Result<CommandOutput, IndodaxErro
     Ok(CommandOutput::json(data).with_addendum(addendum))
 }
 
-pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<f64>, fill_all: bool) -> Result<CommandOutput, IndodaxError> {
+pub async fn paper_fill(
+    state: &mut PaperState,
+    order_id: Option<u64>,
+    fill_price: Option<f64>,
+    fill_all: bool,
+    client: Option<&IndodaxClient>,
+    fetch: bool,
+) -> Result<CommandOutput, IndodaxError> {
+    let mut fetched_prices: HashMap<String, f64> = HashMap::new();
+
+    if fetch {
+        let client = client.ok_or_else(|| IndodaxError::Other("client required when fetch is true".to_string()))?;
+        let pairs_to_fetch: std::collections::HashSet<String> = if let Some(id) = order_id {
+            state.orders.iter()
+                .filter(|o| o.id == id && o.status == "open")
+                .map(|o| o.pair.clone())
+                .collect()
+        } else if fill_all {
+            state.orders.iter()
+                .filter(|o| o.status == "open")
+                .map(|o| o.pair.clone())
+                .collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
+        if !pairs_to_fetch.is_empty() {
+            eprintln!("[PAPER] Fetching live prices for {} pair(s)...", pairs_to_fetch.len());
+            let futures: Vec<_> = pairs_to_fetch.iter().map(|p| async move {
+                let ticker: serde_json::Value = client.public_get(&format!("/api/ticker/{}", p)).await?;
+                let price = ticker["ticker"]["last"].as_str()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .or_else(|| ticker["ticker"]["last"].as_f64())
+                    .ok_or_else(|| IndodaxError::Other(format!("Failed to parse price for {}", p)))?;
+                Ok::<(String, f64), IndodaxError>((p.clone(), price))
+            }).collect();
+
+            for res in join_all(futures).await {
+                if let Ok((pair, price)) = res {
+                    fetched_prices.insert(pair, price);
+                }
+            }
+        }
+    }
+
     if fill_all {
         let open_ids: Vec<u64> = state.orders.iter()
             .filter(|o| o.status == "open")
@@ -703,21 +759,41 @@ pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Opt
                 Some(o) => o.clone(),
                 None => { skipped += 1; continue; }
             };
-            let price = fill_price.unwrap_or(order.price);
+            
+            // Priority: fetched price > explicit fill_price > order price
+            let price = fetched_prices.get(&order.pair).copied()
+                .or(fill_price)
+                .unwrap_or(order.price);
+
             if !price.is_finite() {
                 errors.push(format!("Order {}: invalid fill price {}", id, price));
                 skipped += 1;
                 continue;
             }
-            let should_fill = match fill_price {
-                Some(fp) => match order.side.as_str() {
-                    "buy" => fp <= order.price,
-                    "sell" => fp >= order.price,
-                    _ => false,
-                },
-                None => true,
+
+            let should_fill = if fetch {
+                if let Some(&live_price) = fetched_prices.get(&order.pair) {
+                    match order.side.as_str() {
+                        "buy" => live_price <= order.price,
+                        "sell" => live_price >= order.price,
+                        _ => false,
+                    }
+                } else {
+                    false // Skip if fetch requested but failed
+                }
+            } else {
+                match fill_price {
+                    Some(fp) => match order.side.as_str() {
+                        "buy" => fp <= order.price,
+                        "sell" => fp >= order.price,
+                        _ => false,
+                    },
+                    None => true,
+                }
             };
+
             if !should_fill { skipped += 1; continue; }
+            
             let base = order.pair.split('_').next().unwrap_or("btc").to_string();
             let quote = order.pair.split('_').next_back().unwrap_or("idr").to_string();
             match execute_fill(state, *id, &base, &quote, &order.side, price, order.remaining) {
@@ -765,14 +841,35 @@ pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Opt
         return Err(IndodaxError::Other(format!("[PAPER] Order {} status is '{}', only open orders can be filled", order_id, status)));
     }
 
-    let price = fill_price.unwrap_or(order_price);
+    // Priority: fetched price > explicit fill_price > order price
+    let price = fetched_prices.get(&pair).copied()
+        .or(fill_price)
+        .unwrap_or(order_price);
+
     if !price.is_finite() {
         return Err(IndodaxError::Other(format!(
             "[PAPER] Invalid fill price: {}. Ensure order price or explicit fill price is valid.",
             price
         )));
     }
-    if let Some(fp) = fill_price {
+
+    if fetch {
+        if let Some(&live_price) = fetched_prices.get(&pair) {
+            let should_fill = match side.as_str() {
+                "buy" => live_price <= order_price,
+                "sell" => live_price >= order_price,
+                _ => false,
+            };
+            if !should_fill {
+                return Err(IndodaxError::Other(format!(
+                    "[PAPER] Live price {} does not match order condition ({} side, limit {})",
+                    live_price, side, order_price
+                )));
+            }
+        } else {
+            return Err(IndodaxError::Other(format!("[PAPER] Failed to fetch live price for {}", pair)));
+        }
+    } else if let Some(fp) = fill_price {
         let should_fill = match side.as_str() {
             "buy" => fp <= order_price,
             "sell" => fp >= order_price,
@@ -891,7 +988,51 @@ fn paper_status(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
     )))
 }
 
-async fn fetch_market_prices(client: &IndodaxClient, state: &PaperState) -> Result<HashMap<String, f64>, IndodaxError> {
+async fn paper_watch(
+    client: &IndodaxClient,
+    config: &mut IndodaxConfig,
+    interval_secs: u64,
+    once: bool,
+) -> Result<CommandOutput, IndodaxError> {
+    use tokio::time::{sleep, Duration};
+
+    eprintln!("[PAPER] Monitoring market for open orders (interval: {}s)...", interval_secs);
+    eprintln!("[PAPER] Press Ctrl+C to stop.");
+
+    loop {
+        let mut state = PaperState::load(config);
+        let open_count = state.orders.iter().filter(|o| o.status == "open").count();
+
+        if open_count == 0 {
+            eprintln!("[PAPER] No open orders. Waiting {}s...", interval_secs);
+            sleep(Duration::from_secs(interval_secs)).await;
+            continue;
+        }
+
+        match paper_fill(&mut state, None, None, true, Some(client), true).await {
+            Ok(output) => {
+                let data = &output.data;
+                let filled = data["filled_count"].as_u64().unwrap_or(0);
+
+                if filled > 0 {
+                    eprintln!("{}", output.addendum.as_deref().unwrap_or("[PAPER] Orders filled"));
+                    state.save(config)?;
+                    if once {
+                        return Ok(output);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[PAPER] Error during auto-fill: {}", e);
+            }
+        }
+
+        sleep(Duration::from_secs(interval_secs)).await;
+    }
+}
+
+async fn fetch_market_prices(
+client: &IndodaxClient, state: &PaperState) -> Result<HashMap<String, f64>, IndodaxError> {
     let pairs: std::collections::BTreeSet<String> = state.orders.iter()
         .filter(|o| o.status == "open")
         .map(|o| o.pair.clone())
@@ -1401,92 +1542,92 @@ mod tests {
         assert!(rendered.contains("trade_count") || rendered.contains("Trade") || rendered.contains("BTC"));
     }
 
-    #[test]
-    fn test_paper_fill_buy() {
+    #[tokio::test]
+    async fn test_paper_fill_buy() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
         
-        let result = paper_fill(&mut state, Some(order_id), None, false);
+        let result = paper_fill(&mut state, Some(order_id), None, false, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
         assert_eq!(state.orders[0].remaining, 0.0);
     }
 
-    #[test]
-    fn test_paper_fill_sell() {
+    #[tokio::test]
+    async fn test_paper_fill_sell() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "sell", Some(100_000_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
         
-        let result = paper_fill(&mut state, Some(order_id), None, false);
+        let result = paper_fill(&mut state, Some(order_id), None, false, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
     }
 
-    #[test]
-    fn test_paper_fill_not_found() {
+    #[tokio::test]
+    async fn test_paper_fill_not_found() {
         let mut state = PaperState::default();
-        let result = paper_fill(&mut state, Some(999), None, false);
+        let result = paper_fill(&mut state, Some(999), None, false, None, false).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_paper_fill_already_filled() {
+    #[tokio::test]
+    async fn test_paper_fill_already_filled() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
         
-        paper_fill(&mut state, Some(order_id), None, false).unwrap();
-        let result = paper_fill(&mut state, Some(order_id), None, false);
+        paper_fill(&mut state, Some(order_id), None, false, None, false).await.unwrap();
+        let result = paper_fill(&mut state, Some(order_id), None, false, None, false).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_paper_fill_with_custom_price() {
+    #[tokio::test]
+    async fn test_paper_fill_with_custom_price() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
         
         // Buy @ 100k, fill at 90k (better price) -> OK
-        let result = paper_fill(&mut state, Some(order_id), Some(90_000.0), false);
+        let result = paper_fill(&mut state, Some(order_id), Some(90_000.0), false, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
         assert_eq!(state.orders[0].filled_price, 90_000.0);
 
         // Try to fill already filled order
-        let result2 = paper_fill(&mut state, Some(order_id), Some(80_000.0), false);
+        let result2 = paper_fill(&mut state, Some(order_id), Some(80_000.0), false, None, false).await;
         assert!(result2.is_err());
     }
 
-    #[test]
-    fn test_paper_fill_invalid_price_condition() {
+    #[tokio::test]
+    async fn test_paper_fill_invalid_price_condition() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
         
         // Buy @ 100k, try to fill at 110k (worse price) -> Error
-        let result = paper_fill(&mut state, Some(order_id), Some(110_000.0), false);
+        let result = paper_fill(&mut state, Some(order_id), Some(110_000.0), false, None, false).await;
         assert!(result.is_err());
         assert_eq!(state.orders[0].status, "open");
     }
 
-    #[test]
-    fn test_paper_fill_all() {
+    #[tokio::test]
+    async fn test_paper_fill_all() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "btc_idr", "sell", Some(110_000_000.0), 0.3).unwrap();
         
-        let result = paper_fill(&mut state, None, None, true);
+        let result = paper_fill(&mut state, None, None, true, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
         assert_eq!(state.orders[1].status, "filled");
     }
 
-    #[test]
-    fn test_paper_fill_all_no_open_orders() {
+    #[tokio::test]
+    async fn test_paper_fill_all_no_open_orders() {
         let mut state = PaperState::default();
-        let result = paper_fill(&mut state, None, None, true);
+        let result = paper_fill(&mut state, None, None, true, None, false).await;
         assert!(result.is_ok());
     }
 
@@ -1571,8 +1712,9 @@ mod tests {
     async fn test_dispatch_paper_init() {
         let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
+        let mut config = IndodaxConfig::default();
         let cmd = PaperCommand::Init { idr: None, btc: None };
-        let result = dispatch_paper(&client, &mut state, &cmd).await;
+        let result = dispatch_paper(&client, &mut state, &mut config, &cmd).await;
         assert!(result.is_ok());
     }
 
@@ -1580,8 +1722,9 @@ mod tests {
     async fn test_dispatch_paper_balance() {
         let client = IndodaxClient::new(None).unwrap();
         let state = PaperState::default();
+        let mut config = IndodaxConfig::default();
         let cmd = PaperCommand::Balance;
-        let result = dispatch_paper(&client, &mut state.clone(), &cmd).await;
+        let result = dispatch_paper(&client, &mut state.clone(), &mut config, &cmd).await;
         assert!(result.is_ok());
     }
 
@@ -1677,8 +1820,8 @@ mod tests {
         assert_eq!(state.orders[0].remaining, 0.5, "Remaining amount should be unchanged");
     }
 
-    #[test]
-    fn test_paper_lifecycle_buy_fill_cancel() {
+    #[tokio::test]
+    async fn test_paper_lifecycle_buy_fill_cancel() {
         let mut state = PaperState::default();
         let initial_idr = *state.balances.get("idr").unwrap();
         let initial_btc = *state.balances.get("btc").unwrap();
@@ -1692,7 +1835,7 @@ mod tests {
         assert!(*state.balances.get("idr").unwrap() < initial_idr);
 
         // Fill the buy
-        let result = paper_fill(&mut state, Some(order_id), None, false);
+        let result = paper_fill(&mut state, Some(order_id), None, false, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
         // BTC received
@@ -1764,7 +1907,7 @@ mod tests {
         assert_eq!(state.orders[2].status, "open");
 
         // Now fill the remaining one with --all
-        let result = paper_fill(&mut state, None, None, true);
+        let result = paper_fill(&mut state, None, None, true, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[2].status, "filled");
     }
