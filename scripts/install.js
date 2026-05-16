@@ -49,9 +49,9 @@ if (!fs.existsSync(binDir)) {
 
 function download(url, dest) {
     console.log(`Downloading indodax-cli binary from ${url}...`);
-    
+
     const file = fs.createWriteStream(dest);
-    
+
     https.get(url, (response) => {
         if (response.statusCode === 301 || response.statusCode === 302) {
             download(response.headers.location, dest);
@@ -59,13 +59,14 @@ function download(url, dest) {
         }
 
         if (response.statusCode !== 200) {
-            console.error(`\x1b[31mError:\x1b[0m Server returned status code ${response.statusCode}`);
+            console.warn(`\x1b[33mWarning:\x1b[0m Server returned status code ${response.statusCode}`);
             if (response.statusCode === 404) {
-                console.error(`Binary for version v${VERSION} not found on GitHub releases.`);
-                console.error(`This might be because the release assets are still being uploaded.`);
+                console.warn(`Binary for version v${VERSION} not found on GitHub releases.`);
+                console.warn(`The command 'indodax' will still be registered, but you may need to build it manually.`);
             }
-            fs.unlink(dest, () => {});
-            process.exit(1);
+            fs.unlink(dest, () => { });
+            // Exit with 0 to allow the npm installation to complete
+            process.exit(0);
         }
 
         response.pipe(file);
@@ -76,7 +77,7 @@ function download(url, dest) {
             console.log('\x1b[32mindodax-cli binary installed successfully.\x1b[0m');
         });
     }).on('error', (err) => {
-        fs.unlink(dest, () => {});
+        fs.unlink(dest, () => { });
         console.error(`\x1b[31mError downloading binary:\x1b[0m ${err.message}`);
         process.exit(1);
     });
