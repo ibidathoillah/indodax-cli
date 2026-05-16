@@ -70,12 +70,34 @@ impl PaperState {
 
 impl PaperState {
     pub fn load(config: &IndodaxConfig) -> Self {
+        let path = IndodaxConfig::paper_state_path();
+        if path.exists() {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    match serde_json::from_str::<PaperState>(&content) {
+                        Ok(mut state) => {
+                            if state.initial_balances.is_none() {
+                                eprintln!("[PAPER] Warning: Saved state predates balance tracking. Snapshotting current balances as initial (P&L will reflect only future changes).");
+                                state.initial_balances = Some(state.balances.clone());
+                            }
+                            return state;
+                        }
+                        Err(e) => {
+                            eprintln!("[PAPER] Warning: Failed to deserialize paper state file: {}. Falling back to config.", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[PAPER] Warning: Failed to read paper state file: {}. Falling back to config.", e);
+                }
+            }
+        }
         let mut result: Option<PaperState> = config
             .paper_balances
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok());
         if config.paper_balances.is_some() && result.is_none() {
-            eprintln!("[PAPER] Warning: Failed to deserialize saved paper state, resetting to defaults");
+            eprintln!("[PAPER] Warning: Failed to deserialize saved paper state from config, resetting to defaults");
         }
         if let Some(ref mut state) = result {
             if state.initial_balances.is_none() {
@@ -86,9 +108,12 @@ impl PaperState {
         result.unwrap_or_default()
     }
 
-    pub fn save(&self, config: &mut IndodaxConfig) -> Result<(), IndodaxError> {
-        config.paper_balances = Some(serde_json::to_value(self).map_err(|e| IndodaxError::Other(e.to_string()))?);
-        config.save().map_err(|e| IndodaxError::Other(e.to_string()))?;
+    pub fn save(&self, _config: &mut IndodaxConfig) -> Result<(), IndodaxError> {
+        let dir = IndodaxConfig::config_dir();
+        std::fs::create_dir_all(&dir).map_err(|e| IndodaxError::Other(format!("Failed to create config dir: {}", e)))?;
+        let path = IndodaxConfig::paper_state_path();
+        let content = serde_json::to_string_pretty(self).map_err(|e| IndodaxError::Other(e.to_string()))?;
+        std::fs::write(&path, content).map_err(|e| IndodaxError::Other(format!("Failed to write paper state: {}", e)))?;
         Ok(())
     }
 }
@@ -1132,7 +1157,7 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
 pub fn paper_balance_value(state: &PaperState) -> serde_json::Value {
     let rounded: std::collections::HashMap<String, f64> = state.balances.iter()
         .map(|(k, v)| {
-            let val = if is_fiat_or_stable(k) {
+            let val = if helpers::is_fiat_or_stable(k) {
                 (*v * 100.0).round() / 100.0
             } else {
                 (*v * 100_000_000.0).round() / 100_000_000.0
@@ -1322,9 +1347,16 @@ mod tests {
         state.balances.insert("eth".into(), 10.0);
         state.next_order_id = 42;
         
+        let paper_path = IndodaxConfig::paper_state_path();
+        // Clean up any previous test file
+        let _ = std::fs::remove_file(&paper_path);
+        
         let result = state.save(&mut config);
         assert!(result.is_ok());
-        assert!(config.paper_balances.is_some());
+        assert!(paper_path.exists(), "Paper state file should exist at {:?}", paper_path);
+        
+        // Clean up
+        let _ = std::fs::remove_file(&paper_path);
     }
 
     #[test]
