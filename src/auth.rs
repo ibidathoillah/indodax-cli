@@ -1,5 +1,3 @@
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -65,7 +63,7 @@ impl Signer {
 
     pub fn sign_v2(&self, query_string: &str, _timestamp: u64) -> Result<String, IndodaxError> {
         let signature = self.hmac_sha512(query_string, &self.secret_key)?;
-        Ok(BASE64.encode(&signature))
+        Ok(hex::encode(signature))
     }
 
     fn hmac_sha512(&self, data: &str, key: &str) -> Result<Vec<u8>, IndodaxError> {
@@ -142,8 +140,8 @@ mod tests {
         let signer = Signer::new("key", "secret");
         let signature = signer.sign_v2("param1=value1", 1234567890).unwrap();
         assert!(!signature.is_empty());
-        // Signature should be base64 encoded
-        assert!(BASE64.decode(&signature).is_ok());
+        // Signature should be hex encoded
+        assert!(hex::decode(&signature).is_ok());
     }
 
     #[test]
@@ -155,8 +153,8 @@ mod tests {
         
         // Verify the payload that was signed
         let _expected_payload = format!("{}&timestamp={}&recvWindow=10000", query_string, timestamp);
-        let _decoded = BASE64.decode(&signature).unwrap();
-        // We can't easily verify the HMAC without knowing the secret, but we can verify it's valid base64
+        let _decoded = hex::decode(&signature).unwrap();
+        // We can't easily verify the HMAC without knowing the secret, but we can verify it's valid hex
         assert!(!signature.is_empty());
     }
 
