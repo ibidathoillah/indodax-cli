@@ -128,7 +128,7 @@ impl IndodaxMcp {
 
         let mut params = HashMap::new();
         params.insert("symbol".to_string(), symbol.replace('_', ""));
-        params.insert("limit".to_string(), limit_val.to_string());
+        params.insert("limit".to_string(), limit_val.max(10).to_string());
         params.insert("startTime".to_string(), start.to_string());
         params.insert("endTime".to_string(), now.to_string());
 
@@ -152,7 +152,7 @@ impl IndodaxMcp {
 
         let mut params = HashMap::new();
         params.insert("symbol".to_string(), symbol.replace('_', ""));
-        params.insert("limit".to_string(), limit_val.to_string());
+        params.insert("limit".to_string(), limit_val.max(10).to_string());
         params.insert("startTime".to_string(), start.to_string());
         params.insert("endTime".to_string(), now.to_string());
 

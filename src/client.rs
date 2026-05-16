@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 const PUBLIC_BASE_URL: &str = "https://indodax.com";
 const PRIVATE_V1_URL: &str = "https://indodax.com/tapi";
-const PRIVATE_V2_BASE: &str = "https://tapi.indodax.com";
+const PRIVATE_V2_BASE: &str = "https://tapi.btcapi.net";
 const WS_TOKEN_URL: &str = "https://indodax.com/api/private_ws/v1/generate_token";
 const MAX_RETRIES: u32 = 3;
 

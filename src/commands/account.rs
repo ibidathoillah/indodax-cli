@@ -235,7 +235,7 @@ async fn order_history(
 
     let mut params = HashMap::new();
     params.insert("symbol".into(), symbol.replace('_', ""));
-    params.insert("limit".into(), limit.to_string());
+    params.insert("limit".into(), limit.max(10).to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
 
@@ -276,7 +276,7 @@ async fn trade_history(
 
     let mut params = HashMap::new();
     params.insert("symbol".into(), symbol.replace('_', ""));
-    params.insert("limit".into(), limit.to_string());
+    params.insert("limit".into(), limit.max(10).to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
 
