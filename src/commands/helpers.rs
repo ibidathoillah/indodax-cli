@@ -3,7 +3,7 @@ use serde_json::Value;
 use crate::client::IndodaxClient;
 use crate::errors::IndodaxError;
 
-const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
+pub const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
 
 pub async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String, anyhow::Error> {
     let resp = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await

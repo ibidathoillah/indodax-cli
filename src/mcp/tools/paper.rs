@@ -1,7 +1,5 @@
 use rmcp::model::{CallToolResult, Tool};
 use crate::errors::IndodaxError;
-use crate::auth::Signer;
-use serde_json::Value;
 
 use super::IndodaxMcp;
 

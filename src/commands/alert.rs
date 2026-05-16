@@ -685,14 +685,14 @@ async fn alert_watch(
 
     let data = serde_json::json!({
         "status": "ok",
-        "watching": to_watch.len(),
+        "watching": target_ids.len(),
         "pairs": pairs,
         "triggered": triggered_count,
     });
 
     Ok(CommandOutput::new(data, vec![], vec![]).with_addendum(format!(
         "[ALERT] Watched {} alert(s) for {} pair(s). {} triggered.",
-        to_watch.len(), watching, triggered_count
+        target_ids.len(), watching, triggered_count
     )))
 }
 
