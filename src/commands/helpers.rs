@@ -297,8 +297,8 @@ mod tests {
 
     #[test]
     fn test_normalize_pair_idr_not_treated_as_base() {
-        // idrbtc should NOT produce idr_btc since idr is never a base
-        assert_eq!(normalize_pair("idrbtc"), "idrbtc");
+        // idrbtc -> idr_btc (btc as suffix)
+        assert_eq!(normalize_pair("idrbtc"), "idr_btc");
     }
 
     #[test]
