@@ -9,6 +9,8 @@ The unofficial, fast, and feature-rich command-line interface for **Indodax**, I
   - **Private WebSocket (PWS)**: Fully rewritten to support the correct `connect` (authenticate) and `subscribe` flow. Now streams both **Order Updates** and **Balance Updates** in real-time.
   - **Robust Parsing**: Enhanced public WebSocket handlers to support multiple Indodax API response formats (array-based and object-based), ensuring compatibility with all trading pairs.
   - **Flexible Auth**: Introduced `ws_token` configuration. Prioritizes dynamic fetching, followed by user-defined tokens in `config.toml`, with a reliable hardcoded default fallback.
+- **🐛 Bug Fixes**:
+  - **Market Pairs**: Fixed an issue where `indodax market pairs` returned an empty table due to an unhandled API response format (JSON array).
 - **🛡️ Security & Configuration**:
   - Added `ws_token` field to `IndodaxConfig` for custom WebSocket authentication tokens.
   - Improved credential resolution priority to ensure consistency across CLI, ENV, and Config file.

@@ -230,6 +230,24 @@ pub fn extract_pairs(data: &serde_json::Value) -> Vec<(String, String)> {
                 pairs.push((key.clone(), format!("{}/{} ({})", base, quote, symbol)));
             }
         }
+    } else if let serde_json::Value::Array(arr) = data {
+        for item in arr {
+            if let Some(obj) = item.as_object() {
+                let id = obj.get("id").or_else(|| obj.get("ticker_id")).and_then(|v| v.as_str()).unwrap_or("");
+                let base = obj.get("traded_currency")
+                    .or_else(|| obj.get("tradedCurrency"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let quote = obj.get("base_currency")
+                    .or_else(|| obj.get("baseCurrency"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let symbol = obj.get("symbol").or_else(|| obj.get("ticker_id")).and_then(|v| v.as_str()).unwrap_or("");
+                if !id.is_empty() {
+                    pairs.push((id.to_string(), format!("{}/{} ({})", base, quote, symbol)));
+                }
+            }
+        }
     }
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
     pairs
@@ -466,7 +484,8 @@ mod tests {
 
     #[test]
     fn test_extract_pairs() {
-        let data = json!({
+        // Test object format
+        let data_obj = json!({
             "btcidr": {
                 "traded_currency": "btc",
                 "base_currency": "idr",
@@ -479,11 +498,30 @@ mod tests {
             }
         });
         
-        let pairs = extract_pairs(&data);
-        assert_eq!(pairs.len(), 2);
-        assert!(pairs[0].0 == "btcidr" || pairs[0].0 == "ethidr");
-        assert!(pairs.iter().any(|(k, _)| k == "btcidr"));
-        assert!(pairs.iter().any(|(k, _)| k == "ethidr"));
+        let pairs_obj = extract_pairs(&data_obj);
+        assert_eq!(pairs_obj.len(), 2);
+        assert!(pairs_obj.iter().any(|(k, _)| k == "btcidr"));
+        assert!(pairs_obj.iter().any(|(k, _)| k == "ethidr"));
+
+        // Test array format
+        let data_arr = json!([
+            {
+                "id": "btcidr",
+                "traded_currency": "btc",
+                "base_currency": "idr",
+                "symbol": "BTCIDR"
+            },
+            {
+                "id": "ethidr",
+                "traded_currency": "eth",
+                "base_currency": "idr",
+                "symbol": "ETHIDR"
+            }
+        ]);
+        let pairs_arr = extract_pairs(&data_arr);
+        assert_eq!(pairs_arr.len(), 2);
+        assert!(pairs_arr.iter().any(|(k, _)| k == "btcidr"));
+        assert!(pairs_arr.iter().any(|(k, _)| k == "ethidr"));
     }
 
     #[test]
