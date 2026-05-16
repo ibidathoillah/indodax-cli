@@ -3,7 +3,9 @@ const path = require('path');
 const https = require('https');
 const os = require('os');
 
-const VERSION = '0.1.2';
+// Get version from package.json
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const VERSION = pkg.version;
 const REPO = 'ibidathoillah/indodax-cli';
 
 function getBinaryUrl() {
@@ -17,6 +19,8 @@ function getBinaryUrl() {
         osName = 'linux';
     } else if (platform === 'darwin') {
         osName = 'macos';
+    } else if (platform === 'win32') {
+        osName = 'windows';
     } else {
         console.error(`Unsupported platform: ${platform}`);
         process.exit(1);
@@ -31,36 +35,52 @@ function getBinaryUrl() {
         process.exit(1);
     }
 
-    return `https://github.com/${REPO}/releases/download/v${VERSION}/indodax-${osName}-${archName}`;
+    const ext = platform === 'win32' ? '.exe' : '';
+    return `https://github.com/${REPO}/releases/download/v${VERSION}/indodax-${osName}-${archName}${ext}`;
 }
 
 const binDir = path.join(__dirname, '..', 'bin');
-const binPath = path.join(binDir, 'indodax');
+const binName = os.platform() === 'win32' ? 'indodax-native.exe' : 'indodax-native';
+const binPath = path.join(binDir, binName);
 
 if (!fs.existsSync(binDir)) {
-    fs.mkdirSync(binDir);
+    fs.mkdirSync(binDir, { recursive: true });
+}
+
+function download(url, dest) {
+    console.log(`Downloading indodax-cli binary from ${url}...`);
+    
+    const file = fs.createWriteStream(dest);
+    
+    https.get(url, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+            download(response.headers.location, dest);
+            return;
+        }
+
+        if (response.statusCode !== 200) {
+            console.error(`\x1b[31mError:\x1b[0m Server returned status code ${response.statusCode}`);
+            if (response.statusCode === 404) {
+                console.error(`Binary for version v${VERSION} not found on GitHub releases.`);
+                console.error(`This might be because the release assets are still being uploaded.`);
+            }
+            fs.unlink(dest, () => {});
+            process.exit(1);
+        }
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+            file.close();
+            fs.chmodSync(dest, 0o755);
+            console.log('\x1b[32mindodax-cli binary installed successfully.\x1b[0m');
+        });
+    }).on('error', (err) => {
+        fs.unlink(dest, () => {});
+        console.error(`\x1b[31mError downloading binary:\x1b[0m ${err.message}`);
+        process.exit(1);
+    });
 }
 
 const url = getBinaryUrl();
-console.log(`Downloading indodax-cli binary from ${url}...`);
-
-const file = fs.createWriteStream(binPath);
-https.get(url, (response) => {
-    if (response.statusCode === 302 || response.statusCode === 301) {
-        https.get(response.headers.location, (followResponse) => {
-            followResponse.pipe(file);
-        });
-    } else {
-        response.pipe(file);
-    }
-
-    file.on('finish', () => {
-        file.close();
-        fs.chmodSync(binPath, 0o755);
-        console.log('indodax-cli installed successfully.');
-    });
-}).on('error', (err) => {
-    fs.unlink(binPath, () => {});
-    console.error(`Error downloading binary: ${err.message}`);
-    process.exit(1);
-});
+download(url, binPath);
