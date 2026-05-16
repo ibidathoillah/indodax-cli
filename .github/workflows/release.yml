@@ -34,6 +34,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross-compilation tools
+        if: contains(matrix.target, 'aarch64-unknown-linux-gnu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
@@ -45,7 +51,6 @@ jobs:
 
   publish-cargo:
     name: Publish to Cargo
-    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,7 +64,6 @@ jobs:
 
   publish-docker:
     name: Publish to Docker Hub
-    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -84,7 +88,6 @@ jobs:
 
   publish-npm:
     name: Publish to NPM
-    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
