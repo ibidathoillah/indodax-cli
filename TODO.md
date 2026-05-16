@@ -50,13 +50,14 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 ### High Priority
 
-- [ ] **`cancel_all_orders` silently cancels without `--force` in non-interactive mode** — `src/commands/trade.rs:276-283`: The confirmation prompt only shows when `stdin.is_terminal()`. When stdin is piped/scripted and `--force` is absent, execution proceeds without warning. Should require explicit `--force` when not a terminal, or at minimum print a warning.
+- [x] **`cancel_all_orders` silently cancels without `--force` in non-interactive mode** — `src/commands/trade.rs:276-283`: Now requires explicit `--force` when stdin is not a terminal and no pair filter is provided.
 
-- [ ] **`countdown_cancel_all` duplicates V1 response parsing logic** — `src/client.rs:162-187`: Manually parses body, checks `success == 1`, maps error codes — duplicating logic already in `private_post_v1` which uses `IndodaxV1Response<T>`. Should reuse the envelope pattern.
+- [x] **`countdown_cancel_all` duplicates V1 response parsing logic** — `src/client.rs:162-187`: Refactored V1 response parsing into a shared `handle_v1_response` helper, now reused by `private_post_v1` and `countdown_cancel_all`.
 
 ### Medium Priority
 
-- [ ] **OHLC `from`/`to` parameters accept seconds but users may pass milliseconds** — `src/commands/market.rs:44-48`: No validation to detect millisecond timestamps (`> 1e12`) and warn the user. A ms timestamp would produce data from 54,000 years in the future.
+
+- [x] **OHLC `from`/`to` parameters accept seconds but users may pass milliseconds** — `src/commands/market.rs:44-48`: No validation to detect millisecond timestamps (`> 1e12`) and warn the user. A ms timestamp would produce data from 54,000 years in the future.
 
 - [ ] **`trans_history` merges maps with fragile type detection** — `src/commands/account.rs:320-355`: Merges `withdraw`/`deposit`/`transactions` maps with potential key collisions. Type detection uses `id.contains("withdraw")` which could break if API changes ID format.
 
