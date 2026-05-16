@@ -57,12 +57,12 @@ cargo install --path .
 
 ---
 
-## 🚀 Recent Highlights (v0.1.3)
+## 🚀 Recent Highlights (v0.1.11)
 
-- **🔐 Fixed API v2 Authentication**: Corrected HMAC-SHA512 signature encoding from Base64 to hex lowercase, resolving 401 Unauthorized errors on order and trade history.
-- **🌐 Improved Connection Stability**: Migrated API v2 endpoints to `tapi.btcapi.net` to bypass Cloudflare 403 Forbidden issues common on some network ranges.
-- **📊 Strict TradeAPI-2 Compliance**: Normalized symbol formats (e.g., `btcidr`) and enforced minimum limits to match official Indodax v2 specifications.
-- **🧹 Dependency Cleanup**: Removed unused dependencies to reduce binary size and improve build times.
+- **🔥 WebSocket Reliability Overhaul**: Implemented application-level Pings, automatic reconnection with exponential backoff, and a complete rewrite of the Private WebSocket to support real-time order and balance updates.
+- **🔐 Secure Authentication**: Added support for user-configurable WebSocket tokens with fallback to a reliable hardcoded default, ensuring stable connections even if official tokens change.
+- **📊 Strict TradeAPI-2 Compliance**: Continued enforcement of official Indodax specifications and normalized symbol formats across all commands.
+- **🧹 Internal Refactoring**: Improved error handling and response parsing for the Orderbook, supporting both legacy and modern API formats.
 
 ---
 
