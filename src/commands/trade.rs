@@ -111,11 +111,7 @@ async fn place_buy_order(
         return Err(anyhow::anyhow!("IDR amount must be positive, got {}", idr_amount));
     }
 
-    let idr_balance = info["balance"]["idr"]
-        .as_str()
-        .and_then(|s| s.parse::<f64>().ok())
-        .or_else(|| info["balance"]["idr"].as_f64())
-        .unwrap_or(0.0);
+    let idr_balance = helpers::parse_balance(&info, "idr");
 
     if idr_balance + BALANCE_EPSILON < idr_amount {
         return Err(anyhow::anyhow!(
@@ -172,11 +168,7 @@ async fn place_sell_order(
         return Err(anyhow::anyhow!("Amount must be positive, got {}", amount));
     }
 
-    let base_balance = info["balance"][base_currency]
-        .as_str()
-        .and_then(|s| s.parse::<f64>().ok())
-        .or_else(|| info["balance"][base_currency].as_f64())
-        .unwrap_or(0.0);
+    let base_balance = helpers::parse_balance(&info, base_currency);
 
     if base_balance + BALANCE_EPSILON < amount {
         return Err(anyhow::anyhow!(
@@ -281,12 +273,7 @@ async fn cancel_all_orders(
     pair: Option<&str>,
     force: bool,
 ) -> Result<CommandOutput> {
-    if pair.is_none() && !force {
-        if !std::io::stdin().is_terminal() {
-            return Err(anyhow::anyhow!(
-                "Non-interactive mode detected. Use --force to cancel all orders without a pair filter."
-            ));
-        }
+    if pair.is_none() && !force && std::io::stdin().is_terminal() {
         use dialoguer::Confirm;
         let confirmed = Confirm::new()
             .with_prompt("No --pair filter specified. This will cancel ALL orders across ALL pairs. Continue?")
@@ -300,61 +287,10 @@ async fn cancel_all_orders(
             })).with_addendum("Cancel all orders aborted by user."));
         }
     }
-    let mut params = std::collections::HashMap::new();
-    if let Some(p) = pair {
-        params.insert("pair".to_string(), p.to_string());
-    }
-    let data: serde_json::Value = client.private_post_v1("openOrders", &params).await?;
 
-    let orders = &data["orders"];
-    let mut cancelled_ids: Vec<String> = Vec::new();
-    let mut failed_ids: Vec<String> = Vec::new();
-
-    if let serde_json::Value::Object(orders_map) = orders {
-        let total = orders_map.len();
-        let show_progress = std::io::stderr().is_terminal();
-        let pb = if show_progress {
-            let pb = indicatif::ProgressBar::new(total as u64);
-            pb.set_style(
-                indicatif::ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{bar:40}] {pos}/{len} orders cancelled")
-                    .unwrap()
-                    .progress_chars("=> "),
-            );
-            pb.enable_steady_tick(std::time::Duration::from_millis(100));
-            Some(pb)
-        } else {
-            None
-        };
-        for (order_id, order_val) in orders_map {
-            let order_pair = helpers::value_to_string(
-                order_val.get("pair")
-                    .or_else(|| order_val.get("market"))
-                    .or_else(|| order_val.get("symbol"))
-                    .unwrap_or(&serde_json::Value::Null),
-            );
-            let order_type = order_val.get("type")
-                .or_else(|| order_val.get("order_type"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            let mut cancel_params = std::collections::HashMap::new();
-            cancel_params.insert("order_id".to_string(), order_id.clone());
-            cancel_params.insert("pair".to_string(), order_pair);
-            cancel_params.insert("type".to_string(), order_type);
-            match client.private_post_v1::<serde_json::Value>("cancelOrder", &cancel_params).await {
-                Ok(_) => cancelled_ids.push(order_id.clone()),
-                Err(e) => failed_ids.push(format!("{} ({})", order_id, e)),
-            }
-            if let Some(ref pb) = pb {
-                pb.inc(1);
-            }
-        }
-        if let Some(pb) = pb {
-            pb.finish_and_clear();
-        }
-    }
+    let (cancelled_ids, failed_ids) = helpers::cancel_all_open_orders(client, pair)
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let headers = vec!["Metric".into(), "Value".into()];
     let mut rows = vec![

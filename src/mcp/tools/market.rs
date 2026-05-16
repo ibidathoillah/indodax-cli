@@ -59,7 +59,7 @@ pub fn market_tools() -> Vec<Tool> {
             "ohlc",
             "Get OHLCV candle data",
             serde_json::json!({
-                "symbol": IndodaxMcp::str_param("Trading pair symbol, e.g. BTCIDR", true, None),
+                "symbol": IndodaxMcp::str_param("Trading pair symbol, e.g. BTCIDR", false, Some("BTCIDR")),
                 "timeframe": IndodaxMcp::str_param(
                     "Candle timeframe in minutes, e.g. 60",
                     false,
@@ -68,7 +68,7 @@ pub fn market_tools() -> Vec<Tool> {
                 "from": IndodaxMcp::num_param("Start timestamp (seconds)", false),
                 "to": IndodaxMcp::num_param("End timestamp (seconds)", false),
             }),
-            vec!["symbol"],
+            vec![],
         ),
         IndodaxMcp::tool_def(
             "price_increments",

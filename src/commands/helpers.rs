@@ -1,5 +1,21 @@
 use chrono::DateTime;
 use serde_json::Value;
+use crate::client::IndodaxClient;
+use crate::errors::IndodaxError;
+
+pub const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
+
+pub async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String, anyhow::Error> {
+    let resp = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await
+        .map_err(|e| anyhow::anyhow!("Failed to fetch WebSocket token: {}", e))?;
+    let text = resp.text().await
+        .map_err(|e| anyhow::anyhow!("Failed to read token response: {}", e))?;
+    let val: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| anyhow::anyhow!("Invalid token response: {}", e))?;
+    val.get("token").and_then(|t| t.as_str()).map(|t| t.to_string())
+        .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()).map(|t| t.to_string()))
+        .ok_or_else(|| anyhow::anyhow!("No token in response: {}", text))
+}
 
 pub const ONE_DAY_MS: u64 = 24 * 60 * 60 * 1000;
 pub const ONE_DAY_SECS: u64 = 24 * 60 * 60;
@@ -63,7 +79,7 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
 
 pub fn format_timestamp(ts: u64, millis: bool) -> String {
     let ts_sec = if millis { ts / 1000 } else { ts };
-    if let Some(dt) = DateTime::from_timestamp(ts_sec as i64, 0) {
+    if let Some(dt) = DateTime::from_timestamp(ts_sec.min(i64::MAX as u64) as i64, 0) {
         dt.format("%Y-%m-%d %H:%M:%S").to_string()
     } else {
         ts.to_string()
@@ -75,7 +91,8 @@ pub fn normalize_pair(pair: &str) -> String {
     if pair.contains('_') || pair.is_empty() {
         return pair;
     }
-    for quote in &["idr", "usdt", "btc"] {
+    let quote_currencies = ["usdt", "idr", "btc"];
+    for quote in &quote_currencies {
         if let Some(base) = pair.strip_suffix(quote) {
             if !base.is_empty() {
                 return format!("{}_{}", base, quote);
@@ -83,6 +100,10 @@ pub fn normalize_pair(pair: &str) -> String {
         }
     }
     pair
+}
+
+pub fn normalize_pair_v2(pair: &str) -> String {
+    normalize_pair(pair).replace('_', "")
 }
 
 pub fn first_of<'a>(val: &'a Value, keys: &[&str]) -> &'a Value {
@@ -96,6 +117,100 @@ pub fn first_of<'a>(val: &'a Value, keys: &[&str]) -> &'a Value {
         }
     }
     &Value::Null
+}
+
+/// Parse a balance value for a given currency from API account info response.
+pub fn parse_balance(info: &serde_json::Value, currency: &str) -> f64 {
+    info["balance"][currency]
+        .as_str()
+        .and_then(|s| s.parse::<f64>().ok())
+        .or_else(|| info["balance"][currency].as_f64())
+        .unwrap_or(0.0)
+}
+
+/// Build withdrawal parameters HashMap shared between CLI and MCP.
+pub fn build_withdraw_params(
+    currency: &str,
+    amount: f64,
+    address: &str,
+    to_username: bool,
+    memo: Option<&str>,
+    network: Option<&str>,
+    callback_url: Option<&str>,
+) -> std::collections::HashMap<String, String> {
+    let mut params = std::collections::HashMap::new();
+    params.insert("currency".into(), currency.to_string());
+    params.insert("amount".into(), amount.to_string());
+
+    if to_username {
+        params.insert(
+            "request_id".into(),
+            chrono::Utc::now().timestamp_millis().to_string(),
+        );
+        params.insert("withdraw_to".into(), address.to_string());
+    } else {
+        params.insert("address".into(), address.to_string());
+    }
+
+    if let Some(m) = memo {
+        params.insert("memo".into(), m.to_string());
+    }
+    if let Some(n) = network {
+        params.insert("network".into(), n.to_string());
+    }
+    if let Some(u) = callback_url {
+        params.insert("callback_url".into(), u.to_string());
+    }
+    params
+}
+
+/// Fetch all open orders and cancel them one by one.
+/// Returns (cancelled_ids, failed_ids).
+pub async fn cancel_all_open_orders(
+    client: &IndodaxClient,
+    pair: Option<&str>,
+) -> Result<(Vec<String>, Vec<String>), IndodaxError> {
+    use std::collections::HashMap;
+    let mut params = HashMap::new();
+    if let Some(p) = pair {
+        params.insert("pair".to_string(), p.to_string());
+    }
+    let data: serde_json::Value = client.private_post_v1("openOrders", &params).await?;
+    let orders = &data["orders"];
+    let mut cancelled_ids: Vec<String> = Vec::new();
+    let mut failed_ids: Vec<String> = Vec::new();
+
+    if let serde_json::Value::Object(orders_map) = orders {
+        for (order_id, order_val) in orders_map {
+            let order_pair = value_to_string(
+                order_val
+                    .get("pair")
+                    .or_else(|| order_val.get("market"))
+                    .or_else(|| order_val.get("symbol"))
+                    .unwrap_or(&serde_json::Value::Null),
+            );
+            let order_type = order_val
+                .get("type")
+                .or_else(|| order_val.get("order_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let mut cancel_params = HashMap::new();
+            cancel_params.insert("order_id".to_string(), order_id.clone());
+            cancel_params.insert("pair".to_string(), order_pair);
+            cancel_params.insert("type".to_string(), order_type);
+            match client
+                .private_post_v1::<serde_json::Value>("cancelOrder", &cancel_params)
+                .await
+            {
+                Ok(_) => cancelled_ids.push(order_id.clone()),
+                Err(e) => failed_ids.push(format!("{} ({})", order_id, e)),
+            }
+        }
+    }
+
+    Ok((cancelled_ids, failed_ids))
 }
 
 pub fn extract_pairs(data: &serde_json::Value) -> Vec<(String, String)> {
@@ -155,6 +270,13 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_pair_v2() {
+        assert_eq!(normalize_pair_v2("btc_idr"), "btcidr");
+        assert_eq!(normalize_pair_v2("BTCIDR"), "btcidr");
+        assert_eq!(normalize_pair_v2("sol-usdt"), "solusdt");
+    }
+
+    #[test]
     fn test_normalize_pair_empty() {
         assert_eq!(normalize_pair(""), "");
     }
@@ -171,6 +293,12 @@ mod tests {
         assert_eq!(normalize_pair("ethbtc"), "eth_btc");
         // btc alone -> stays as btc (base would be empty, so skipped)
         assert_eq!(normalize_pair("btc"), "btc");
+    }
+
+    #[test]
+    fn test_normalize_pair_idr_not_treated_as_base() {
+        // idrbtc -> idr_btc (btc as suffix)
+        assert_eq!(normalize_pair("idrbtc"), "idr_btc");
     }
 
     #[test]

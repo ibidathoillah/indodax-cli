@@ -45,6 +45,16 @@ pub fn trade_tools() -> Vec<Tool> {
             }),
             vec!["order_id", "pair", "order_type", "acknowledged"],
         ),
+        IndodaxMcp::tool_def(
+            "cancel_all_orders",
+            "[DANGEROUS: requires acknowledged=true] Cancel all open orders, optionally filtered by pair",
+            serde_json::json!({
+                "pair": IndodaxMcp::str_param("Only cancel orders for this trading pair (e.g. btc_idr)", false, None),
+                "acknowledged":
+                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+            }),
+            vec!["acknowledged"],
+        ),
     ]
 }
 
@@ -66,11 +76,7 @@ impl IndodaxMcp {
             Err(e) => return Self::error_from_indodax(&e),
         };
 
-        let idr_balance = info["balance"]["idr"]
-            .as_str()
-            .and_then(|s| s.parse::<f64>().ok())
-            .or_else(|| info["balance"]["idr"].as_f64())
-            .unwrap_or(0.0);
+        let idr_balance = crate::commands::helpers::parse_balance(&info, "idr");
 
         if idr_balance + BALANCE_EPSILON < idr {
             return Self::error_result(format!(
@@ -121,31 +127,6 @@ impl IndodaxMcp {
             return Self::validation_error_result(format!("Invalid pair format: {}", pair));
         }
 
-        let info = match self.get_account_info().await {
-            Ok(data) => data,
-            Err(e) => return Self::error_from_indodax(&e),
-        };
-
-        let base_balance = info["balance"][base_currency]
-            .as_str()
-            .and_then(|s| s.parse::<f64>().ok())
-            .or_else(|| info["balance"][base_currency].as_f64())
-            .unwrap_or(0.0);
-
-        if base_balance + BALANCE_EPSILON < amount {
-            return Self::error_result(format!(
-                "Insufficient {} balance. Need {:.8}, have {:.8}",
-                base_currency.to_uppercase(),
-                amount,
-                base_balance
-            ));
-        }
-
-        let mut params = HashMap::new();
-        params.insert("pair".to_string(), pair.to_string());
-        params.insert("type".to_string(), "sell".to_string());
-        params.insert(base_currency.to_string(), amount.to_string());
-
         let is_market = match order_type {
             "market" => true,
             "limit" => {
@@ -163,6 +144,27 @@ impl IndodaxMcp {
                 ));
             }
         };
+
+        let info = match self.get_account_info().await {
+            Ok(data) => data,
+            Err(e) => return Self::error_from_indodax(&e),
+        };
+
+        let base_balance = crate::commands::helpers::parse_balance(&info, base_currency);
+
+        if base_balance + BALANCE_EPSILON < amount {
+            return Self::error_result(format!(
+                "Insufficient {} balance. Need {:.8}, have {:.8}",
+                base_currency.to_uppercase(),
+                amount,
+                base_balance
+            ));
+        }
+
+        let mut params = HashMap::new();
+        params.insert("pair".to_string(), pair.to_string());
+        params.insert("type".to_string(), "sell".to_string());
+        params.insert(base_currency.to_string(), amount.to_string());
 
         if let Some(p) = price {
             if !is_market {
@@ -189,6 +191,12 @@ impl IndodaxMcp {
         pair: &str,
         order_type: &str,
     ) -> CallToolResult {
+        if order_type != "buy" && order_type != "sell" {
+            return Self::validation_error_result(format!(
+                "Invalid order_type '{}'. Must be 'buy' or 'sell'.",
+                order_type
+            ));
+        }
         let mut params = HashMap::new();
         params.insert("order_id".to_string(), (order_id as u64).to_string());
         params.insert("pair".to_string(), pair.to_string());
@@ -200,6 +208,24 @@ impl IndodaxMcp {
             .await
         {
             Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_cancel_all_orders(
+        &self,
+        pair: Option<&str>,
+    ) -> CallToolResult {
+        match crate::commands::helpers::cancel_all_open_orders(&self.client, pair).await {
+            Ok((cancelled_ids, failed_ids)) => {
+                let result = serde_json::json!({
+                    "cancelled_count": cancelled_ids.len(),
+                    "cancelled_ids": cancelled_ids,
+                    "failed_count": failed_ids.len(),
+                    "failed_ids": failed_ids,
+                });
+                Self::json_result(result)
+            }
             Err(e) => Self::error_from_indodax(&e),
         }
     }

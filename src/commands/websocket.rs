@@ -11,18 +11,9 @@ use tracing;
 
 const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
 const PRIVATE_WS_URL: &str = "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true";
-const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
 
 async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String> {
-    let resp = client.http_client().get(PUBLIC_WS_TOKEN_URL).send().await
-        .map_err(|e| anyhow::anyhow!("Failed to fetch WebSocket token: {}", e))?;
-    let text = resp.text().await
-        .map_err(|e| anyhow::anyhow!("Failed to read token response: {}", e))?;
-    let val: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| anyhow::anyhow!("Invalid token response: {}", e))?;
-    val.get("token").and_then(|t| t.as_str()).map(|t| t.to_string())
-        .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()).map(|t| t.to_string()))
-        .ok_or_else(|| anyhow::anyhow!("No token in response: {}", text))
+    helpers::fetch_public_ws_token(client).await
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -211,10 +202,17 @@ async fn ws_connect_and_listen(
 }
 
 fn format_ws_price(val: &serde_json::Value) -> Option<String> {
-    val.as_u64()
-        .or_else(|| val.as_f64().map(|f| f as u64))
-        .or_else(|| val.as_str().and_then(|s| s.parse().ok()))
-        .map(|v| format!("{}", v))
+    let f = val.as_f64()
+        .or_else(|| val.as_str().and_then(|s| s.parse::<f64>().ok()))?;
+    if f == 0.0 {
+        return Some("0".into());
+    }
+    if f.fract() == 0.0 && f.abs() >= 1.0 {
+        return Some(format!("{}", f as u64));
+    }
+    let s = format!("{:.8}", f);
+    let trimmed = s.trim_end_matches('0');
+    Some(trimmed.trim_end_matches('.').to_string())
 }
 
 async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputFormat) -> Result<CommandOutput> {
@@ -539,6 +537,6 @@ mod tests {
 
     #[test]
     fn test_public_ws_token_url() {
-        assert!(PUBLIC_WS_TOKEN_URL.contains("indodax.com"));
+        assert!(crate::commands::helpers::PUBLIC_WS_TOKEN_URL.contains("indodax.com"));
     }
 }

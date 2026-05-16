@@ -564,7 +564,7 @@ mod tests {
 
     #[test]
     fn test_private_v2_base() {
-        assert!(PRIVATE_V2_BASE.contains("tapi.indodax.com"));
+        assert!(PRIVATE_V2_BASE.contains("tapi.btcapi.net"));
     }
 
     #[test]

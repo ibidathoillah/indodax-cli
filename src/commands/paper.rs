@@ -278,19 +278,24 @@ fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<Co
             format!("[PAPER] Amount must be positive, got {}", amount)
         ));
     }
-    let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
-    *balance += amount;
+    let balance_val = {
+        let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
+        *balance += amount;
+        *balance
+    };
+    round_balance(&mut state.balances, &currency.to_lowercase());
+    let current_balance = *state.balances.get(&currency.to_lowercase()).unwrap_or(&balance_val);
     let data = serde_json::json!({
         "mode": "paper",
         "currency": currency.to_uppercase(),
         "amount_added": amount,
-        "new_balance": balance,
+        "new_balance": current_balance,
     });
     Ok(CommandOutput::json(data).with_addendum(format!(
         "[PAPER] Added {} to {} balance. New balance: {}",
         format_balance(currency, amount),
         currency.to_uppercase(),
-        format_balance(currency, *balance)
+        format_balance(currency, current_balance)
     )))
 }
 
@@ -303,19 +308,15 @@ pub fn format_balance(currency: &str, value: f64) -> String {
 
 fn paper_balance(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
     let headers = vec!["Currency".into(), "Balance".into()];
-    let mut rows: Vec<Vec<String>> = state
+    let mut rows_with_balance: Vec<(f64, Vec<String>)> = state
         .balances
         .iter()
-        .map(|(k, v)| vec![k.to_uppercase(), format_balance(k, *v)])
+        .map(|(k, v)| (*v, vec![k.to_uppercase(), format_balance(k, *v)]))
         .collect();
-    rows.sort_by(|a, b| {
-        let bv = b[1].parse::<f64>().ok().filter(|v| v.is_finite());
-        let av = a[1].parse::<f64>().ok().filter(|v| v.is_finite());
-        match (bv, av) {
-            (Some(bv), Some(av)) => bv.partial_cmp(&av).unwrap_or(std::cmp::Ordering::Equal),
-            _ => std::cmp::Ordering::Equal,
-        }
+    rows_with_balance.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
     });
+    let rows: Vec<Vec<String>> = rows_with_balance.into_iter().map(|(_, r)| r).collect();
 
     let data = paper_balance_value(state);
     let balance_count = state.balances.len();
@@ -351,26 +352,27 @@ pub fn place_paper_order(
             let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
             if *quote_balance <= 0.0 {
                 return Err(IndodaxError::Other(
-                    format!("[PAPER] Insufficient {} balance for market buy. Need positive balance, have {:.2}",
-                        quote.to_uppercase(), quote_balance)
+                    format!("[PAPER] Insufficient {} balance for market buy. Need positive balance, have {}",
+                        quote.to_uppercase(), format_balance(quote, *quote_balance))
                 ));
             }
         } else {
             let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
             if *quote_balance + BALANCE_EPSILON < total_cost {
                 return Err(IndodaxError::Other(
-                    format!("[PAPER] Insufficient {} balance. Need {:.2}, have {:.2}",
-                        quote.to_uppercase(), total_cost, quote_balance)
+                    format!("[PAPER] Insufficient {} balance. Need {}, have {}",
+                        quote.to_uppercase(), format_balance(quote, total_cost), format_balance(quote, *quote_balance))
                 ));
             }
             *quote_balance -= total_cost;
+            round_balance(&mut state.balances, quote);
         }
     } else {
         let base_balance = state.balances.entry(base.to_string()).or_insert(0.0);
         if *base_balance + BALANCE_EPSILON < amount {
             return Err(IndodaxError::Other(
-                format!("[PAPER] Insufficient {} balance. Need {:.8}, have {:.8}",
-                    base.to_uppercase(), amount, base_balance)
+                format!("[PAPER] Insufficient {} balance. Need {}, have {}",
+                    base.to_uppercase(), format_balance(base, amount), format_balance(base, *base_balance))
             ));
         }
         *base_balance -= amount;
@@ -445,8 +447,7 @@ pub fn place_paper_order_idr(
             "[PAPER] --idr is only valid for buy orders".to_string()
         ));
     }
-    let is_market = price.is_none();
-    if is_market {
+    if price.is_none() {
         return Err(IndodaxError::Other(
             "[PAPER] Market buy via --idr requires a limit price (simulation cannot guess the fill price)".to_string()
         ));
@@ -462,12 +463,13 @@ pub fn place_paper_order_idr(
     let amount = {
         let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
         if *quote_balance + BALANCE_EPSILON < idr_amount {
-            return Err(IndodaxError::Other(
-                format!("[PAPER] Insufficient {} balance. Need {:.2}, have {:.2}",
-                    quote.to_uppercase(), idr_amount, quote_balance)
-            ));
+                return Err(IndodaxError::Other(
+                    format!("[PAPER] Insufficient {} balance. Need {}, have {}",
+                        quote.to_uppercase(), format_balance(quote, idr_amount), format_balance(quote, *quote_balance))
+                ));
         }
         *quote_balance -= idr_amount;
+        round_balance(&mut state.balances, quote);
         idr_amount / order_price
     };
 
@@ -486,17 +488,17 @@ pub fn place_paper_order_idr(
         price: order_price,
         amount,
         remaining: amount,
-        order_type: if is_market { "market".into() } else { "limit".into() },
+        order_type: "limit".into(),
         status: "open".into(),
         created_at: now,
         fees_paid: 0.0,
         filled_price: 0.0,
-        total_spent: if !is_market { idr_amount } else { 0.0 },
+        total_spent: idr_amount,
     });
 
     state.trade_count += 1;
 
-    let price_display = if is_market { "market".to_string() } else { order_price.to_string() };
+    let price_display = order_price.to_string();
     let data = serde_json::json!({
         "mode": "paper",
         "order_id": order_id,
@@ -504,7 +506,7 @@ pub fn place_paper_order_idr(
         "side": side,
         "price": order_price,
         "amount": amount,
-        "order_type": if is_market { "market" } else { "limit" },
+        "order_type": "limit",
         "status": "open",
     });
 
@@ -516,13 +518,26 @@ pub fn place_paper_order_idr(
         vec!["Price".into(), price_display.clone()],
         vec!["Amount".into(), format!("{:.8}", amount)],
         vec!["IDR Spent".into(), format!("{:.2}", idr_amount)],
-        vec!["Type".into(), if is_market { "market".into() } else { "limit".into() }],
+        vec!["Type".into(), "limit".into()],
         vec!["Status".into(), "open".into()],
     ];
 
     let base = pair.split('_').next().unwrap_or("btc");
     Ok(CommandOutput::new(data, headers, rows)
         .with_addendum(format!("[PAPER] buy {} {} for {} IDR @ {} — open", amount, base, idr_amount, price_display)))
+}
+
+fn round_balance(balances: &mut HashMap<String, f64>, currency: &str) {
+    if let Some(balance) = balances.get_mut(currency) {
+        match currency {
+            "idr" | "usdt" | "usdc" => {
+                *balance = (*balance * 100.0).round() / 100.0;
+            }
+            _ => {
+                *balance = (*balance * 100_000_000.0).round() / 100_000_000.0;
+            }
+        }
+    }
 }
 
 fn execute_fill(
@@ -545,11 +560,13 @@ fn execute_fill(
             )));
         }
         *quote_balance -= fee;
+        round_balance(&mut state.balances, quote);
         let base_balance = state.balances.entry(base.to_string()).or_insert(0.0);
         *base_balance += amount;
     } else {
         let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
         *quote_balance += total - fee;
+        round_balance(&mut state.balances, quote);
     }
 
     if let Some(order) = state.orders.iter_mut().find(|o| o.id == order_id) {
@@ -635,13 +652,28 @@ fn paper_cancel(state: &mut PaperState, order_id: u64) -> Result<CommandOutput, 
 }
 
 fn paper_cancel_all(state: &mut PaperState) -> Result<CommandOutput, IndodaxError> {
-    let count = cancel_all_paper_orders(state);
+    let (count, failures) = cancel_all_paper_orders(state);
 
-    let data = serde_json::json!({
+    let mut data = serde_json::json!({
         "mode": "paper",
         "cancelled_count": count,
+        "failed_count": failures.len(),
     });
-    Ok(CommandOutput::json(data).with_addendum(format!("[PAPER] Cancelled {} orders", count)))
+    if !failures.is_empty() {
+        data["failures"] = serde_json::json!(failures.iter().map(|(id, e)| serde_json::json!({
+            "order_id": id,
+            "error": e,
+        })).collect::<Vec<_>>());
+    }
+
+    let addendum = if failures.is_empty() {
+        format!("[PAPER] Cancelled {} orders", count)
+    } else {
+        let reasons: Vec<String> = failures.iter().map(|(id, e)| format!("{}: {}", id, e)).collect();
+        format!("[PAPER] Cancelled {} orders, {} failed: {}", count, failures.len(), reasons.join("; "))
+    };
+
+    Ok(CommandOutput::json(data).with_addendum(addendum))
 }
 
 pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Option<f64>, fill_all: bool) -> Result<CommandOutput, IndodaxError> {
@@ -660,6 +692,7 @@ pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Opt
 
         let mut skipped = 0u64;
         let mut filled = 0u64;
+        let mut errors: Vec<String> = Vec::new();
         for id in &open_ids {
             let order = match state.orders.iter().find(|o| o.id == *id) {
                 Some(o) => o.clone(),
@@ -667,10 +700,9 @@ pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Opt
             };
             let price = fill_price.unwrap_or(order.price);
             if !price.is_finite() {
-                return Err(IndodaxError::Other(format!(
-                    "[PAPER] Invalid fill price: {}. Ensure order price or explicit fill price is valid.",
-                    price
-                )));
+                errors.push(format!("Order {}: invalid fill price {}", id, price));
+                skipped += 1;
+                continue;
             }
             let should_fill = match fill_price {
                 Some(fp) => match order.side.as_str() {
@@ -683,18 +715,32 @@ pub fn paper_fill(state: &mut PaperState, order_id: Option<u64>, fill_price: Opt
             if !should_fill { skipped += 1; continue; }
             let base = order.pair.split('_').next().unwrap_or("btc").to_string();
             let quote = order.pair.split('_').next_back().unwrap_or("idr").to_string();
-            execute_fill(state, *id, &base, &quote, &order.side, price, order.remaining)?;
-            filled += 1;
+            match execute_fill(state, *id, &base, &quote, &order.side, price, order.remaining) {
+                Ok(()) => filled += 1,
+                Err(e) => {
+                    errors.push(format!("Order {}: {}", id, e));
+                    skipped += 1;
+                }
+            }
         }
 
         let data = serde_json::json!({
             "mode": "paper",
             "filled_count": filled,
             "skipped_count": skipped,
+            "error_count": errors.len(),
+            "errors": errors,
         });
 
-        let addendum = if skipped > 0 {
-            format!("[PAPER] Filled {} order(s), skipped {}", filled, skipped)
+        let addendum = if !errors.is_empty() {
+            format!("[PAPER] Filled {} order(s), {} errors: {}", filled, errors.len(), errors.join("; "))
+        } else if skipped > 0 {
+            let skip_reason = if fill_price.is_some() {
+                " (orders not matching fill price condition)"
+            } else {
+                ""
+            };
+            format!("[PAPER] Filled {} order(s), skipped {}{}", filled, skipped, skip_reason)
         } else {
             format!("[PAPER] Filled {} order(s)", filled)
         };
@@ -890,6 +936,7 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
         .collect();
 
     let mut filled_ids: Vec<u64> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
 
     let open_ids: Vec<(u64, String, String, f64, f64)> = state.orders.iter()
         .filter(|o| o.status == "open")
@@ -911,8 +958,10 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
         if should_fill {
             let base = pair.split('_').next().unwrap_or("btc");
             let quote = pair.split('_').next_back().unwrap_or("idr");
-            execute_fill(state, *order_id, base, quote, side, current_price, *remaining)?;
-            filled_ids.push(*order_id);
+            match execute_fill(state, *order_id, base, quote, side, current_price, *remaining) {
+                Ok(()) => filled_ids.push(*order_id),
+                Err(e) => errors.push(format!("Order {}: {}", order_id, e)),
+            }
         }
     }
 
@@ -920,12 +969,18 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
         "mode": "paper",
         "filled_count": filled_ids.len(),
         "filled_ids": filled_ids,
+        "error_count": errors.len(),
+        "errors": errors,
     });
 
-    let msg = if filled_ids.is_empty() {
+    let msg = if !errors.is_empty() {
+        format!("[PAPER] Filled {} order(s) with {} error(s): {}",
+            filled_ids.len(), errors.len(), errors.join("; "))
+    } else if filled_ids.is_empty() {
         "[PAPER] No orders matched market conditions".to_string()
     } else {
-        format!("[PAPER] Filled {} order(s): {}", filled_ids.len(),
+        format!("[PAPER] Filled {} order(s): {}",
+            filled_ids.len(),
             filled_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "))
     };
 
@@ -937,9 +992,18 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
 // ──────────────────────────────────────────────
 
 pub fn paper_balance_value(state: &PaperState) -> serde_json::Value {
+    let rounded: std::collections::HashMap<String, f64> = state.balances.iter()
+        .map(|(k, v)| {
+            let val = match k.as_str() {
+                "idr" | "usdt" | "usdc" => (*v * 100.0).round() / 100.0,
+                _ => (*v * 100_000_000.0).round() / 100_000_000.0,
+            };
+            (k.clone(), val)
+        })
+        .collect();
     serde_json::json!({
         "mode": "paper",
-        "balances": state.balances,
+        "balances": rounded,
     })
 }
 
@@ -1021,7 +1085,7 @@ pub fn cancel_paper_order(state: &mut PaperState, order_id: u64) -> Result<(), I
 
 /// Cancel all paper orders that can be cancelled (public wrapper for MCP tools).
 /// Returns the number of cancelled orders.
-pub fn cancel_all_paper_orders(state: &mut PaperState) -> usize {
+pub fn cancel_all_paper_orders(state: &mut PaperState) -> (usize, Vec<(u64, String)>) {
     let active_ids: Vec<u64> = state
         .orders
         .iter()
@@ -1029,11 +1093,15 @@ pub fn cancel_all_paper_orders(state: &mut PaperState) -> usize {
         .map(|o| o.id)
         .collect();
 
-    let count = active_ids.len();
+    let mut success_count = 0usize;
+    let mut failures = Vec::new();
     for id in &active_ids {
-        let _ = refund_and_cancel(state, *id);
+        match refund_and_cancel(state, *id) {
+            Ok(()) => success_count += 1,
+            Err(e) => failures.push((*id, e.to_string())),
+        }
     }
-    count
+    (success_count, failures)
 }
 
 fn refund_and_cancel(state: &mut PaperState, order_id: u64) -> Result<(), IndodaxError> {
@@ -1051,6 +1119,7 @@ fn refund_and_cancel(state: &mut PaperState, order_id: u64) -> Result<(), Indoda
 
     if order.side == "buy" {
         *state.balances.entry(quote.to_string()).or_insert(0.0) += refund;
+        round_balance(&mut state.balances, quote);
     } else {
         *state.balances.entry(base.to_string()).or_insert(0.0) += remaining;
     }
