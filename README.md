@@ -439,7 +439,7 @@ indodax auth set --callback-url https://yourdomain.com/callback
 Then run the validation server:
 
 ```bash
-indodax funding serve-callback --port 8081
+indodax funding serve-callback --port 8080
 ```
 
 ---
