@@ -71,7 +71,7 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 - [x] **`round_balance` and `format_balance` now support more stablecoins (DAI, BUSD, etc.) with 2-decimal precision** — `src/commands/paper.rs:530-541`: Only `idr`, `usdt`, `usdc` get 2-decimal rounding. Other fiat-pegged tokens (DAI, BUSD) get 8-decimal rounding.
 
-- [ ] **`ws_orders` drops events without `order_id` from history** — `src/commands/websocket.rs:403-433`: When `result.data` lacks `order_id`, the event is printed but not collected in the `events` vector returned on disconnect.
+- [x] **`ws_orders` now collects all events in history regardless of `order_id` presence** — `src/commands/websocket.rs:403-433`: When `result.data` lacks `order_id`, the event is printed but not collected in the `events` vector returned on disconnect.
 
 - [ ] **Account `show` masked key reveals proportionally more for short keys** — `src/commands/auth.rs:90-94`: Shows first 4 chars + `"****"`. For < 8 char keys this reveals >50% of the key.
 
