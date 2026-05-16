@@ -1448,10 +1448,27 @@ mod tests {
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
         
-        let result = paper_fill(&mut state, Some(order_id), Some(110_000.0), false);
+        // Buy @ 100k, fill at 90k (better price) -> OK
+        let result = paper_fill(&mut state, Some(order_id), Some(90_000.0), false);
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
-        assert_eq!(state.orders[0].filled_price, 110_000.0);
+        assert_eq!(state.orders[0].filled_price, 90_000.0);
+
+        // Try to fill already filled order
+        let result2 = paper_fill(&mut state, Some(order_id), Some(80_000.0), false);
+        assert!(result2.is_err());
+    }
+
+    #[test]
+    fn test_paper_fill_invalid_price_condition() {
+        let mut state = PaperState::default();
+        place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
+        let order_id = state.orders[0].id;
+        
+        // Buy @ 100k, try to fill at 110k (worse price) -> Error
+        let result = paper_fill(&mut state, Some(order_id), Some(110_000.0), false);
+        assert!(result.is_err());
+        assert_eq!(state.orders[0].status, "open");
     }
 
     #[test]
