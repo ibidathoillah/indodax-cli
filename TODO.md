@@ -73,7 +73,7 @@ Issues identified during comprehensive code/business/UI/UX review.
 
 - [x] **`ws_orders` now collects all events in history regardless of `order_id` presence** — `src/commands/websocket.rs:403-433`: When `result.data` lacks `order_id`, the event is printed but not collected in the `events` vector returned on disconnect.
 
-- [ ] **Account `show` masked key reveals proportionally more for short keys** — `src/commands/auth.rs:90-94`: Shows first 4 chars + `"****"`. For < 8 char keys this reveals >50% of the key.
+- [x] **Account `show` now uses proportional masking for API keys for better security on short keys** — `src/commands/auth.rs:90-94`: Shows first 4 chars + `"****"`. For < 8 char keys this reveals >50% of the key.
 
 ## Known / Intentional
 
