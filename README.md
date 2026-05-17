@@ -369,6 +369,16 @@ Contributions are welcome:
 3. Run tests and relevant E2E smoke checks.
 4. Open a pull request.
 
+## Related Projects
+
+If you use multiple exchanges, check out these related CLI tools built with the same architecture:
+
+- [indodax-cli](https://github.com/ibidathoillah/indodax-cli) - CLI for Indodax
+- [bittime-cli](https://github.com/ibidathoillah/bittime-cli) - CLI for Bittime
+- [binance-cli](https://github.com/ibidathoillah/binance-cli) - CLI for Binance Spot
+- [tokocrypto-cli](https://github.com/ibidathoillah/tokocrypto-cli) - CLI for Tokocrypto
+- [kraken-cli](https://github.com/ibidathoillah/kraken-cli) - CLI for Kraken (Spot, Margin, Futures)
+
 ## License
 
 MIT
