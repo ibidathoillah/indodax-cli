@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, Args, Subcommand as SubcommandTrait};
+use clap::{Parser, Subcommand};
 use output::{CommandOutput, OutputFormat};
 
 pub mod auth;
@@ -155,7 +155,6 @@ pub enum Command {
     },
 
     /// Manage withdrawal fees and servers
-    #[command(subcommand)]
     #[command(subcommand)]
     Withdrawal(WithdrawalSubcommand),
 
