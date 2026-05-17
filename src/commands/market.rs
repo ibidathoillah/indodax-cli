@@ -76,8 +76,9 @@ pub async fn execute(
             trades(client, &pair).await
         }
         MarketCommand::Ohlc { symbol, timeframe, from, to } => {
-            let symbol = helpers::normalize_pair(symbol).replace('_', "").to_lowercase();
-            ohlc(client, &symbol, timeframe, *from, *to).await
+            // Indodax history API requires symbols like BTCIDR (no underscore, uppercase)
+            let sym = helpers::normalize_pair_v2(symbol).to_uppercase();
+            ohlc(client, &sym, timeframe, *from, *to).await
         }
         MarketCommand::PriceIncrements => price_increments(client).await,
     }

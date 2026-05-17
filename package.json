@@ -1,6 +1,6 @@
 {
   "name": "@ibidathoillah/indodax-cli",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Command-line interface for the Indodax cryptocurrency exchange",
   "bin": {
     "indodax": "./bin/indodax.js"
