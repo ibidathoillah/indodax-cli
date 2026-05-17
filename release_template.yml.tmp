@@ -19,23 +19,23 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: indodax-linux-x86_64
+            artifact_name: PROJECT_NAME-linux-x86_64
             binary_extension: ""
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact_name: indodax-linux-aarch64
+            artifact_name: PROJECT_NAME-linux-aarch64
             binary_extension: ""
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: indodax-macos-x86_64
+            artifact_name: PROJECT_NAME-macos-x86_64
             binary_extension: ""
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: indodax-macos-aarch64
+            artifact_name: PROJECT_NAME-macos-aarch64
             binary_extension: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: indodax-windows-x86_64
+            artifact_name: PROJECT_NAME-windows-x86_64
             binary_extension: ".exe"
 
     steps:
@@ -63,7 +63,7 @@ jobs:
           cargo build --release --target ${{ matrix.target }}
           
           BIN_DIR="target/${{ matrix.target }}/release"
-          cp "$BIN_DIR/indodax${{ matrix.binary_extension }}" "${{ matrix.artifact_name }}${{ matrix.binary_extension }}"
+          cp "$BIN_DIR/PROJECT_NAME${{ matrix.binary_extension }}" "${{ matrix.artifact_name }}${{ matrix.binary_extension }}"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -97,16 +97,12 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - name: Build paper-wasm
-        run: cd paper-wasm && wasm-pack build --scope ibidathoillah
+      - name: NPM_EXTRA_STEPS
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          cd paper-wasm/pkg && npm publish --access public --access public || echo "Already published paper-wasm"
-          cd ../.. && npm publish --access public || echo "Already published indodax-cli"
+          NPM_PUBLISH_COMMAND
 
   publish-docker:
     name: Publish to Docker Hub
@@ -127,8 +123,8 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/indodax-cli:${{ github.ref_name }}
-            ${{ secrets.DOCKER_USERNAME }}/indodax-cli:latest
+            ${{ secrets.DOCKER_USERNAME }}/PROJECT_NAME-cli:${{ github.ref_name }}
+            ${{ secrets.DOCKER_USERNAME }}/PROJECT_NAME-cli:latest
 
   publish-gpr:
     name: Publish to GitHub Packages (NPM)
@@ -195,11 +191,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            indodax-linux-x86_64
-            indodax-linux-aarch64
-            indodax-macos-x86_64
-            indodax-macos-aarch64
-            indodax-windows-x86_64.exe
+            PROJECT_NAME-linux-x86_64
+            PROJECT_NAME-linux-aarch64
+            PROJECT_NAME-macos-x86_64
+            PROJECT_NAME-macos-aarch64
+            PROJECT_NAME-windows-x86_64.exe
           body_path: RELEASE_NOTES.md
           fail_on_unmatched_files: false
         env:
