@@ -69,6 +69,9 @@ impl IndodaxMcp {
             if p <= 0.0 || !p.is_finite() {
                 return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
             }
+            if let Some(warning) = crate::commands::helpers::validate_tick_size(&self.client, pair, p).await {
+                eprintln!("[MCP] {}", warning);
+            }
         }
 
         let info = match self.get_account_info().await {
@@ -93,6 +96,7 @@ impl IndodaxMcp {
         if let Some(p) = price {
             params.insert("price".to_string(), p.to_string());
         } else {
+            eprintln!("[MCP] Warning: Market buy order without limit price. Indodax may reject market orders with IDR amount.");
             params.insert("order_type".to_string(), "market".to_string());
         }
 
@@ -119,6 +123,9 @@ impl IndodaxMcp {
         if let Some(p) = price {
             if p <= 0.0 || !p.is_finite() {
                 return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
+            }
+            if let Some(warning) = crate::commands::helpers::validate_tick_size(&self.client, pair, p).await {
+                eprintln!("[MCP] {}", warning);
             }
         }
 

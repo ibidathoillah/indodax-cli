@@ -51,7 +51,7 @@ pub enum AlertCommand {
         above: Option<f64>,
         #[arg(long, help = "Alert when price goes below this value")]
         below: Option<f64>,
-        #[arg(short = '%', long, help = "Alert when price increases by this percent")]
+        #[arg(long, help = "Alert when price increases by this percent")]
         percent_up: Option<f64>,
         #[arg(long, help = "Alert when price decreases by this percent")]
         percent_down: Option<f64>,
@@ -121,17 +121,35 @@ pub async fn execute(
 
 pub fn alerts_path() -> PathBuf {
     let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    let indodax_dir = config_dir.join("indodax");
-    fs::create_dir_all(&indodax_dir).ok();
-    indodax_dir.join("alerts.json")
+    config_dir.join("indodax").join("alerts.json")
+}
+
+fn ensure_alerts_dir() -> std::io::Result<()> {
+    let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    fs::create_dir_all(config_dir.join("indodax"))
 }
 
 fn load_alerts() -> Vec<PriceAlert> {
     let path = alerts_path();
     if path.exists() {
         match fs::read_to_string(&path) {
-            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-            Err(_) => Vec::new(),
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(alerts) => alerts,
+                Err(e) => {
+                    eprintln!("[ALERT] Warning: Corrupt alerts file ({}), attempting backup...", e);
+                    let backup_path = path.with_extension("json.bak");
+                    if let Err(copy_err) = fs::copy(&path, &backup_path) {
+                        eprintln!("[ALERT] Warning: Could not backup corrupt file: {}", copy_err);
+                    } else {
+                        eprintln!("[ALERT] Backed up corrupt file to {:?}. Starting fresh.", backup_path);
+                    }
+                    Vec::new()
+                }
+            },
+            Err(e) => {
+                eprintln!("[ALERT] Warning: Failed to read alerts file: {}. Starting fresh.", e);
+                Vec::new()
+            }
         }
     } else {
         Vec::new()
@@ -139,6 +157,7 @@ fn load_alerts() -> Vec<PriceAlert> {
 }
 
 fn save_alerts(alerts: &[PriceAlert]) -> Result<()> {
+    ensure_alerts_dir()?;
     let path = alerts_path();
     let content = serde_json::to_string_pretty(alerts)?;
     #[cfg(unix)]
@@ -164,13 +183,6 @@ fn get_next_id(alerts: &[PriceAlert]) -> u64 {
     alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1
 }
 
-fn now_millis() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
-
 async fn alert_add(
     pair: &str,
     above: Option<f64>,
@@ -180,21 +192,6 @@ async fn alert_add(
     note: Option<String>,
     client: &IndodaxClient,
 ) -> Result<CommandOutput> {
-    let condition_count = [above.is_some(), below.is_some(), percent_up.is_some(), percent_down.is_some()]
-        .iter().filter(|&&x| x).count();
-
-    if condition_count == 0 {
-        return Err(anyhow::anyhow!(
-            "Must specify one of: --above, --below, --percent-up, or --percent-down"
-        ));
-    }
-
-    if condition_count > 1 {
-        return Err(anyhow::anyhow!(
-            "Only one condition allowed per alert (--above, --below, --percent-up, --percent-down)"
-        ));
-    }
-
     let condition = if let Some(price) = above {
         if price <= 0.0 {
             return Err(anyhow::anyhow!("Price must be positive, got {}", price));
@@ -211,14 +208,16 @@ async fn alert_add(
         }
         let from_price = fetch_price(client, pair).await?;
         AlertCondition::ChangeUp { percent, from_price }
-    } else {
-        let percent = percent_down
-            .ok_or_else(|| anyhow::anyhow!("Internal error: no condition specified"))?;
+    } else if let Some(percent) = percent_down {
         if percent <= 0.0 || percent > 1000.0 {
             return Err(anyhow::anyhow!("Percent must be between 0 and 1000, got {}", percent));
         }
         let from_price = fetch_price(client, pair).await?;
         AlertCondition::ChangeDown { percent, from_price }
+    } else {
+        return Err(anyhow::anyhow!(
+            "Must specify one of: --above, --below, --percent-up, or --percent-down"
+        ));
     };
 
     let mut alerts = load_alerts();
@@ -227,7 +226,7 @@ async fn alert_add(
         id,
         pair: pair.to_string(),
         condition,
-        created_at: now_millis(),
+        created_at: helpers::now_millis(),
         triggered_at: None,
         status: AlertStatus::Active,
         note,
@@ -414,7 +413,7 @@ async fn alert_check(
 
         if should_trigger {
             alert.status = AlertStatus::Triggered;
-            alert.triggered_at = Some(now_millis());
+            alert.triggered_at = Some(helpers::now_millis());
             triggered_alerts.push(alert.clone());
         }
     }
@@ -525,7 +524,7 @@ async fn alert_watch(
     client: &IndodaxClient,
     id: Option<u64>,
     pair_filter: Option<&str>,
-    _threshold: f64,
+    threshold: f64,
 ) -> Result<CommandOutput> {
     let mut alerts = load_alerts();
 
@@ -562,7 +561,8 @@ async fn alert_watch(
 
     let token = helpers::fetch_public_ws_token(client).await?;
 
-    let (ws_stream, _) = connect_async(PUBLIC_WS_URL).await
+    let (ws_stream, _) = tokio::time::timeout(std::time::Duration::from_secs(10), connect_async(PUBLIC_WS_URL)).await
+        .map_err(|_| anyhow::anyhow!("WebSocket connection timed out after 10s"))?
         .map_err(|e| anyhow::anyhow!("Failed to connect to WebSocket: {}", e))?;
 
     let (mut write, mut read) = ws_stream.split();
@@ -614,7 +614,7 @@ async fn alert_watch(
 
                             if let Some(prev) = prev_price {
                                 let change_pct = ((price - prev) / prev * 100.0).abs();
-                                if change_pct > 0.1 {
+                                if change_pct > threshold {
                                     eprintln!("[PRICE] {} {} (change: {:.2}%)",
                                         pair,
                                         format_number(price),
@@ -638,7 +638,7 @@ async fn alert_watch(
 
                                 if should_trigger {
                                     alert.status = AlertStatus::Triggered;
-                                    alert.triggered_at = Some(now_millis());
+                                    alert.triggered_at = Some(helpers::now_millis());
                                     triggered_ids.insert(alert.id);
                                     triggered_count += 1;
                                     let condition_str = match &alert.condition {

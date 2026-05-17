@@ -171,7 +171,7 @@ mod tests {
                 assert!(!api_secret_stdin);
                 assert_eq!(callback_url, Some("http://callback.test".into()));
             }
-            _ => assert!(false, "Expected Set command, got {:?}", cmd),
+            _ => panic!("Expected Set command, got {:?}", cmd),
         }
     }
 
@@ -180,7 +180,7 @@ mod tests {
         let cmd = AuthCommand::Show;
         match cmd {
             AuthCommand::Show => (),
-            _ => assert!(false, "Expected Show command, got {:?}", cmd),
+            _ => panic!("Expected Show command, got {:?}", cmd),
         }
     }
 
@@ -189,7 +189,7 @@ mod tests {
         let cmd = AuthCommand::Test;
         match cmd {
             AuthCommand::Test => (),
-            _ => assert!(false, "Expected Test command, got {:?}", cmd),
+            _ => panic!("Expected Test command, got {:?}", cmd),
         }
     }
 
@@ -198,7 +198,7 @@ mod tests {
         let cmd = AuthCommand::Reset;
         match cmd {
             AuthCommand::Reset => (),
-            _ => assert!(false, "Expected Reset command, got {:?}", cmd),
+            _ => panic!("Expected Reset command, got {:?}", cmd),
         }
     }
 
@@ -217,7 +217,7 @@ mod tests {
                 assert!(api_secret_stdin);
                 assert!(callback_url.is_none());
             }
-            _ => assert!(false, "Expected Set command, got {:?}", cmd),
+            _ => panic!("Expected Set command, got {:?}", cmd),
         }
     }
 

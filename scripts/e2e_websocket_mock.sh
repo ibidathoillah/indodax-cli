@@ -14,7 +14,7 @@ test_ws() {
     
     # Run command with timeout. It should produce at least one event in 10 seconds for BTC_IDR
     # We use --output json to make it easy to verify.
-    output=$(timeout 15s bin/indodax.js websocket $cmd --output json 2>&1 || true)
+    output=$(timeout 15s "$INDODAX" --output json ws $cmd 2>&1 || true)
     
     if echo "$output" | grep -q "\"event\""; then
         echo "✅ $name: Success (received events)"
@@ -27,14 +27,19 @@ test_ws() {
     fi
 }
 
-# Ensure the binary is available (using the js wrapper which calls the rust binary)
-if [ ! -f "bin/indodax.js" ]; then
-    echo "Error: bin/indodax.js not found. Run cargo build first."
+INDODAX="${INDODAX_BIN:-./target/debug/indodax}"
+if [ ! -x "$INDODAX" ]; then
+    echo "Building indodax-cli ..."
+    cargo build
+fi
+
+if [ ! -x "$INDODAX" ]; then
+    echo "Error: $INDODAX not found after cargo build."
     exit 1
 fi
 
-test_ws "ticker --pair btc_idr" "Public Ticker"
+test_ws "ticker btc_idr" "Public Ticker"
 test_ws "summary" "Public Summary"
-test_ws "book --pair btc_idr" "Public Orderbook"
+test_ws "book btc_idr" "Public Orderbook"
 
 echo "E2E verification complete."

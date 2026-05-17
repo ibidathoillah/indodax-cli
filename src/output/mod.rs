@@ -25,6 +25,11 @@ pub struct CommandOutput {
     pub format: OutputFormat,
     #[serde(skip)]
     pub addendum: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub suppress_final_output: bool,
 }
 
 impl CommandOutput {
@@ -39,6 +44,8 @@ impl CommandOutput {
             rows,
             format: OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         }
     }
 
@@ -49,6 +56,8 @@ impl CommandOutput {
             rows: vec![],
             format: OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         }
     }
 
@@ -59,6 +68,8 @@ impl CommandOutput {
             rows: vec![],
             format: OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         }
     }
 
@@ -69,6 +80,20 @@ impl CommandOutput {
 
     pub fn with_addendum(mut self, addendum: impl Into<String>) -> Self {
         self.addendum = Some(addendum.into());
+        self
+    }
+
+    pub fn with_warning(mut self, warning: impl Into<String>) -> Self {
+        self.warnings.push(warning.into());
+        self
+    }
+
+    pub fn add_warning(&mut self, warning: impl Into<String>) {
+        self.warnings.push(warning.into());
+    }
+
+    pub fn with_suppress_final_output(mut self, suppress: bool) -> Self {
+        self.suppress_final_output = suppress;
         self
     }
 
@@ -101,7 +126,7 @@ mod tests {
     #[test]
     fn test_output_format_from_clap() {
         // Test that OutputFormat works with clap ValueEnum
-        let formats = vec![OutputFormat::Table, OutputFormat::Json];
+        let formats = [OutputFormat::Table, OutputFormat::Json];
         assert_eq!(formats.len(), 2);
     }
 
@@ -163,6 +188,8 @@ mod tests {
             rows: vec![vec!["key".into(), "value".into()]],
             format: OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = output.render();
@@ -195,6 +222,8 @@ mod tests {
             rows: vec![],
             format: OutputFormat::Table,
             addendum: Some("Extra info".into()),
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = output.render();
@@ -209,6 +238,8 @@ mod tests {
             rows: vec![vec!["v".into()]],
             format: OutputFormat::Json,
             addendum: Some("info".into()),
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let serialized = serde_json::to_string(&output).unwrap();
@@ -228,6 +259,8 @@ mod tests {
             rows: vec![],
             format: OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = output.render();

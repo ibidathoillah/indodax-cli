@@ -81,6 +81,7 @@ async fn withdraw_fee(
     Ok(CommandOutput::new(data, headers, rows))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn withdraw(
     client: &IndodaxClient,
     currency: &str,
@@ -171,13 +172,19 @@ async fn serve_callback(
                     "{} Type 'ok' to confirm, or anything else to cancel:",
                     ">>>".green()
                 );
-                let input = tokio::task::spawn_blocking(|| {
+                let input = match tokio::task::spawn_blocking(|| {
                     let mut buf = String::new();
-                    std::io::stdin().read_line(&mut buf).unwrap_or_default();
-                    buf.trim().to_lowercase()
+                    std::io::stdin().read_line(&mut buf).ok()?;
+                    Some(buf.trim().to_lowercase())
                 })
-                .await
-                .unwrap_or_default();
+                .await {
+                    Ok(Some(val)) => val,
+                    Ok(None) => String::new(),
+                    Err(e) => {
+                        eprintln!("[CALLBACK] Warning: stdin read task failed: {}. Defaulting to cancel.", e);
+                        "cancel".to_string()
+                    }
+                };
                 if input == "ok" {
                     if output_format == crate::output::OutputFormat::Json {
                         println!("{}", serde_json::json!({"event": "callback_response", "response": "ok"}));
@@ -262,7 +269,7 @@ mod tests {
             FundingCommand::Withdraw { username, .. } => {
                 assert!(username);
             }
-            _ => assert!(false, "Expected Withdraw command, got {:?}", cmd),
+            _ => panic!("Expected Withdraw command, got {:?}", cmd),
         }
     }
 
@@ -278,7 +285,7 @@ mod tests {
                 assert_eq!(port, 8080);
                 assert!(auto_ok);
             }
-            _ => assert!(false, "Expected ServeCallback command, got {:?}", cmd),
+            _ => panic!("Expected ServeCallback command, got {:?}", cmd),
         }
     }
 
@@ -292,7 +299,7 @@ mod tests {
             FundingCommand::WithdrawFee { network, .. } => {
                 assert!(network.is_none());
             }
-            _ => assert!(false, "Expected WithdrawFee command, got {:?}", cmd),
+            _ => panic!("Expected WithdrawFee command, got {:?}", cmd),
         }
     }
 
@@ -311,7 +318,7 @@ mod tests {
             FundingCommand::Withdraw { memo, .. } => {
                 assert_eq!(memo, Some("123456".into()));
             }
-            _ => assert!(false, "Expected Withdraw command, got {:?}", cmd),
+            _ => panic!("Expected Withdraw command, got {:?}", cmd),
         }
     }
 }

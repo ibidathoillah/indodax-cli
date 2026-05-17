@@ -2,7 +2,6 @@ use serde_json::Value;
 use rmcp::model::{CallToolResult, Tool};
 
 use super::IndodaxMcp;
-use crate::auth::Signer;
 use crate::commands::helpers;
 
 pub fn market_tools() -> Vec<Tool> {
@@ -160,7 +159,9 @@ impl IndodaxMcp {
             ts
         }
 
-        let now_secs = Signer::now_millis() / 1000;
+        // Normalize symbol to lowercase for v2 API consistency
+        let symbol = symbol.to_lowercase();
+        let now_secs = crate::commands::helpers::now_millis() / 1000;
         let from_val = from
             .map(|v| normalize_ts(v, "from").to_string())
             .unwrap_or_else(|| (now_secs.saturating_sub(helpers::ONE_DAY_SECS)).to_string());
@@ -173,7 +174,7 @@ impl IndodaxMcp {
             .public_get_v2::<Value>(
                 "/tradingview/history_v2",
                 &[
-                    ("symbol", symbol),
+                    ("symbol", &symbol),
                     ("tf", timeframe),
                     ("from", &from_val),
                     ("to", &to_val),

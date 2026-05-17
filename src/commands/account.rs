@@ -1,4 +1,3 @@
-use crate::auth::Signer;
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::config::IndodaxConfig;
@@ -101,7 +100,7 @@ async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
     let mut rows: Vec<Vec<String>> = vec![
         vec!["Name".into(), helpers::value_to_string(data.get("name").unwrap_or(&serde_json::Value::Null))],
         vec!["User ID".into(), helpers::value_to_string(data.get("user_id").unwrap_or(&serde_json::Value::Null))],
-        vec!["Server Time".into(), helpers::format_timestamp(data["server_time"].as_u64().unwrap_or(0), true)],
+        vec!["Server Time".into(), helpers::format_timestamp(data["server_time"].as_u64().unwrap_or(0), false)],
         vec!["Vip Level".into(), helpers::value_to_string(data.get("vip_level").unwrap_or(&serde_json::Value::Null))],
         vec!["Verified".into(), helpers::value_to_string(data.get("verified_user").unwrap_or(&serde_json::Value::Null))],
     ];
@@ -168,7 +167,7 @@ async fn open_orders(
 
     let orders = &data["orders"];
     let headers = vec![
-        "Order ID".into(), "Pair".into(), "Type".into(), "Side".into(),
+        "Order ID".into(), "Pair".into(), "Order Type".into(), "Side".into(),
         "Price".into(), "Amount".into(), "Remaining".into(), "Time".into(),
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
@@ -181,10 +180,17 @@ async fn open_orders(
             let order_type = helpers::value_to_string(
                 priv_get(order_val, &["type", "order_type"]),
             );
-            let side = if order_type.to_lowercase().contains("sell") {
-                "SELL"
-            } else {
-                "BUY"
+            let raw_side = priv_get(order_val, &["side", "order_side"]).as_str().map(|s| s.to_lowercase());
+            let side = match raw_side.as_deref() {
+                Some("sell") => "SELL",
+                Some("buy") => "BUY",
+                _ => {
+                    if order_type.to_lowercase().contains("sell") {
+                        "SELL"
+                    } else {
+                        "BUY"
+                    }
+                }
             };
 
             let remaining = helpers::value_to_string(
@@ -209,14 +215,21 @@ async fn open_orders(
                 })
                 .unwrap_or_default();
 
+            let price_str = helpers::value_to_string(
+                priv_get(order_val, &["price", "order_price"]),
+            );
+            let order_type_label = if price_str.parse::<f64>().unwrap_or(0.0) > 0.0 {
+                "limit"
+            } else {
+                "market"
+            };
+
             rows.push(vec![
                 order_id.to_string(),
                 pair,
-                order_type,
+                order_type_label.into(),
                 side.into(),
-                helpers::value_to_string(
-                    priv_get(order_val, &["price", "order_price"]),
-                ),
+                price_str,
                 base_amount,
                 remaining,
                 time_val,
@@ -240,12 +253,18 @@ async fn order_history(
     symbol: &str,
     limit: u32,
 ) -> Result<CommandOutput> {
-    let now = Signer::now_millis();
-    let start = now - crate::commands::helpers::ONE_DAY_MS;
+    let now = helpers::now_millis();
+    let start = now - helpers::ONE_DAY_MS;
 
+    let effective_limit = limit.max(10);
+    let limit_warning = if limit < 10 {
+        Some(format!("[ACCOUNT] Warning: Order history minimum limit is 10. Using 10 instead of {}.", limit))
+    } else {
+        None
+    };
     let mut params = HashMap::new();
-    params.insert("symbol".into(), crate::commands::helpers::normalize_pair_v2(symbol));
-    params.insert("limit".into(), limit.max(10).to_string());
+    params.insert("symbol".into(), helpers::normalize_pair_v2(symbol));
+    params.insert("limit".into(), effective_limit.to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
 
@@ -273,7 +292,11 @@ async fn order_history(
         }
     }
 
-    Ok(CommandOutput::new(data, headers, rows))
+    let mut output = CommandOutput::new(data, headers, rows);
+    if let Some(w) = limit_warning {
+        output = output.with_warning(w);
+    }
+    Ok(output)
 }
 
 async fn trade_history(
@@ -281,12 +304,18 @@ async fn trade_history(
     symbol: &str,
     limit: u32,
 ) -> Result<CommandOutput> {
-    let now = Signer::now_millis();
-    let start = now - crate::commands::helpers::ONE_DAY_MS;
+    let now = helpers::now_millis();
+    let start = now - helpers::ONE_DAY_MS;
 
+    let effective_limit = limit.max(10);
+    let limit_warning = if limit < 10 {
+        Some(format!("[ACCOUNT] Warning: Trade history minimum limit is 10. Using 10 instead of {}.", limit))
+    } else {
+        None
+    };
     let mut params = HashMap::new();
-    params.insert("symbol".into(), crate::commands::helpers::normalize_pair_v2(symbol));
-    params.insert("limit".into(), limit.max(10).to_string());
+    params.insert("symbol".into(), helpers::normalize_pair_v2(symbol));
+    params.insert("limit".into(), effective_limit.to_string());
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
 
@@ -314,7 +343,11 @@ async fn trade_history(
         }
     }
 
-    Ok(CommandOutput::new(data, headers, rows))
+    let mut output = CommandOutput::new(data, headers, rows);
+    if let Some(w) = limit_warning {
+        output = output.with_warning(w);
+    }
+    Ok(output)
 }
 
 async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
@@ -420,10 +453,25 @@ fn equity_history_path() -> std::path::PathBuf {
 fn load_equity_history() -> EquityHistoryData {
     let path = equity_history_path();
     if path.exists() {
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(EquityHistoryData { snapshots: vec![] })
+        match std::fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<EquityHistoryData>(&content) {
+                Ok(data) => data,
+                Err(e) => {
+                    eprintln!("[EQUITY] Warning: Corrupt equity history file ({}), attempting backup...", e);
+                    let backup_path = path.with_extension("json.bak");
+                    if let Err(copy_err) = std::fs::copy(&path, &backup_path) {
+                        eprintln!("[EQUITY] Warning: Could not backup corrupt file: {}", copy_err);
+                    } else {
+                        eprintln!("[EQUITY] Backed up corrupt file to {:?}. Starting fresh.", backup_path);
+                    }
+                    EquityHistoryData { snapshots: vec![] }
+                }
+            },
+            Err(e) => {
+                eprintln!("[EQUITY] Warning: Failed to read equity history: {}. Starting fresh.", e);
+                EquityHistoryData { snapshots: vec![] }
+            }
+        }
     } else {
         EquityHistoryData { snapshots: vec![] }
     }
@@ -483,32 +531,37 @@ async fn calculate_equity(client: &IndodaxClient) -> Result<f64> {
     }
 
     let mut total = 0.0;
-    let btc_idr = prices.get("btc_idr").copied().unwrap_or(0.0);
-    let usdt_idr = prices.get("usdt_idr").copied().unwrap_or(0.0);
-    let eth_idr = prices.get("eth_idr").copied().unwrap_or(0.0);
+    let known_quotes = ["idr", "btc", "usdt", "eth", "usdc", "sol", "bnb", "xrp", "ada"];
+    let mut quote_idr_prices: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+    for quote in &known_quotes {
+        let pair = format!("{}_{}", quote, "idr");
+        let price = prices.get(&pair).copied().unwrap_or(0.0);
+        if price > 0.0 {
+            quote_idr_prices.insert(quote, price);
+        }
+    }
 
     for (currency, amount) in &balances {
         if currency == "idr" {
             total += amount;
-        } else if currency == "btc" {
-            total += amount * btc_idr;
-        } else if currency == "usdt" {
-            total += amount * usdt_idr;
+        } else if let Some(&price) = quote_idr_prices.get(currency.as_str()) {
+            total += amount * price;
         } else {
-            let pair_idr = format!("{}_{}", currency, "idr");
-            let pair_btc = format!("{}_{}", currency, "btc");
-            let pair_usdt = format!("{}_{}", currency, "usdt");
-            let pair_eth = format!("{}_{}", currency, "eth");
-
-            if let Some(price) = prices.get(&pair_idr) {
-                total += amount * price;
-            } else if let Some(price) = prices.get(&pair_btc) {
-                total += amount * price * btc_idr;
-            } else if let Some(price) = prices.get(&pair_usdt) {
-                total += amount * price * usdt_idr;
-            } else if let Some(price) = prices.get(&pair_eth) {
-                total += amount * price * eth_idr;
-            } else {
+            let mut found = false;
+            for quote in &known_quotes {
+                if quote == currency || *quote == "idr" {
+                    continue;
+                }
+                let pair = format!("{}_{}", currency, quote);
+                if let Some(price) = prices.get(&pair) {
+                    if let Some(&quote_idr) = quote_idr_prices.get(quote) {
+                        total += amount * price * quote_idr;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if !found {
                 eprintln!("[EQUITY] Warning: No known price pair for {} (value: {}). Contribution set to 0.", currency.to_uppercase(), amount);
             }
         }
@@ -519,16 +572,17 @@ async fn calculate_equity(client: &IndodaxClient) -> Result<f64> {
 
 async fn equity_snap(client: &IndodaxClient) -> Result<CommandOutput> {
     let equity = calculate_equity(client).await?;
-    let timestamp = Signer::now_millis();
+    let timestamp = helpers::now_millis();
 
     let snap = EquitySnapshot { timestamp, equity };
     let mut history = load_equity_history();
-    history.snapshots.push(snap);
 
-    if history.snapshots.len() > 1000 {
-        let keep = history.snapshots.split_off(history.snapshots.len() - 1000);
+    if history.snapshots.len() >= 1000 {
+        let keep = history.snapshots.split_off(history.snapshots.len() - 999);
         history.snapshots = keep;
     }
+
+    history.snapshots.push(snap);
 
     save_equity_history(&history)?;
 
