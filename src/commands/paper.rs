@@ -95,7 +95,7 @@ impl PaperState {
                 }
             }
         }
-        let mut result: Option<PaperState> = config
+        let result: Option<PaperState> = config
             .paper_balances
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok());

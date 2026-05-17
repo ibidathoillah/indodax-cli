@@ -156,6 +156,7 @@ pub enum Command {
 
     /// Manage withdrawal fees and servers
     #[command(subcommand)]
+    #[command(subcommand)]
     Withdrawal(WithdrawalSubcommand),
 
     // === Flat WebSocket streaming ===
@@ -194,6 +195,7 @@ pub enum Command {
     },
 }
 
+#[derive(Debug, Subcommand)]
 pub enum WithdrawalSubcommand {
     /// Check withdrawal fee for a currency
     Fee {
