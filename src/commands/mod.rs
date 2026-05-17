@@ -8,4 +8,3 @@ pub mod paper;
 pub mod trade;
 pub mod utility;
 pub mod websocket;
-pub mod futures;

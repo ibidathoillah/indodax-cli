@@ -46,12 +46,16 @@ pub struct Cli {
 pub enum Command {
     // === Legacy Hidden Commands for Backward Compatibility ===
     #[command(hide = true)]
+    #[command(subcommand)]
     Market(commands::market::MarketCommand),
     #[command(hide = true)]
+    #[command(subcommand)]
     Account(commands::account::AccountCommand),
     #[command(hide = true)]
+    #[command(subcommand)]
     Trade(commands::trade::TradeCommand),
     #[command(hide = true)]
+    #[command(subcommand)]
     Funding(commands::funding::FundingCommand),
 
     // === Flat Public Market Commands (originally nested under Market) ===
