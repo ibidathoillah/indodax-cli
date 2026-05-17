@@ -99,15 +99,16 @@ impl PaperState {
             .paper_balances
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok());
-        if config.paper_balances.is_some() && result.is_none() {
-            eprintln!("[PAPER] Warning: Failed to deserialize saved paper state from config, resetting to defaults");
-        }
-        if let Some(ref mut state) = result {
+
+        if let Some(mut state) = result {
+            eprintln!("[PAPER] Legacy paper state found in config.toml. Migrating to paper_state.json...");
             if state.initial_balances.is_none() {
-                eprintln!("[PAPER] Warning: Saved state predates balance tracking. Snapshotting current balances as initial (P&L will reflect only future changes).");
                 state.initial_balances = Some(state.balances.clone());
             }
+            state.dirty = true; // Mark as dirty so it gets saved to the new file on first use
+            return state;
         }
+
         result.unwrap_or_default()
     }
 

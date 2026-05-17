@@ -22,6 +22,8 @@ elif [[ "${1:-}" == "--ws" ]]; then
 fi
 
 INDODAX="${INDODAX_BIN:-./target/debug/indodax}"
+PAIR="${INDODAX_TEST_PAIR:-btc_idr}"
+PAIR_FLEX="${INDODAX_TEST_PAIR_FLEX:-btc/idr}"
 if [ ! -x "$INDODAX" ]; then
     INDODAX="./target/release/indodax"
 fi
@@ -52,10 +54,10 @@ check_not_empty() {
 if $RUN_PUBLIC; then
     # 1. Public API Verification
     echo "[1/5] Checking Public Market Data..."
-    check_not_empty "ticker btc_idr" "Market Ticker"
+    check_not_empty "ticker $PAIR" "Market Ticker"
     check_not_empty "pairs" "Market Pairs"
-    check_not_empty "trades btc_idr" "Market Trades"
-    check_not_empty "ohlc --pair btc_idr" "Market OHLC"
+    check_not_empty "trades $PAIR_FLEX" "Market Trades"
+    check_not_empty "ohlc --pair $PAIR_FLEX" "Market OHLC"
     echo "✅ Public Market Data OK"
 fi
 
@@ -69,7 +71,7 @@ if $RUN_PRIVATE; then
         # 3. API V2 Verification (Read-Only)
         echo "[3/5] Checking Private V2 API (Order History)..."
         # Note: History might be empty for new accounts, so we check for no error
-        $INDODAX trades-history btc_idr --limit 1 > /dev/null
+        $INDODAX trades-history "$PAIR_FLEX" --limit 1 > /dev/null
         echo "✅ Private V2 (History) OK"
     else
         echo "[2/5] Private API: SKIP (credentials unavailable or invalid)"
@@ -80,7 +82,7 @@ fi
 if $RUN_WS; then
     # 4. WebSocket Connectivity (Brief check)
     echo "[4/5] Checking WebSocket Connectivity (5s)..."
-    ws_output=$(timeout 5s $INDODAX --output json ws ticker btc_idr 2>&1 || true)
+    ws_output=$(timeout 5s $INDODAX --output json ws ticker "$PAIR_FLEX" 2>&1 || true)
     if echo "$ws_output" | grep -q "connecting"; then
         echo "✅ WebSocket: OK (connected)"
     else
@@ -92,7 +94,7 @@ fi
 
 # 5. Minimal Trade Verification (Optional/Manual)
 echo "[5/5] Minimal Trade Verification (Instructions):"
-echo "   To verify execution, run: indodax order buy --pair btc_idr --idr 10000"
-echo "   Then immediately cancel:  indodax --yes order cancel-all --pair btc_idr"
+echo "   To verify execution, run: indodax order buy --pair $PAIR_FLEX --idr 10000"
+echo "   Then immediately cancel:  indodax --yes order cancel-all --pair $PAIR_FLEX"
 
 echo "--- [E2E] Minimal Tests Completed Successfully ---"

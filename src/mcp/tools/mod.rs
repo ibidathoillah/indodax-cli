@@ -169,6 +169,15 @@ impl IndodaxMcp {
         let text = serde_json::to_string_pretty(&value).unwrap_or_default();
         Self::ok_result(text)
     }
+
+    pub fn json_result_with_warning(mut value: Value, warning: Option<String>) -> CallToolResult {
+        if let Some(w) = warning {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("warning".to_string(), Value::String(w));
+            }
+        }
+        Self::json_result(value)
+    }
 }
 
 impl rmcp::handler::server::ServerHandler for IndodaxMcp {

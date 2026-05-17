@@ -70,11 +70,11 @@ Market data does not require credentials:
 
 ```bash
 indodax server-time
-indodax ticker btc_idr
-indodax orderbook btc_idr --count 10
+indodax ticker btc/idr
+indodax orderbook btc/idr --count 10
 indodax pairs
-indodax ohlc --pair btc_idr
-indodax -o json ticker btc_idr
+indodax ohlc --pair btc/idr
+indodax -o json ticker btc/idr
 ```
 
 Configure private API credentials:
@@ -119,12 +119,12 @@ Options:
 ```bash
 indodax server-time
 indodax pairs
-indodax ticker btc_idr
+indodax ticker btc/idr
 indodax ticker-all
 indodax summaries
-indodax orderbook btc_idr --count 10
-indodax trades btc_idr
-indodax ohlc --pair btc_idr --interval 60
+indodax orderbook btc/idr --count 10
+indodax trades btc/idr
+indodax ohlc --pair btc/idr --interval 60
 indodax price-increments
 ```
 
@@ -134,19 +134,19 @@ indodax price-increments
 indodax account-info
 indodax balance
 indodax transactions
-indodax trades-history btc_idr --limit 5
+indodax trades-history btc/idr --limit 5
 ```
 
 ### Trading
 
 ```bash
-indodax order buy --pair btc_idr --idr 100000 --price 1000000000
-indodax order buy --pair btc_idr --idr 100000 --order-type market
-indodax order sell --pair btc_idr --amount 0.001 --price 1000000000
-indodax order cancel --order-id 123456 --pair btc_idr --order-type buy
+indodax order buy --pair btc/idr --idr 100000 --price 1000000000
+indodax order buy --pair btc/idr --idr 100000 --order-type market
+indodax order sell --pair btc/idr --amount 0.001 --price 1000000000
+indodax order cancel --order-id 123456 --pair btc/idr --order-type buy
 indodax order cancel-by-client-id --client-order-id CLIENT_ID
-indodax --yes order cancel-all --pair btc_idr
-indodax order countdown --pair btc_idr --countdown-time 60000
+indodax --yes order cancel-all --pair btc/idr
+indodax order countdown --pair btc/idr --countdown-time 60000
 ```
 
 ### Funding
@@ -168,9 +168,9 @@ indodax auth set --callback-url https://yourdomain.com/callback
 Public streams:
 
 ```bash
-indodax ws ticker btc_idr
-indodax ws trades btc_idr
-indodax ws book btc_idr
+indodax ws ticker btc/idr
+indodax ws trades btc/idr
+indodax ws book btc/idr
 indodax ws summary
 ```
 
@@ -183,16 +183,16 @@ indodax ws orders
 ### Price Alerts
 
 ```bash
-indodax alert add -p btc_idr --above 150000000
-indodax alert add -p btc_idr --below 50000000
-indodax alert add -p btc_idr --percent-up 5
-indodax alert add -p btc_idr --percent-down 10
+indodax alert add -p btc/idr --above 150000000
+indodax alert add -p btc/idr --below 50000000
+indodax alert add -p btc/idr --percent-up 5
+indodax alert add -p btc/idr --percent-down 10
 indodax alert list
 indodax alert list --history
 indodax alert cancel -i 1
 indodax alert cancel --all
 indodax alert check
-indodax alert watch -p btc_idr
+indodax alert watch -p btc/idr
 indodax alert triggered
 ```
 
@@ -204,16 +204,16 @@ Alerts are stored in `~/.config/indodax/alerts.json`.
 indodax paper init
 indodax paper init --idr 50000000 --btc 0.5
 indodax paper balance
-indodax paper buy -p btc_idr -i 1000000
-indodax paper buy -p btc_idr -a 0.1 -r 500000000
-indodax paper sell -p btc_idr -a 0.05 -r 1000000000
-indodax paper orders --pair btc_idr
+indodax paper buy -p btc/idr -i 1000000
+indodax paper buy -p btc/idr -a 0.1 -r 500000000
+indodax paper sell -p btc/idr -a 0.05 -r 1000000000
+indodax paper orders --pair btc/idr
 indodax paper cancel -i 1
 indodax paper cancel-all
 indodax paper fill -i 1
 indodax paper fill -i 2 --price 110000000
 indodax paper fill --all
-indodax paper check-fills -p '{"btc_idr": 95000000, "eth_idr": 12000000}'
+indodax paper check-fills -p '{"btc/idr": 95000000, "eth/idr": 12000000}'
 indodax paper topup -c usdt -a 50000
 indodax paper history
 indodax paper status
@@ -268,13 +268,13 @@ Example MCP client configuration:
 Table mode is the default:
 
 ```bash
-indodax ticker btc_idr
+indodax ticker btc/idr
 ```
 
 JSON mode is intended for scripting and automation:
 
 ```bash
-indodax -o json ticker btc_idr
+indodax -o json ticker btc/idr
 ```
 
 Error responses in JSON mode use structured envelopes:

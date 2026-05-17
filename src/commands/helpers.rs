@@ -119,7 +119,7 @@ pub fn format_timestamp(ts: u64, millis: bool) -> String {
 }
 
 pub fn normalize_pair(pair: &str) -> String {
-    let pair = pair.to_lowercase().replace('-', "_");
+    let pair = pair.to_lowercase().replace(['-', '/'], "_");
     if pair.contains('_') || pair.is_empty() {
         return pair;
     }
@@ -377,6 +377,13 @@ mod tests {
         assert_eq!(normalize_pair("btc-idr"), "btc_idr");
         assert_eq!(normalize_pair("ETH-IDR"), "eth_idr");
         assert_eq!(normalize_pair("sol-usdt"), "sol_usdt");
+    }
+
+    #[test]
+    fn test_normalize_pair_slash_separator() {
+        assert_eq!(normalize_pair("btc/idr"), "btc_idr");
+        assert_eq!(normalize_pair("ETH/BTC"), "eth_btc");
+        assert_eq!(normalize_pair("sol/usdt"), "sol_usdt");
     }
 
     #[test]

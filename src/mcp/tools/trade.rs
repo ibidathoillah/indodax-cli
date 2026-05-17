@@ -69,9 +69,7 @@ impl IndodaxMcp {
             if p <= 0.0 || !p.is_finite() {
                 return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
             }
-            if let Some(warning) = crate::commands::helpers::validate_tick_size(&self.client, pair, p).await {
-                eprintln!("[MCP] {}", warning);
-            }
+
         }
 
         let info = match self.get_account_info().await {
@@ -100,12 +98,18 @@ impl IndodaxMcp {
             params.insert("order_type".to_string(), "market".to_string());
         }
 
+        let tick_warning = if let Some(p) = price {
+            crate::commands::helpers::validate_tick_size(&self.client, pair, p).await
+        } else {
+            None
+        };
+
         match self
             .client
             .private_post_v1::<Value>("trade", &params)
             .await
         {
-            Ok(data) => Self::json_result(data),
+            Ok(data) => Self::json_result_with_warning(data, tick_warning),
             Err(e) => Self::error_from_indodax(&e),
         }
     }
@@ -124,9 +128,7 @@ impl IndodaxMcp {
             if p <= 0.0 || !p.is_finite() {
                 return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
             }
-            if let Some(warning) = crate::commands::helpers::validate_tick_size(&self.client, pair, p).await {
-                eprintln!("[MCP] {}", warning);
-            }
+
         }
 
         let base_currency = pair.split('_').next().unwrap_or_default();
@@ -189,12 +191,18 @@ impl IndodaxMcp {
             params.insert("order_type".to_string(), "market".to_string());
         }
 
+        let tick_warning = if let Some(p) = price {
+            crate::commands::helpers::validate_tick_size(&self.client, pair, p).await
+        } else {
+            None
+        };
+
         match self
             .client
             .private_post_v1::<Value>("trade", &params)
             .await
         {
-            Ok(data) => Self::json_result(data),
+            Ok(data) => Self::json_result_with_warning(data, tick_warning),
             Err(e) => Self::error_from_indodax(&e),
         }
     }

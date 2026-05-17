@@ -29,8 +29,18 @@ pub fn render(output: &CommandOutput) -> String {
     let mut result = table.to_string();
 
     if let Some(ref addendum) = output.addendum {
-        result.push('\n');
+        result.push('
+');
         result.push_str(addendum);
+    }
+
+    if !output.warnings.is_empty() {
+        result.push('
+');
+        for warning in &output.warnings {
+            result.push_str(&format!("
+Warning: {}", warning));
+        }
     }
 
     result
@@ -151,7 +161,8 @@ mod tests {
         
         let rendered = render(&output);
         // Should not contain extra newline at end if no addendum
-        assert!(!rendered.ends_with('\n') || !rendered.trim().is_empty());
+        assert!(!rendered.ends_with('
+') || !rendered.trim().is_empty());
     }
 
     #[test]

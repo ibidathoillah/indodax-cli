@@ -6,6 +6,9 @@ set -e
 
 echo "Starting WebSocket E2E verification..."
 
+PAIR="${INDODAX_TEST_PAIR:-btc_idr}"
+PAIR_FLEX="${INDODAX_TEST_PAIR_FLEX:-btc/idr}"
+
 # Function to test a websocket command
 test_ws() {
     local cmd=$1
@@ -38,8 +41,8 @@ if [ ! -x "$INDODAX" ]; then
     exit 1
 fi
 
-test_ws "ticker btc_idr" "Public Ticker"
+test_ws "ticker $PAIR_FLEX" "Public Ticker"
 test_ws "summary" "Public Summary"
-test_ws "book btc_idr" "Public Orderbook"
+test_ws "book $PAIR" "Public Orderbook"
 
 echo "E2E verification complete."

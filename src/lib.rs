@@ -44,6 +44,16 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    // === Legacy Hidden Commands for Backward Compatibility ===
+    #[command(hide = true)]
+    Market(commands::market::MarketCommand),
+    #[command(hide = true)]
+    Account(commands::account::AccountCommand),
+    #[command(hide = true)]
+    Trade(commands::trade::TradeCommand),
+    #[command(hide = true)]
+    Funding(commands::funding::FundingCommand),
+
     // === Flat Public Market Commands (originally nested under Market) ===
     /// Get server time
     ServerTime,
@@ -207,6 +217,16 @@ pub async fn dispatch(
     config: &mut config::IndodaxConfig,
 ) -> Result<CommandOutput, IndodaxError> {
     let output = match cli.command {
+        // === Legacy Hidden Commands ===
+        Command::Market(ref cmd) => commands::market::execute(client, cmd).await
+            .map_err(map_anyhow_error)?,
+        Command::Account(ref cmd) => commands::account::execute(client, cmd).await
+            .map_err(map_anyhow_error)?,
+        Command::Trade(ref cmd) => commands::trade::execute(client, cmd, cli.yes).await
+            .map_err(map_anyhow_error)?,
+        Command::Funding(ref cmd) => commands::funding::execute(client, config, cmd, cli.output).await
+            .map_err(map_anyhow_error)?,
+
         // === Public Market Commands ===
         Command::ServerTime => commands::market::execute(client, &commands::market::MarketCommand::ServerTime).await
             .map_err(map_anyhow_error)?,

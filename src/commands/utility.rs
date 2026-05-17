@@ -97,7 +97,7 @@ async fn shell(client: &IndodaxClient, _creds: &Option<ResolvedCredentials>) -> 
     use rustyline::DefaultEditor;
 
     println!("Indodax CLI interactive shell");
-    println!("Type commands without 'indodax' prefix (e.g. 'market ticker btc_idr')");
+    println!("Type commands without 'indodax' prefix (e.g. 'ticker btc/idr')");
     println!("Type 'help' for available commands, 'exit' to quit\n");
 
     let mut rl = DefaultEditor::new()?;
