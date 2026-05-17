@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, Args, Subcommand as SubcommandTrait};
 use output::{CommandOutput, OutputFormat};
 
 pub mod auth;
@@ -194,7 +194,6 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, Subcommand)]
 pub enum WithdrawalSubcommand {
     /// Check withdrawal fee for a currency
     Fee {
