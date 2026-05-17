@@ -22,7 +22,7 @@ pub enum IndodaxError {
     Http(#[from] reqwest::Error),
 
     #[error("WebSocket error: {0}")]
-    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
+    WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
 
     #[error("JSON parse error: {0}")]
     Json(#[from] serde_json::Error),
@@ -135,7 +135,7 @@ mod tests {
         // Test that Http error wraps reqwest::Error
         // Since we can't easily create a reqwest error, we skip this test
         // or use a mock approach
-        assert!(true); // Placeholder test
+        // Placeholder: cannot easily construct reqwest::Error in tests
     }
 
     #[test]
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn test_indodax_error_websocket() {
         // WebSocket errors are harder to construct, but we can test the category
-        let err = IndodaxError::WebSocket(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
+        let err = IndodaxError::WebSocket(Box::new(tokio_tungstenite::tungstenite::Error::ConnectionClosed));
         assert_eq!(err.category(), "connection_error");
         assert!(err.is_retryable());
     }
@@ -215,7 +215,7 @@ mod tests {
         let err = IndodaxError::api("test", ErrorCategory::Connection, None);
         match err {
             IndodaxError::Api { retryable, .. } => assert!(retryable),
-            _ => assert!(false, "Expected Api error, got {:?}", err),
+            _ => panic!("Expected Api error, got {:?}", err),
         }
     }
 
@@ -224,7 +224,7 @@ mod tests {
         let err = IndodaxError::api("test", ErrorCategory::Unknown, Some("ERR_123".into()));
         match err {
             IndodaxError::Api { code, .. } => assert_eq!(code, Some("ERR_123".into())),
-            _ => assert!(false, "Expected Api error, got {:?}", err),
+            _ => panic!("Expected Api error, got {:?}", err),
         }
     }
 }

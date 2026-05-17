@@ -3,8 +3,22 @@ use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SecretValue(String);
+
+impl fmt::Debug for SecretValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.is_empty() {
+            f.debug_struct("SecretValue")
+                .field("value", &"")
+                .finish()
+        } else {
+            f.debug_struct("SecretValue")
+                .field("value", &"****")
+                .finish()
+        }
+    }
+}
 
 impl SecretValue {
     pub fn new(s: impl Into<String>) -> Self {
@@ -78,7 +92,14 @@ impl IndodaxConfig {
         Self::get_base_dir().join("indodax")
     }
 
+    pub fn paper_state_path() -> PathBuf {
+        Self::config_dir().join("paper_state.json")
+    }
+
     pub fn load() -> Result<Self, anyhow::Error> {
+        if dirs::config_dir().is_none() {
+            eprintln!("Warning: Could not determine user config directory. Falling back to current directory.");
+        }
         let path = Self::config_path();
         if !path.exists() {
             return Ok(Self::default());
@@ -90,12 +111,6 @@ impl IndodaxConfig {
 
     pub fn save(&self) -> Result<(), anyhow::Error> {
         let dir = Self::config_dir();
-        if dirs::config_dir().is_none() {
-            eprintln!(
-                "Warning: Could not determine user config directory. Falling back to current directory: {}",
-                dir.parent().unwrap_or(&dir).display()
-            );
-        }
         fs::create_dir_all(&dir)?;
         let path = Self::config_path();
         let content = toml::to_string_pretty(self)?;
@@ -310,7 +325,7 @@ mod tests {
     #[serial]
     fn test_indodax_config_config_dir() {
         let dir = IndodaxConfig::config_dir();
-        assert!(dir.to_string_lossy().len() > 0);
+        assert!(!dir.to_string_lossy().is_empty());
     }
 
     #[test]

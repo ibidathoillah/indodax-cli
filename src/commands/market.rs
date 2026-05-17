@@ -76,7 +76,7 @@ pub async fn execute(
             trades(client, &pair).await
         }
         MarketCommand::Ohlc { symbol, timeframe, from, to } => {
-            let symbol = helpers::normalize_pair(symbol).replace('_', "").to_uppercase();
+            let symbol = helpers::normalize_pair(symbol).replace('_', "").to_lowercase();
             ohlc(client, &symbol, timeframe, *from, *to).await
         }
         MarketCommand::PriceIncrements => price_increments(client).await,
@@ -208,6 +208,7 @@ async fn trades(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
                 .and_then(|s| s.parse::<u64>().ok())
                 .or_else(|| trade["date"].as_u64())
                 .unwrap_or(0);
+            let ts = if ts > 1_000_000_000_000 { ts / 1000 } else { ts };
             rows.push(vec![
                 helpers::value_to_string(&trade["tid"]),
                 helpers::format_timestamp(ts, false),
@@ -227,18 +228,19 @@ async fn ohlc(
     from: Option<u64>,
     to: Option<u64>,
 ) -> Result<CommandOutput> {
-    fn normalize_ohlc_ts(ts: u64, label: &str) -> u64 {
+    let mut ohlc_warnings: Vec<String> = Vec::new();
+    fn normalize_ohlc_ts(ts: u64, label: &str, warnings: &mut Vec<String>) -> u64 {
         let mut ts = ts;
         if ts > 1_000_000_000_000 {
-            eprintln!("[MARKET] Warning: {} timestamp ({}) looks like milliseconds. Converting to seconds.", label, ts);
+            warnings.push(format!("[MARKET] Warning: {} timestamp ({}) looks like milliseconds. Converting to seconds.", label, ts));
             ts /= 1000;
         }
         ts
     }
 
-    let now_secs = crate::auth::Signer::now_millis() / 1000;
-    let from = from.map(|v| normalize_ohlc_ts(v, "--from"));
-    let to = to.map(|v| normalize_ohlc_ts(v, "--to"));
+    let now_secs = crate::commands::helpers::now_millis() / 1000;
+    let from = from.map(|v| normalize_ohlc_ts(v, "--from", &mut ohlc_warnings));
+    let to = to.map(|v| normalize_ohlc_ts(v, "--to", &mut ohlc_warnings));
     let from_val = from.map(|v| v.to_string()).unwrap_or_else(|| {
         (now_secs - crate::commands::helpers::ONE_DAY_SECS).to_string()
     });
@@ -303,7 +305,11 @@ async fn ohlc(
         }
     }
 
-    Ok(CommandOutput::new(data, headers, rows))
+    let mut output = CommandOutput::new(data, headers, rows);
+    for w in ohlc_warnings {
+        output = output.with_warning(w);
+    }
+    Ok(output)
 }
 
 async fn price_increments(client: &IndodaxClient) -> Result<CommandOutput> {

@@ -3,6 +3,7 @@ use crate::commands::helpers;
 use crate::config::IndodaxConfig;
 use crate::errors::IndodaxError;
 use crate::output::CommandOutput;
+use anyhow::Result;
 use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,7 +11,6 @@ use std::collections::HashMap;
 pub const DEFAULT_BALANCE_IDR: f64 = 100_000_000.0;
 pub const DEFAULT_BALANCE_BTC: f64 = 1.0;
 const TAKER_FEE: f64 = 0.0026; // 0.26% taker fee
-const BALANCE_EPSILON: f64 = 1e-8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperOrder {
@@ -41,6 +41,8 @@ pub struct PaperState {
     pub total_fees_paid: f64,
     #[serde(default)]
     pub initial_balances: Option<HashMap<String, f64>>,
+    #[serde(skip)]
+    pub dirty: bool,
 }
 
 impl Default for PaperState {
@@ -55,6 +57,7 @@ impl Default for PaperState {
             next_order_id: 1,
             trade_count: 0,
             total_fees_paid: 0.0,
+            dirty: false,
         }
     }
 }
@@ -108,7 +111,7 @@ impl PaperState {
         result.unwrap_or_default()
     }
 
-    pub fn save(&self, _config: &mut IndodaxConfig) -> Result<(), IndodaxError> {
+    pub fn save(&self) -> Result<(), IndodaxError> {
         let dir = IndodaxConfig::config_dir();
         std::fs::create_dir_all(&dir).map_err(|e| IndodaxError::Other(format!("Failed to create config dir: {}", e)))?;
         let path = IndodaxConfig::paper_state_path();
@@ -227,11 +230,13 @@ pub async fn execute(
     client: &IndodaxClient,
     config: &mut IndodaxConfig,
     cmd: &PaperCommand,
-) -> Result<CommandOutput, IndodaxError> {
+) -> Result<CommandOutput> {
     let mut state = PaperState::load(config);
     let result = dispatch_paper(client, &mut state, config, cmd).await;
-    state.save(config)?;
-    result
+    if state.dirty {
+        state.save().map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+    result.map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 async fn dispatch_paper(
@@ -287,6 +292,7 @@ pub fn init_paper_state(idr: Option<f64>, btc: Option<f64>) -> PaperState {
         trade_count: 0,
         total_fees_paid: 0.0,
         initial_balances: Some(initial),
+        dirty: true,
     }
 }
 
@@ -310,6 +316,7 @@ fn paper_reset(state: &mut PaperState) -> Result<CommandOutput, IndodaxError> {
 }
 
 fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<CommandOutput, IndodaxError> {
+    state.dirty = true;
     if amount <= 0.0 {
         return Err(IndodaxError::Other(
             format!("[PAPER] Amount must be positive, got {}", amount)
@@ -361,6 +368,7 @@ pub fn place_paper_order(
     price: Option<f64>,
     amount: f64,
 ) -> Result<CommandOutput, IndodaxError> {
+    state.dirty = true;
     if amount <= 0.0 {
         return Err(IndodaxError::Other(
             format!("[PAPER] Amount must be positive, got {}", amount)
@@ -388,7 +396,7 @@ pub fn place_paper_order(
             }
         } else {
             let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
-            if *quote_balance + BALANCE_EPSILON < total_cost {
+            if *quote_balance + helpers::BALANCE_EPSILON < total_cost {
                 return Err(IndodaxError::Other(
                     format!("[PAPER] Insufficient {} balance. Need {}, have {}",
                         quote.to_uppercase(), helpers::format_balance(quote, total_cost), helpers::format_balance(quote, *quote_balance))
@@ -399,7 +407,7 @@ pub fn place_paper_order(
         }
     } else {
         let base_balance = state.balances.entry(base.to_string()).or_insert(0.0);
-        if *base_balance + BALANCE_EPSILON < amount {
+        if *base_balance + helpers::BALANCE_EPSILON < amount {
             return Err(IndodaxError::Other(
                 format!("[PAPER] Insufficient {} balance. Need {}, have {}",
                     base.to_uppercase(), helpers::format_balance(base, amount), helpers::format_balance(base, *base_balance))
@@ -411,11 +419,6 @@ pub fn place_paper_order(
     let order_id = state.next_order_id;
     state.next_order_id += 1;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-
     state.orders.push(PaperOrder {
         id: order_id,
         pair: pair.to_string(),
@@ -425,7 +428,7 @@ pub fn place_paper_order(
         remaining: amount,
         order_type: if is_market { "market".into() } else { "limit".into() },
         status: "open".into(),
-        created_at: now,
+        created_at: helpers::now_millis(),
         fees_paid: 0.0,
         filled_price: 0.0,
         total_spent: if side == "buy" && !is_market { total_cost } else { 0.0 },
@@ -467,6 +470,7 @@ pub fn place_paper_order_idr(
     idr_amount: f64,
     price: Option<f64>,
 ) -> Result<CommandOutput, IndodaxError> {
+    state.dirty = true;
     if idr_amount <= 0.0 {
         return Err(IndodaxError::Other(
             format!("[PAPER] IDR amount must be positive, got {}", idr_amount)
@@ -492,7 +496,7 @@ pub fn place_paper_order_idr(
 
     let amount = {
         let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
-        if *quote_balance + BALANCE_EPSILON < idr_amount {
+        if *quote_balance + helpers::BALANCE_EPSILON < idr_amount {
                 return Err(IndodaxError::Other(
                     format!("[PAPER] Insufficient {} balance. Need {}, have {}",
                         quote.to_uppercase(), helpers::format_balance(quote, idr_amount), helpers::format_balance(quote, *quote_balance))
@@ -506,11 +510,6 @@ pub fn place_paper_order_idr(
     let order_id = state.next_order_id;
     state.next_order_id += 1;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-
     state.orders.push(PaperOrder {
         id: order_id,
         pair: pair.to_string(),
@@ -520,7 +519,7 @@ pub fn place_paper_order_idr(
         remaining: amount,
         order_type: "limit".into(),
         status: "open".into(),
-        created_at: now,
+        created_at: helpers::now_millis(),
         fees_paid: 0.0,
         filled_price: 0.0,
         total_spent: idr_amount,
@@ -576,6 +575,7 @@ fn execute_fill(
     price: f64,
     amount: f64,
 ) -> Result<(), IndodaxError> {
+    state.dirty = true;
     let total = price * amount;
     let fee = total * TAKER_FEE;
     if side == "buy" {
@@ -607,7 +607,7 @@ fn execute_fill(
 }
 
 fn sort_paper_orders(orders: &mut Vec<&PaperOrder>, sort_by: Option<&str>, sort_order: Option<&str>) {
-    let desc = sort_order.map(|o| o == "desc" || o == "d").unwrap_or(false);
+    let desc = sort_order.map(|o| o == "desc" || o == "d").unwrap_or(true);
     let by = sort_by.unwrap_or("id");
     orders.sort_by(|a, b| {
         let cmp = match by {
@@ -967,7 +967,7 @@ fn paper_status(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
                 let diff = *v - init;
                 Some((
                     k.to_uppercase(),
-                    format!("{} ({})", helpers::format_balance(k, *v), format!("{:+.8}", diff)),
+                    format!("{} ({:+.8})", helpers::format_balance(k, *v), diff),
                 ))
             } else {
                 None
@@ -1007,13 +1007,36 @@ async fn paper_watch(
     eprintln!("[PAPER] Monitoring market for open orders (interval: {}s)...", interval_secs);
     eprintln!("[PAPER] Press Ctrl+C to stop.");
 
+    let initial_state = PaperState::load(config);
+    let has_open = initial_state.orders.iter().any(|o| o.status == "open");
+    if once && !has_open {
+        eprintln!("[PAPER] No open orders and --once is set. Nothing to watch.");
+        return Ok(CommandOutput::json(serde_json::json!({
+            "mode": "paper",
+            "status": "no_open_orders",
+        })).with_addendum("[PAPER] No open orders. Nothing to watch.".to_string()));
+    }
+
     loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("\n[PAPER] Received Ctrl+C, saving state...");
+                let state = PaperState::load(config);
+                state.save()?;
+                eprintln!("[PAPER] State saved.");
+                return Ok(CommandOutput::json(serde_json::json!({
+                    "mode": "paper",
+                    "status": "interrupted",
+                })).with_addendum("[PAPER] Monitoring stopped by user".to_string()));
+            }
+            _ = sleep(Duration::from_secs(interval_secs)) => {}
+        }
+
         let mut state = PaperState::load(config);
         let open_count = state.orders.iter().filter(|o| o.status == "open").count();
 
         if open_count == 0 {
             eprintln!("[PAPER] No open orders. Waiting {}s...", interval_secs);
-            sleep(Duration::from_secs(interval_secs)).await;
             continue;
         }
 
@@ -1022,7 +1045,9 @@ async fn paper_watch(
                 let data = &output.data;
                 let filled = data["filled_count"].as_u64().unwrap_or(0);
 
-                state.save(config)?;
+                if state.dirty {
+                    state.save()?;
+                }
                 if filled > 0 {
                     eprintln!("{}", output.addendum.as_deref().unwrap_or("[PAPER] Orders filled"));
                     if once {
@@ -1034,8 +1059,6 @@ async fn paper_watch(
                 eprintln!("[PAPER] Error during auto-fill: {}", e);
             }
         }
-
-        sleep(Duration::from_secs(interval_secs)).await;
     }
 }
 
@@ -1100,6 +1123,7 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
 
     let mut filled_ids: Vec<u64> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
+    let mut skipped_pairs: Vec<String> = Vec::new();
 
     let open_ids: Vec<(u64, String, String, f64, f64)> = state.orders.iter()
         .filter(|o| o.status == "open")
@@ -1109,7 +1133,12 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
     for (order_id, pair, side, order_price, remaining) in &open_ids {
         let current_price = match market_prices.get(pair) {
             Some(p) => *p,
-            None => continue,
+            None => {
+                if !skipped_pairs.contains(pair) {
+                    skipped_pairs.push(pair.clone());
+                }
+                continue;
+            }
         };
 
         let should_fill = match side.as_str() {
@@ -1134,17 +1163,25 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
         "filled_ids": filled_ids,
         "error_count": errors.len(),
         "errors": errors,
+        "skipped_pairs": skipped_pairs,
     });
 
-    let msg = if !errors.is_empty() {
-        format!("[PAPER] Filled {} order(s) with {} error(s): {}",
-            filled_ids.len(), errors.len(), errors.join("; "))
-    } else if filled_ids.is_empty() {
-        "[PAPER] No orders matched market conditions".to_string()
+    let skipped_msg = if skipped_pairs.is_empty() {
+        String::new()
     } else {
-        format!("[PAPER] Filled {} order(s): {}",
+        format!(" (skipped pairs without prices: {})", skipped_pairs.join(", "))
+    };
+
+    let msg = if !errors.is_empty() {
+        format!("[PAPER] Filled {} order(s) with {} error(s): {}{}",
+            filled_ids.len(), errors.len(), errors.join("; "), skipped_msg)
+    } else if filled_ids.is_empty() {
+        format!("[PAPER] No orders matched market conditions{}", skipped_msg)
+    } else {
+        format!("[PAPER] Filled {} order(s): {}{}",
             filled_ids.len(),
-            filled_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "))
+            filled_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "),
+            skipped_msg)
     };
 
     Ok(CommandOutput::json(data).with_addendum(msg))
@@ -1269,6 +1306,7 @@ pub fn cancel_all_paper_orders(state: &mut PaperState) -> (usize, Vec<(u64, Stri
 }
 
 fn refund_and_cancel(state: &mut PaperState, order_id: u64) -> Result<(), IndodaxError> {
+    state.dirty = true;
     let order = state.orders.iter().find(|o| o.id == order_id)
         .ok_or_else(|| IndodaxError::Other(format!("[PAPER] Order {} not found", order_id)))?;
 
@@ -1342,7 +1380,6 @@ mod tests {
 
     #[test]
     fn test_paper_state_save() {
-        let mut config = IndodaxConfig::default();
         let mut state = PaperState::default();
         state.balances.insert("eth".into(), 10.0);
         state.next_order_id = 42;
@@ -1351,7 +1388,7 @@ mod tests {
         // Clean up any previous test file
         let _ = std::fs::remove_file(&paper_path);
         
-        let result = state.save(&mut config);
+        let result = state.save();
         assert!(result.is_ok());
         assert!(paper_path.exists(), "Paper state file should exist at {:?}", paper_path);
         
@@ -1388,6 +1425,7 @@ mod tests {
             trade_count: 10,
             total_fees_paid: 0.0,
             initial_balances: None,
+            dirty: false,
         };
         
         let output = paper_reset(&mut state).unwrap();
@@ -1455,7 +1493,7 @@ mod tests {
     fn test_paper_orders_empty() {
         let state = PaperState::default();
         let output = paper_orders(&state, None, None, None).unwrap();
-        assert!(output.render().len() > 0);
+        assert!(!output.render().is_empty());
     }
 
     #[test]
@@ -1541,7 +1579,7 @@ mod tests {
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         
         let output = paper_history(&state, None, None).unwrap();
-        assert!(output.render().len() > 0);
+        assert!(!output.render().is_empty());
     }
 
     #[test]

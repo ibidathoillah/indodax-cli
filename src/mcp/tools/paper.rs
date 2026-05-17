@@ -107,14 +107,10 @@ pub fn paper_tools() -> Vec<Tool> {
 }
 
 impl IndodaxMcp {
-    /// Save paper state while holding the config lock (no clone + save race).
-    async fn save_paper_state_locked(
-        config: &mut tokio::sync::MutexGuard<'_, crate::config::IndodaxConfig>,
+    async fn save_paper_state(
         state: &crate::commands::paper::PaperState,
     ) -> Result<(), IndodaxError> {
-        let json = serde_json::to_value(state).map_err(|e| IndodaxError::Other(e.to_string()))?;
-        config.paper_balances = Some(json);
-        config.save().map_err(|e| IndodaxError::Other(e.to_string()))
+        state.save()
     }
 
     pub async fn handle_paper_init(&self, idr: Option<f64>, btc: Option<f64>) -> CallToolResult {
@@ -127,8 +123,7 @@ impl IndodaxMcp {
             "[PAPER] Paper trading initialized with {} IDR and {} BTC",
             idr_str, btc_str,
         );
-        let mut config = self.config.lock().await;
-        match Self::save_paper_state_locked(&mut config, &state).await {
+        match Self::save_paper_state(&state).await {
             Ok(()) => Self::ok_result(msg),
             Err(e) => Self::error_from_indodax(&e),
         }
@@ -137,8 +132,7 @@ impl IndodaxMcp {
     pub async fn handle_paper_reset(&self) -> CallToolResult {
         let _guard = self.paper_mutex.lock().await;
         let state = crate::commands::paper::PaperState::default();
-        let mut config = self.config.lock().await;
-        match Self::save_paper_state_locked(&mut config, &state).await {
+        match Self::save_paper_state(&state).await {
             Ok(()) => Self::ok_result("[PAPER] Paper trading state reset".to_string()),
             Err(e) => Self::error_from_indodax(&e),
         }
@@ -159,7 +153,7 @@ impl IndodaxMcp {
         idr: Option<f64>,
     ) -> CallToolResult {
         let _guard = self.paper_mutex.lock().await;
-        let mut config = self.config.lock().await;
+        let config = self.config.lock().await;
         let mut state = crate::commands::paper::PaperState::load(&config);
         let result = if side == "buy" {
             if let Some(idr_val) = idr {
@@ -179,7 +173,7 @@ impl IndodaxMcp {
         };
         match result {
             Ok(_output) => {
-                if let Err(e) = Self::save_paper_state_locked(&mut config, &state).await {
+                if let Err(e) = Self::save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
                 }
                 let response_amount = state.orders.last()
@@ -211,11 +205,11 @@ impl IndodaxMcp {
 
     pub async fn handle_paper_cancel(&self, order_id: u64) -> CallToolResult {
         let _guard = self.paper_mutex.lock().await;
-        let mut config = self.config.lock().await;
+        let config = self.config.lock().await;
         let mut state = crate::commands::paper::PaperState::load(&config);
         match crate::commands::paper::cancel_paper_order(&mut state, order_id) {
             Ok(()) => {
-                if let Err(e) = Self::save_paper_state_locked(&mut config, &state).await {
+                if let Err(e) = Self::save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
                 }
                 Self::ok_result(format!("[PAPER] Order {} cancelled", order_id))
@@ -226,10 +220,10 @@ impl IndodaxMcp {
 
     pub async fn handle_paper_cancel_all(&self) -> CallToolResult {
         let _guard = self.paper_mutex.lock().await;
-        let mut config = self.config.lock().await;
+        let config = self.config.lock().await;
         let mut state = crate::commands::paper::PaperState::load(&config);
         let (count, failures) = crate::commands::paper::cancel_all_paper_orders(&mut state);
-        if let Err(e) = Self::save_paper_state_locked(&mut config, &state).await {
+        if let Err(e) = Self::save_paper_state(&state).await {
             return Self::error_from_indodax(&e);
         }
         let msg = if failures.is_empty() {
@@ -274,8 +268,7 @@ impl IndodaxMcp {
         };
         match crate::commands::paper::paper_fill(&mut state, order_id, fill_price, fill_all, Some(&self.client), fetch).await {
             Ok(output) => {
-                let mut config = self.config.lock().await;
-                if let Err(e) = Self::save_paper_state_locked(&mut config, &state).await {
+                if let Err(e) = Self::save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
                 }
                 Self::json_result(output.data)
@@ -303,8 +296,7 @@ impl IndodaxMcp {
         .await
         {
             Ok(output) => {
-                let mut config = self.config.lock().await;
-                if let Err(e) = Self::save_paper_state_locked(&mut config, &state).await {
+                if let Err(e) = Self::save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
                 }
                 Self::json_result(output.data)

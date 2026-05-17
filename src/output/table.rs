@@ -27,9 +27,6 @@ pub fn render(output: &CommandOutput) -> String {
     }
 
     let mut result = table.to_string();
-    if result.ends_with('\n') {
-        result.pop();
-    }
 
     if let Some(ref addendum) = output.addendum {
         result.push('\n');
@@ -55,6 +52,8 @@ mod tests {
             ],
             format: super::super::OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -72,6 +71,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -87,6 +88,8 @@ mod tests {
             rows: vec![vec!["v".into()]],
             format: super::super::OutputFormat::Table,
             addendum: Some("Extra info here".into()),
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -101,6 +104,8 @@ mod tests {
             rows: vec![vec!["Alice".into()]],
             format: super::super::OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -120,6 +125,8 @@ mod tests {
             ],
             format: super::super::OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -138,11 +145,13 @@ mod tests {
             rows: vec![vec!["v".into()]],
             format: super::super::OutputFormat::Table,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
         // Should not contain extra newline at end if no addendum
-        assert!(!rendered.ends_with('\n') || rendered.trim().len() > 0);
+        assert!(!rendered.ends_with('\n') || !rendered.trim().is_empty());
     }
 
     #[test]
@@ -153,6 +162,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Table,
             addendum: Some("Only addendum".into()),
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);

@@ -562,7 +562,7 @@ fn test_mcp() -> IndodaxMcp {
         });
         let tool = IndodaxMcp::tool_def("test_tool", "A test tool", properties, vec!["pair"]);
         assert_eq!(tool.name.to_string(), "test_tool");
-        assert!(tool.description.map_or(false, |d| d.as_ref() == "A test tool"));
+        assert!(tool.description.is_some_and(|d| d.as_ref() == "A test tool"));
     }
 
     #[test]

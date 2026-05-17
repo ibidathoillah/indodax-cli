@@ -1,53 +1,36 @@
-# Indodax CLI
+# indodax-cli
 
-> **The unofficial, fast, and feature-rich command-line interface for [Indodax](https://indodax.com) — Indonesia's largest cryptocurrency exchange.**
+Unofficial Rust CLI for Indodax. Use it to inspect markets, manage account data, place spot orders, stream live WebSocket events, run paper trading and price alerts, and expose the same command surface to agents through MCP.
 
-[![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Test Coverage](https://img.shields.io/badge/Coverage-100%25-success?style=for-the-badge)](https://github.com/ibidathoillah/indodax-cli)
+[![Rust](https://img.shields.io/badge/Rust-2021-000000?logo=rust)](https://www.rust-lang.org/)
+[![CLI](https://img.shields.io/badge/interface-terminal-2f855a)](#quick-start)
+[![WebSocket](https://img.shields.io/badge/websocket-live-2563eb)](#websocket-streaming)
+[![MCP](https://img.shields.io/badge/MCP-ready-7c3aed)](#mcp-server)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Track markets, execute trades, manage your portfolio, and stream real-time data — all from your terminal.
+## Highlights
 
----
+- Public market data: server time, pairs, ticker, all tickers, summaries, order book, trades, OHLC, and price increments.
+- Private account data: account info, balances, transactions, and trade history.
+- Spot trading: buy, sell, cancel, cancel by client order ID, cancel all, and deadman countdown.
+- Funding: withdrawal fee lookup, crypto withdrawal, and withdrawal callback validation server.
+- Real-time streams: ticker, trades, order book, summary, and private order updates.
+- Paper trading: risk-free simulated trading with balances, orders, fills, history, and status.
+- Price alerts: threshold and percentage alerts with one-shot checks or live WebSocket monitoring.
+- Automation-friendly output: human tables by default, JSON envelopes with `-o json`.
+- Credential resolution: CLI flags, environment variables, or `~/.config/indodax/config.toml`.
+- Agent support: MCP server mode with guarded dangerous operations.
 
-## ✨ Features
+## Recent Highlights
 
-- **🤖 AI Agent Integration** — Built-in MCP (Model Context Protocol) server for Claude, ChatGPT, Cursor, VS Code, Gemini CLI, and any MCP-compatible agent
-- **🔥 Real-Time WebSocket Streams** — Live ticker, trades, order book, and private order updates
-- **📊 Comprehensive Market Data** — OHLCV, order books, tickers, summaries, and price increments
-- **💰 Full Account Management** — Balances, open orders, order history, trade history, and transactions
-- **🛠️ Powerful Trading** — Place buy/sell orders, cancel orders, and set deadman switches
-- **🧪 Paper Trading** — Risk-free simulated trading environment to test strategies
-- **🔔 Price Alerts** — Set price alerts and monitor in real-time via WebSocket
-- **🔐 Secure Authentication** — HMAC-SHA512 API signing with multiple credential resolution methods
-- **📋 Flexible Output** — Human-friendly tables or machine-readable JSON
-- **🖥️ Interactive Shell** — Built-in REPL for exploratory usage
-- **⚡ Blazing Fast** — Built with Rust for maximum performance and safety
+- WebSocket reliability overhaul: application-level pings, automatic reconnection with exponential backoff, and private WebSocket support for real-time order and balance updates.
+- Secure WebSocket authentication: configurable WebSocket tokens with fallback to a stable default.
+- TradeAPI-2 compliance: normalized symbol formats and stricter request handling across commands.
+- Response parsing improvements: order book handling supports both legacy and modern API shapes.
 
----
+## Installation
 
-## 📦 Installation
-
-### From Cargo (Crates.io)
-
-```bash
-cargo install indodax-cli
-```
-
-### From NPM
-
-```bash
-npm install -g indodax-cli
-```
-
-### From Docker
-
-```bash
-docker pull ibidathoillah/indodax-cli:latest
-docker run -it --rm -v ~/.config/indodax:/root/.config/indodax ibidathoillah/indodax-cli account balance
-```
-
-### From Source (requires [Rust](https://rustup.rs/))
+Install from source:
 
 ```bash
 git clone https://github.com/ibidathoillah/indodax-cli.git
@@ -55,35 +38,51 @@ cd indodax-cli
 cargo install --path .
 ```
 
----
-
-## 🚀 Recent Highlights (v0.1.13)
-
-- **🔥 WebSocket Reliability Overhaul**: Implemented application-level Pings, automatic reconnection with exponential backoff, and a complete rewrite of the Private WebSocket to support real-time order and balance updates.
-- **🔐 Secure Authentication**: Added support for user-configurable WebSocket tokens with fallback to a reliable hardcoded default, ensuring stable connections even if official tokens change.
-- **📊 Strict TradeAPI-2 Compliance**: Continued enforcement of official Indodax specifications and normalized symbol formats across all commands.
-- **🧹 Internal Refactoring**: Improved error handling and response parsing for the Orderbook, supporting both legacy and modern API formats.
-
----
-
-## 🚀 Quick Start
-
-### 1. Check Market Data (No API Key Needed)
-
-Market data commands work **without any API credentials**:
+Install from crates.io:
 
 ```bash
-indodax market server-time
-indodax market ticker btc_idr
-indodax market orderbook btcidr
-indodax market pairs
-indodax market ohlc --symbol BTCIDR
+cargo install indodax-cli
 ```
 
-### 2. Configure API Credentials (For Account & Trading)
+Install from npm:
+
+```bash
+npm install -g indodax-cli
+```
+
+Run with Docker:
+
+```bash
+docker run --rm ibidathoillah/indodax-cli --help
+docker run --rm -v ~/.config/indodax:/root/.config/indodax ibidathoillah/indodax-cli balance
+```
+
+Run from the checkout:
+
+```bash
+cargo build
+./target/debug/indodax --help
+```
+
+## Quick Start
+
+Market data does not require credentials:
+
+```bash
+indodax server-time
+indodax ticker btc_idr
+indodax orderbook btc_idr --count 10
+indodax pairs
+indodax ohlc --pair btc_idr
+indodax -o json ticker btc_idr
+```
+
+Configure private API credentials:
 
 ```bash
 indodax auth set --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
+indodax auth test
+indodax auth show
 ```
 
 Or use environment variables:
@@ -93,65 +92,166 @@ export INDODAX_API_KEY=your_api_key
 export INDODAX_API_SECRET=your_api_secret
 ```
 
-Credentials are resolved in this priority order:
-1. CLI flags (`--api-key`, `--api-secret`)
-2. Environment variables (`INDODAX_API_KEY`, `INDODAX_API_SECRET`)
-3. Config file (`~/.config/indodax/config.toml` with `0600` permissions)
+Credential priority:
 
-### 3. View Account (Requires API Key)
+1. `--api-key` and `--api-secret`
+2. `INDODAX_API_KEY` and `INDODAX_API_SECRET`
+3. `~/.config/indodax/config.toml`
 
-```bash
-indodax account balance
-indodax account info
+## Command Reference
+
+Global options:
+
+```text
+indodax [OPTIONS] <COMMAND>
+
+Options:
+  -o, --output <table|json>      Output format [default: table]
+      --api-key <API_KEY>        API key override
+      --api-secret <API_SECRET>  API secret override
+      --api-secret-stdin         Read API secret from stdin
+  -v, --verbose                  Enable verbose logs
+      --yes, --force             Skip confirmation prompts
 ```
 
-### 4. Start the Interactive Shell
+### Market
+
+```bash
+indodax server-time
+indodax pairs
+indodax ticker btc_idr
+indodax ticker-all
+indodax summaries
+indodax orderbook btc_idr --count 10
+indodax trades btc_idr
+indodax ohlc --pair btc_idr --interval 60
+indodax price-increments
+```
+
+### Account
+
+```bash
+indodax account-info
+indodax balance
+indodax transactions
+indodax trades-history btc_idr --limit 5
+```
+
+### Trading
+
+```bash
+indodax order buy --pair btc_idr --idr 100000 --price 1000000000
+indodax order buy --pair btc_idr --idr 100000 --order-type market
+indodax order sell --pair btc_idr --amount 0.001 --price 1000000000
+indodax order cancel --order-id 123456 --pair btc_idr --order-type buy
+indodax order cancel-by-client-id --client-order-id CLIENT_ID
+indodax --yes order cancel-all --pair btc_idr
+indodax order countdown --pair btc_idr --countdown-time 60000
+```
+
+### Funding
+
+```bash
+indodax withdrawal fee --asset btc
+indodax withdraw --asset btc --volume 0.001 --address bc1... --network BTC
+indodax withdrawal serve-callback --port 8080
+```
+
+For withdrawals, Indodax may require a callback URL. Configure it with:
+
+```bash
+indodax auth set --callback-url https://yourdomain.com/callback
+```
+
+### WebSocket Streaming
+
+Public streams:
+
+```bash
+indodax ws ticker btc_idr
+indodax ws trades btc_idr
+indodax ws book btc_idr
+indodax ws summary
+```
+
+Private stream:
+
+```bash
+indodax ws orders
+```
+
+### Price Alerts
+
+```bash
+indodax alert add -p btc_idr --above 150000000
+indodax alert add -p btc_idr --below 50000000
+indodax alert add -p btc_idr --percent-up 5
+indodax alert add -p btc_idr --percent-down 10
+indodax alert list
+indodax alert list --history
+indodax alert cancel -i 1
+indodax alert cancel --all
+indodax alert check
+indodax alert watch -p btc_idr
+indodax alert triggered
+```
+
+Alerts are stored in `~/.config/indodax/alerts.json`.
+
+### Paper Trading
+
+```bash
+indodax paper init
+indodax paper init --idr 50000000 --btc 0.5
+indodax paper balance
+indodax paper buy -p btc_idr -i 1000000
+indodax paper buy -p btc_idr -a 0.1 -r 500000000
+indodax paper sell -p btc_idr -a 0.05 -r 1000000000
+indodax paper orders --pair btc_idr
+indodax paper cancel -i 1
+indodax paper cancel-all
+indodax paper fill -i 1
+indodax paper fill -i 2 --price 110000000
+indodax paper fill --all
+indodax paper check-fills -p '{"btc_idr": 95000000, "eth_idr": 12000000}'
+indodax paper topup -c usdt -a 50000
+indodax paper history
+indodax paper status
+indodax paper reset
+```
+
+Paper trading mirrors the live order interface for safer strategy testing.
+
+### Interactive Shell
 
 ```bash
 indodax shell
 ```
 
----
-
-## 🤖 MCP Server (AI Agent Integration)
-
-indodax-cli includes a built-in **Model Context Protocol (MCP)** server over stdio. No subprocess wrappers needed.
-
-MCP tool calls run through the same Rust code path as CLI commands and inherit the same error handling, rate-limit behavior, and security model.
-
-> **⚠️ Warning**
->
-> MCP is local-first and designed for your own machine. Any AI agent connected to this MCP server uses the same configured Indodax account and API key permissions. Do **not** expose, tunnel, or share this server outside systems you control. Always use `https://` and `wss://` endpoints. Treat this integration as alpha and use **least-privilege API keys**.
-
-### Usage
+### MCP Server
 
 ```bash
-indodax mcp                           # default: market, account, paper (read-only)
-indodax mcp -s all                    # all services, dangerous calls require acknowledged=true
-indodax mcp -s all --allow-dangerous  # all services, no per-call confirmation required
-indodax mcp -s market,trade,paper     # specific service groups only
+indodax mcp
+indodax mcp -s all
+indodax mcp -s all --allow-dangerous
+indodax mcp -s market,trade,paper
 ```
 
-### Service Groups
+Service groups:
 
 | Group | Tools | Auth Required | Dangerous |
 |-------|-------|---------------|-----------|
 | `market` | Server time, ticker, pairs, orderbook, trades, OHLC, price increments | No | No |
-| `account` | Balance, open orders, order history, trade history, account info | Yes | No |
-| `trade` | Buy, sell, cancel orders | Yes | **Yes** |
-| `funding` | Withdraw fees, withdraw crypto | Yes | **Yes** |
+| `account` | Balance, trade history, transactions, account info | Yes | No |
+| `trade` | Buy, sell, cancel orders | Yes | Yes |
+| `funding` | Withdraw fees, withdraw crypto | Yes | Yes |
 | `paper` | Paper trading init, balance, buy, sell, orders, cancel, history, status | No | No |
 | `auth` | Show config, test credentials | Varies | No |
 
-### Dangerous Operations
+By default, `trade` and `funding` MCP tools require `acknowledged: true`. Use `--allow-dangerous` only for controlled local automation.
 
-By default, `trade` and `funding` groups require each tool call to include `acknowledged: true` as a parameter. Use `--allow-dangerous` to skip this per-call confirmation.
+Example MCP client configuration:
 
-### Configure Your MCP Client
-
-Add to your MCP client configuration (Claude Desktop, VS Code, Cursor, Windsurf, etc.):
-
-**Claude Desktop** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -163,170 +263,21 @@ Add to your MCP client configuration (Claude Desktop, VS Code, Cursor, Windsurf,
 }
 ```
 
-**VS Code / Cursor** (`.vscode/mcp.json` or Cursor MCP settings):
-```json
-{
-  "mcpServers": {
-    "indodax": {
-      "command": "indodax",
-      "args": ["mcp", "-s", "all"]
-    }
-  }
-}
-```
+## Output Formats
 
-**Gemini CLI**:
-```bash
-gemini extensions install https://github.com/ibidathoillah/indodax-cli
-```
-
----
-
-## 📖 Usage
-
-```
-indodax [OPTIONS] <COMMAND>
-
-Options:
-  -o, --output <OUTPUT>           Output format: table or json [default: table]
-      --api-key <API_KEY>         API key (overrides config and env var)
-      --api-secret <API_SECRET>   API secret (overrides config and env var)
-  -v, --verbose                   Enable verbose output
-  -h, --help                      Print help
-  -V, --version                   Print version
-```
-
----
-
-## 🔗 Commands
-
-### Market Data (Public API)
-
-| Command | Description |
-|---------|-------------|
-| `indodax market server-time` | Get server time |
-| `indodax market pairs` | List available trading pairs |
-| `indodax market ticker <pair>` | Get ticker for a trading pair |
-| `indodax market ticker-all` | Get tickers for all pairs |
-| `indodax market summaries` | Get 24h and 7d market summaries |
-| `indodax market orderbook <pair>` | Get order book depth |
-| `indodax market trades <pair>` | Get recent trades |
-| `indodax market ohlc` | Get OHLCV candle data |
-| `indodax market price-increments` | Get tick sizes |
-
-### Account (Private API)
-
-| Command | Description |
-|---------|-------------|
-| `indodax account info` | Get account information |
-| `indodax account balance` | Show wallet balances |
-| `indodax account open-orders` | List open orders |
-| `indodax account order-history` | Get order history (v2 API) |
-| `indodax account trade-history` | Get trade fill history (v2 API) |
-| `indodax account trans-history` | Get deposit/withdrawal history |
-| `indodax account get-order` | Get order details |
-
-### Trading (Private API)
-
-| Command | Description |
-|---------|-------------|
-| `indodax trade buy -p <pair> -i <idr>` | Place a buy order (IDR amount) |
-| `indodax trade buy -p <pair> -a <amount> [-r <price>]` | Place a buy order (base amount) |
-| `indodax trade sell -p <pair> -a <amount> [-r <price>]` | Place a sell order |
-| `indodax trade cancel -i <id> -p <pair> -t <type>` | Cancel an order by ID |
-| `indodax trade cancel-by-client-id` | Cancel by client order ID |
-| `indodax trade countdown` | Deadman switch countdown |
-
-### Funding (Private API)
-
-| Command | Description |
-|---------|-------------|
-| `indodax funding withdraw-fee` | Check withdrawal fee |
-| `indodax funding withdraw` | Withdraw cryptocurrency |
-| `indodax funding serve-callback` | Start callback validation server |
-
-### WebSocket Streaming
-
-| Command | Description |
-|---------|-------------|
-| `indodax ws ticker <pair>` | Stream real-time ticker |
-| `indodax ws trades <pair>` | Stream real-time trades |
-| `indodax ws book <pair>` | Stream real-time order book |
-| `indodax ws summary` | Stream 24h summary |
-| `indodax ws orders` | Stream private order updates |
-
-### Price Alerts
-
-> Set price alerts and monitor them in real-time via WebSocket. Never miss a trading opportunity!
-
-| Command | Description |
-|---------|-------------|
-| `indodax alert add -p <pair> --above <price>` | Alert when price goes above |
-| `indodax alert add -p <pair> --below <price>` | Alert when price goes below |
-| `indodax alert add -p <pair> --percent-up <%>` | Alert when price increases by % |
-| `indodax alert add -p <pair> --percent-down <%>` | Alert when price decreases by % |
-| `indodax alert list [--history]` | List all alerts |
-| `indodax alert cancel -i <id>` | Cancel specific alert |
-| `indodax alert cancel --all` | Cancel all alerts |
-| `indodax alert check [-p <pair>]` | Check alerts against current prices |
-| `indodax alert watch [-p <pair>]` | Monitor alerts in real-time (WebSocket) |
-| `indodax alert triggered` | Show triggered alerts |
-
-### Paper Trading (Simulated)
-
-> Paper trading mirrors the live trade commands for easy switching between simulated and real trading.
-
-| Command | Description |
-|---------|-------------|
-| `indodax paper init [--idr N] [--btc N]` | Initialize with default or custom balances |
-| `indodax paper reset` | Reset paper trading state |
-| `indodax paper balance` | Show virtual balances |
-| `indodax paper buy -p <pair> -i <idr>` | Simulated buy (IDR amount, like live) |
-| `indodax paper buy -p <pair> -a <amt> [-r <price>]` | Simulated buy (base amount, like live) |
-| `indodax paper sell -p <pair> -a <amt> [-r <price>]` | Simulated sell (matches live interface) |
-| `indodax paper orders [-p <pair>]` | List open paper orders |
-| `indodax paper cancel -i <id>` | Cancel a paper order |
-| `indodax paper cancel-all` | Cancel all paper orders |
-| `indodax paper fill -i <id> [-r <price>]` | Fill an open paper order |
-| `indodax paper fill --all` | Fill all open orders at once |
-| `indodax paper check-fills [-p <json>] [--fetch]` | Auto-fill based on market prices |
-| `indodax paper topup -c <currency> -a <amount>` | Top up a virtual currency balance |
-| `indodax paper history` | Show paper trade history |
-| `indodax paper status` | Show paper trading status summary |
-
-### Authentication Management
-
-| Command | Description |
-|---------|-------------|
-| `indodax auth set` | Set API credentials |
-| `indodax auth show` | Show current config |
-| `indodax auth test` | Test API credentials |
-| `indodax auth reset` | Remove stored credentials |
-
-### Utilities
-
-| Command | Description |
-|---------|-------------|
-| `indodax setup` | Interactive setup wizard |
-| `indodax shell` | Start interactive REPL |
-
----
-
-## 📝 Output Formats
-
-**Table mode** (default) — human-friendly aligned tables:
+Table mode is the default:
 
 ```bash
-indodax market ticker btc_idr
+indodax ticker btc_idr
 ```
 
-**JSON mode** — for scripting and automation, with AI-friendly error envelopes:
+JSON mode is intended for scripting and automation:
 
 ```bash
-indodax -o json market ticker btc_idr
+indodax -o json ticker btc_idr
 ```
 
-When an error occurs in JSON mode, a structured error envelope is returned on stdout:
+Error responses in JSON mode use structured envelopes:
 
 ```json
 {
@@ -337,185 +288,91 @@ When an error occurs in JSON mode, a structured error envelope is returned on st
 }
 ```
 
----
+## E2E Testing
 
-## 🧪 Paper Trading
-
-Test your strategies without risking real funds. Paper trading mirrors the live trade commands for easy switching:
+The repository includes live API smoke tests:
 
 ```bash
-# Initialize with default balances (100M IDR, 1 BTC)
-indodax paper init
-
-# Or with custom balances
-indodax paper init --idr 50000000 --btc 0.5
-
-# Buy orders (matches live trade interface)
-indodax paper buy -p btc_idr -i 1000000            # Buy BTC worth 1M IDR at market price
-indodax paper buy -p btc_idr -a 0.1 -r 500000000   # Buy 0.1 BTC with limit price
-
-# Sell orders (matches live trade interface)
-indodax paper sell -p btc_idr -a 0.05 -r 1000000000  # Sell 0.05 BTC at limit price
-
-# Check balances and status
-indodax paper balance
-indodax paper status
-
-# Manage orders
-indodax paper orders --pair btc_idr    # List open orders
-indodax paper cancel -i 1              # Cancel order ID 1
-indodax paper cancel-all               # Cancel all open orders
-
-# Fill orders
-indodax paper fill -i 1                # Fill order 1
-indodax paper fill -i 2 --price 110000000  # Fill at custom price
-indodax paper fill --all               # Fill all open orders
-
-# Auto-fill based on market prices
-indodax paper check-fills -p '{"btc_idr": 95000000, "eth_idr": 12000000}'
-
-# Top up balances
-indodax paper topup -c usdt -a 50000
-
-# Reset to initial state
-indodax paper reset
+./scripts/e2e_minimal.sh --public
+./scripts/e2e_minimal.sh --private
+./scripts/e2e_minimal.sh --ws
+./scripts/e2e_websocket_mock.sh
 ```
 
-> **Tip:** Paper trading uses the same command structure as live trading. Switch between modes by replacing `trade` with `paper`.
-
----
-
-## 🔔 Price Alerts
-
-Set price alerts and get notified when conditions are met. Alerts can be checked on-demand or monitored in real-time via WebSocket.
+Environment knobs:
 
 ```bash
-# Price threshold alerts
-indodax alert add -p btc_idr --above 150000000
-indodax alert add -p btc_idr --below 50000000
-
-# Percentage change alerts (based on current price)
-indodax alert add -p btc_idr --percent-up 5
-indodax alert add -p btc_idr --percent-down 10
-
-# Add note to alert
-indodax alert add -p btc_idr --above 200000000 -n "Take profit target"
-
-# List and manage alerts
-indodax alert list
-indodax alert list --history
-indodax alert cancel -i 1
-indodax alert cancel --all
-
-# One-time check (HTTP polling)
-indodax alert check
-indodax alert check -p btc_idr
-
-# Real-time monitoring (WebSocket)
-indodax alert watch
-indodax alert watch -p btc_idr
+INDODAX_BIN=./target/debug/indodax
 ```
 
-> **Tip:** Use `indodax alert watch` for real-time price monitoring. Alerts are stored in `~/.config/indodax/alerts.json`.
+Latest local verification:
 
----
-
-## 🔐 Authentication & Security
-
-Indodax uses **HMAC-SHA512** signing for API authentication. Your credentials are stored securely:
-
-- Config file uses **`0600` permissions** (owner read/write only)
-- Supports environment variables for CI/CD workflows
-- CLI flags override everything for one-off commands
-
-### Withdrawal Callback URL
-
-For withdrawals, Indodax requires a Callback URL to validate requests:
-
-```bash
-indodax auth set --callback-url https://yourdomain.com/callback
+```text
+cargo test: 296 passed
+./scripts/e2e_minimal.sh --public: passed
+./scripts/e2e_minimal.sh --private: skipped private checks (credentials unavailable)
+./scripts/e2e_minimal.sh --ws: passed
 ```
 
-Then run the validation server:
+## API Coverage
+
+- Public REST: Indodax market endpoints
+- Private REST: Indodax TradeAPI and TradeAPI-2 endpoints
+- Public WebSocket: `wss://ws3.indodax.com/ws/`
+- Private WebSocket: `wss://pws.indodax.com/ws/`
+
+## Architecture
+
+This project is inspired by the Kraken CLI architecture and built with modern Rust:
+
+- `clap` for derive-based CLI parsing
+- `tokio` for async runtime
+- `tokio-tungstenite` for WebSocket streams
+- `reqwest` for REST API calls
+- `serde` for serialization and deserialization
+- `comfy-table` for terminal tables
+- `rmcp` for Model Context Protocol support
+
+## Testing Standards
+
+Every release should pass:
+
+- Unit tests with `cargo test`
+- Public E2E smoke tests
+- WebSocket smoke tests
+- Private read-only tests when credentials are available
+
+Coverage is maintained across `auth`, `client`, `config`, `errors`, `commands`, `mcp`, and `output` modules.
+
+## Security
+
+- Credentials are stored with `0600` permissions when using `indodax auth set`.
+- HMAC-SHA512 signing is used for private API authentication.
+- Prefer read-only API keys for account inspection and WebSocket monitoring.
+- Use least-privilege exchange API keys for MCP and automation.
+- Never commit real API keys, secrets, callback tokens, or listen keys.
+
+## Development
 
 ```bash
-indodax funding serve-callback --port 8080
-```
-
----
-
-## 🏗️ Architecture
-
-This project is inspired by the [Kraken CLI](https://github.com/krakenfx/kraken-cli) architecture and built with modern Rust:
-
-- **`clap`** — powerful derive-based CLI parsing
-- **`tokio`** — async runtime for non-blocking I/O
-- **`tokio-tungstenite`** — WebSocket client for real-time streams
-- **`reqwest`** — HTTP client for REST API calls
-- **`serde`** — robust serialization/deserialization
-- **`comfy-table`** — beautiful terminal tables
-- **`rmcp`** — Model Context Protocol server for AI agent integration
-
----
-
-## 🧪 Testing
-
-This project maintains **100% test coverage** across all core modules.
-
-### Run Tests
-
-```bash
-# Run all unit tests
+cargo fmt
 cargo test
-
-# Run with output
-cargo test -- --nocapture
-
-# Check test coverage
-cargo tarpaulin --out stdout
+cargo build
 ```
 
-### Coverage Summary
+## Contributing
 
-| Module | Tests | Coverage |
-|--------|-------|----------|
-| `auth.rs` | 20+ | ✅ 100% |
-| `client.rs` | 30+ | ✅ 100% |
-| `config.rs` | 40+ | ✅ 100% |
-| `errors.rs` | 15+ | ✅ 100% |
-| `lib.rs` | 20+ | ✅ 100% |
-| `commands/*` | 90+ | ✅ 100% |
-| `mcp/*` | 20+ | ✅ 100% |
-| **Total** | **299+** | **✅ 100%** |
+Contributions are welcome:
 
-### Testing Standards
+1. Fork the repository.
+2. Create a feature branch.
+3. Run tests and relevant E2E smoke checks.
+4. Open a pull request.
 
-Every release undergoes rigorous verification:
-- **Unit Tests**: Mandatory `cargo test` suite (300+ tests) must pass on all platforms (CI/CD enforced).
-- **E2E Tests**: Manual verification using `scripts/e2e_minimal.sh` with the smallest possible increments (e.g., 10,000 IDR) to ensure live API compatibility without significant risk.
+## License
 
-### E2E Testing
+MIT
 
-End-to-end tests are documented in [`E2E_TESTING_LOG.md`](E2E_TESTING_LOG.md), covering real API interactions including market data, account queries, and trade execution.
+## Disclaimer
 
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-> **Disclaimer:** This is an **unofficial** CLI and is not affiliated with or endorsed by Indodax. Use at your own risk. Cryptocurrency trading involves significant risk of loss.
+This project is unofficial and is not affiliated with or endorsed by Indodax. Cryptocurrency trading is risky; review commands carefully before using write-capable API keys.

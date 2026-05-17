@@ -54,9 +54,10 @@ impl RateLimiter {
             let elapsed = state.last_refill.elapsed();
             if elapsed >= Duration::from_secs(1) {
                 let secs = elapsed.as_secs();
-                let add = self.refill_per_sec * secs;
+                let capped = secs.min(60); // cap to 60s to guard against clock jumps
+                let add = self.refill_per_sec * capped;
                 state.tokens = state.tokens.saturating_add(add).min(self.capacity);
-                state.last_refill += Duration::from_secs(secs);
+                state.last_refill += Duration::from_secs(capped);
             }
             if state.tokens > 0 {
                 state.tokens -= 1;
@@ -69,7 +70,7 @@ impl RateLimiter {
                 Duration::from_millis(50)
             };
             drop(state);
-            tokio::time::sleep(wait).await;
+            tokio::time::sleep(wait.max(Duration::from_millis(10))).await;
         }
     }
 }
@@ -291,13 +292,13 @@ impl IndodaxClient {
             .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect();
-        let timestamp = Signer::now_millis();
+        let timestamp = crate::commands::helpers::now_millis();
         qs_parts.push(format!("timestamp={}", timestamp));
         qs_parts.push("recvWindow=5000".to_string());
         qs_parts.sort();
         let query_string = qs_parts.join("&");
 
-        let signature = signer.sign_v2(&query_string, timestamp)?;
+        let signature = signer.sign_v2(&query_string)?;
         let url = format!("{}{}?{}", PRIVATE_V2_BASE, path, query_string);
 
         let req = self
@@ -363,10 +364,12 @@ impl IndodaxClient {
     ) -> Result<Response, IndodaxError> {
         self.rate_limiter.acquire().await;
         let mut last_err = None;
+        let mut total_retries = 0u32;
+        let mut backoff_count = 0u32;
 
-        for attempt in 0..=MAX_RETRIES {
-            if attempt > 0 {
-                tokio::time::sleep(Duration::from_millis(500 * 2u64.pow(attempt - 1))).await;
+        while total_retries <= MAX_RETRIES {
+            if backoff_count > 0 {
+                tokio::time::sleep(Duration::from_millis(500 * 2u64.pow(backoff_count - 1))).await;
             }
 
             let req = builder
@@ -388,7 +391,11 @@ impl IndodaxClient {
                             .map(Duration::from_secs);
                         if let Some(delay) = retry_after {
                             tokio::time::sleep(delay).await;
+                            backoff_count = 0;
+                        } else {
+                            backoff_count += 1;
                         }
+                        total_retries += 1;
                         last_err = Some(IndodaxError::api(
                             format!("Rate limited (HTTP {})", status.as_u16()),
                             ErrorCategory::RateLimit,
@@ -398,6 +405,8 @@ impl IndodaxClient {
                     }
 
                     if status.is_server_error() {
+                        total_retries += 1;
+                        backoff_count += 1;
                         last_err = Some(IndodaxError::api(
                             format!("Server error (HTTP {})", status.as_u16()),
                             ErrorCategory::Server,
@@ -414,6 +423,8 @@ impl IndodaxClient {
                     break;
                 }
                 Err(e) => {
+                    total_retries += 1;
+                    backoff_count += 1;
                     if e.is_timeout() || e.is_connect() {
                         last_err = Some(IndodaxError::Http(e));
                         continue;

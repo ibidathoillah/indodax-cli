@@ -4,7 +4,6 @@ use serde_json::Value;
 use rmcp::model::{CallToolResult, Tool};
 
 use super::IndodaxMcp;
-use crate::auth::Signer;
 use crate::commands::helpers;
 
 pub fn account_tools() -> Vec<Tool> {
@@ -119,7 +118,7 @@ impl IndodaxMcp {
     }
 
     pub async fn handle_order_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
-        let now = Signer::now_millis();
+        let now = helpers::now_millis();
         let start = now - helpers::ONE_DAY_MS;
         let limit_val = match validate_limit(limit) {
             Ok(v) => v,
@@ -143,7 +142,7 @@ impl IndodaxMcp {
     }
 
     pub async fn handle_trade_history(&self, symbol: &str, limit: Option<f64>) -> CallToolResult {
-        let now = Signer::now_millis();
+        let now = helpers::now_millis();
         let start = now - helpers::ONE_DAY_MS;
         let limit_val = match validate_limit(limit) {
             Ok(v) => v,

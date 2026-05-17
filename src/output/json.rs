@@ -8,6 +8,11 @@ pub fn render(output: &CommandOutput) -> String {
     if let Some(ref addendum) = output.addendum {
         envelope["addendum"] = serde_json::Value::String(addendum.clone());
     }
+    if !output.warnings.is_empty() {
+        envelope["warnings"] = serde_json::Value::Array(
+            output.warnings.iter().map(|w| serde_json::Value::String(w.clone())).collect()
+        );
+    }
     serde_json::to_string_pretty(&envelope).unwrap_or_else(|_| "{}".into())
 }
 
@@ -24,6 +29,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Json,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -39,6 +46,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Json,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -55,6 +64,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Json,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -72,6 +83,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Json,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -87,6 +100,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Json,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -102,6 +117,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Json,
             addendum: None,
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);
@@ -117,6 +134,8 @@ mod tests {
             rows: vec![],
             format: super::super::OutputFormat::Json,
             addendum: Some("Extra message".into()),
+            warnings: vec![],
+            suppress_final_output: false,
         };
         
         let rendered = render(&output);

@@ -8,6 +8,7 @@ use indodax_cli::{
 use indodax_cli::errors::IndodaxError;
 use indodax_cli::mcp;
 use indodax_cli::output::{CommandOutput, OutputFormat};
+use std::io::BufRead;
 use std::process;
 
 #[tokio::main]
@@ -48,7 +49,25 @@ async fn main() {
         }
     };
 
-    let creds = match config.resolve_credentials(cli.api_key.clone(), cli.api_secret.clone()) {
+    // Handle --api-secret-stdin: read secret from stdin (more secure than CLI args)
+    let api_secret = if cli.api_secret_stdin {
+        let mut secret = String::new();
+        if let Err(e) = std::io::stdin().lock().read_line(&mut secret) {
+            report_error(&IndodaxError::Other(format!("Failed to read API secret from stdin: {}", e)), output_format);
+            process::exit(1);
+        }
+        let trimmed = secret.trim().to_string();
+        if trimmed.is_empty() {
+            eprintln!("Warning: --api-secret-stdin used but no input received (empty line).");
+            cli.api_secret.clone()
+        } else {
+            Some(trimmed)
+        }
+    } else {
+        cli.api_secret.clone()
+    };
+
+    let creds = match config.resolve_credentials(cli.api_key.clone(), api_secret) {
         Ok(c) => c,
         Err(e) => {
             report_error(&IndodaxError::Other(e.to_string()), output_format);
@@ -93,7 +112,9 @@ async fn main() {
 
     match result {
         Ok(output) => {
-            println!("{}", output.render());
+            if !output.suppress_final_output || output_format == OutputFormat::Table {
+                println!("{}", output.render());
+            }
         }
         Err(e) => {
             report_error(&e, output_format);

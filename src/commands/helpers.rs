@@ -29,12 +29,28 @@ pub async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String, any
         return Ok(token.to_string());
     }
     
-    // 3. Fallback to hardcoded default
+    // 3. Try INDODAX_WS_TOKEN env var
+    if let Ok(token) = std::env::var("INDODAX_WS_TOKEN") {
+        if !token.is_empty() {
+            return Ok(token);
+        }
+    }
+
+    // 4. Fallback to hardcoded default
+    eprintln!("[WS] Warning: Could not fetch dynamic WebSocket token and no configured token found. Using built-in fallback token (may expire). Set INDODAX_WS_TOKEN env var to override.");
     Ok(DEFAULT_STATIC_WS_TOKEN.to_string())
 }
 
 pub const ONE_DAY_MS: u64 = 24 * 60 * 60 * 1000;
 pub const ONE_DAY_SECS: u64 = 24 * 60 * 60;
+pub const BALANCE_EPSILON: f64 = 1e-8;
+
+pub fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
 
 pub fn flatten_json_to_table(json: &serde_json::Value) -> (Vec<String>, Vec<Vec<String>>) {
     match json {
@@ -89,7 +105,7 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
             let items: Vec<String> = arr.iter().map(value_to_string).collect();
             items.join(", ")
         }
-        serde_json::Value::Object(_) => serde_json::to_string(v).unwrap_or_default(),
+        serde_json::Value::Object(_) => serde_json::to_string(v).unwrap_or_else(|_| "<serialization_error>".to_string()),
     }
 }
 
@@ -107,7 +123,7 @@ pub fn normalize_pair(pair: &str) -> String {
     if pair.contains('_') || pair.is_empty() {
         return pair;
     }
-    let quote_currencies = ["usdt", "idr", "btc"];
+    let quote_currencies = ["usdt", "idr", "btc", "usdc", "eth", "sol", "bnb", "xrp", "ada"];
     for quote in &quote_currencies {
         if let Some(base) = pair.strip_suffix(quote) {
             if !base.is_empty() {
@@ -144,11 +160,20 @@ pub fn is_fiat_or_stable(currency: &str) -> bool {
 }
 
 /// Currency-aware balance formatting: 2 decimals for IDR/fiat/stablecoins, 8 for crypto.
+/// Handles extreme values gracefully (no scientific notation).
 pub fn format_balance(currency: &str, value: f64) -> String {
     if is_fiat_or_stable(currency) {
-        format!("{:.2}", value)
+        if value.abs() < 0.01 && value != 0.0 {
+            "<0.01".to_string()
+        } else {
+            format!("{:.2}", value)
+        }
     } else {
-        format!("{:.8}", value)
+        if value.abs() < 1e-8 && value != 0.0 {
+            "<1e-8".to_string()
+        } else {
+            format!("{:.8}", value)
+        }
     }
 }
 
@@ -195,6 +220,40 @@ pub fn build_withdraw_params(
         params.insert("callback_url".into(), u.to_string());
     }
     params
+}
+
+/// Validate a price against the price increment (tick size) for a pair.
+/// Returns a warning string if validation fails, or None if the price is valid or can't be checked.
+pub async fn validate_tick_size(
+    client: &IndodaxClient,
+    pair: &str,
+    price: f64,
+) -> Option<String> {
+    let Ok(data) = client.public_get::<serde_json::Value>("/api/price_increments").await else {
+        return None;
+    };
+    let increments = data.get("increments").and_then(|v| v.as_object())?;
+    let normalized_pair = pair.to_lowercase().replace('-', "_");
+    let inc_entry = increments.get(&normalized_pair)
+        .or_else(|| increments.get(&normalized_pair.replace('_', "")))
+        .or_else(|| {
+            let alt = normalized_pair.replace('_', "");
+            increments.keys().find(|k| k.replace('_', "") == alt)
+                .and_then(|k| increments.get(k))
+        })?;
+    let inc_str = inc_entry.as_str()?;
+    let inc: f64 = inc_str.parse().ok()?;
+    if inc <= 0.0 {
+        return None;
+    }
+    let price_rounded = (price / inc).round() * inc;
+    if (price_rounded - price).abs() <= inc * 1e-6 {
+        return None;
+    }
+    Some(format!(
+        "[TRADE] Warning: Price {} does not conform to the tick size (increment: {}) for pair {}. The API may reject this order.",
+        price, inc_str, pair
+    ))
 }
 
 /// Fetch all open orders and cancel them one by one.

@@ -99,11 +99,16 @@ async fn ws_connect_and_listen(
             }
         }
 
-        let (mut ws_stream, _) = match connect_async(ws_url).await {
-            Ok(s) => s,
-            Err(e) => {
+        let (mut ws_stream, _) = match tokio::time::timeout(std::time::Duration::from_secs(10), connect_async(ws_url)).await {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
                 retry_count += 1;
                 tracing::warn!("WebSocket connection failed: {}. Retrying...", e);
+                continue 'reconnect;
+            }
+            Err(_) => {
+                retry_count += 1;
+                tracing::warn!("WebSocket connection timed out after 10s. Retrying...");
                 continue 'reconnect;
             }
         };
@@ -232,11 +237,15 @@ async fn ws_connect_and_listen(
         }
     }
 
-    Ok(CommandOutput::json(serde_json::json!({
-        "status": "disconnected",
-        "events": events,
-        "event_count": events.len(),
-    })))
+    if output_format == OutputFormat::Json {
+        Ok(CommandOutput::new_empty().with_suppress_final_output(true))
+    } else {
+        Ok(CommandOutput::json(serde_json::json!({
+            "status": "disconnected",
+            "events": events,
+            "event_count": events.len(),
+        })))
+    }
 }
 
 fn format_ws_price(val: &serde_json::Value) -> Option<String> {
@@ -264,7 +273,7 @@ async fn ws_ticker(client: &IndodaxClient, pair: &str, output_format: OutputForm
                 if let serde_json::Value::Array(fields) = row {
                     if fields.len() >= 4 {
                         let ts = fields[0].as_u64().unwrap_or(0);
-                        let price = format_ws_price(&fields[2]).unwrap_or_default();
+                        let price = fields.get(2).and_then(format_ws_price).unwrap_or_default();
                         let time_str = chrono::DateTime::from_timestamp(ts.min(i64::MAX as u64) as i64, 0)
                             .map(|d| d.format("%H:%M:%S").to_string())
                             .unwrap_or_default();
@@ -298,9 +307,9 @@ async fn ws_trades(client: &IndodaxClient, pair: &str, output_format: OutputForm
                 if let serde_json::Value::Array(fields) = row {
                     if fields.len() >= 7 {
                         let ts = fields[1].as_u64().unwrap_or(0);
-                        let side = fields[3].as_str().unwrap_or("?");
-                        let price = fields[4].as_f64().unwrap_or(0.0);
-                        let volume = fields[6].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+                        let side = fields.get(3).and_then(|v| v.as_str()).unwrap_or("?");
+                        let price = fields.get(4).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let volume = fields.get(6).and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0.0);
                         let time_str = chrono::DateTime::from_timestamp(ts.min(i64::MAX as u64) as i64, 0)
                             .map(|d| d.format("%H:%M:%S").to_string())
                             .unwrap_or_default();
@@ -400,7 +409,7 @@ async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Resu
                 if let serde_json::Value::Array(fields) = row {
                     if fields.len() >= 8 {
                         let pair = fields[0].as_str().unwrap_or("?");
-                        let last = helpers::value_to_string(&fields[2]);
+                        let last = helpers::value_to_string(fields.get(2).unwrap_or(&serde_json::Value::Null));
                         let high = helpers::value_to_string(&fields[4]);
                         let low = helpers::value_to_string(&fields[3]);
                         let price_24h = fields[5].as_f64().unwrap_or(0.0);
@@ -450,7 +459,7 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
         // Private WebSocket messages can be in several formats depending on the server version
         // We look for common patterns in order and balance updates.
         
-        let result = val.get("result").or(val.get("push")).or(Some(&val)).unwrap();
+        let result = val.get("result").or_else(|| val.get("push")).unwrap_or(&val);
         let data = result.get("data").unwrap_or(result);
 
         if let Some(order_id) = data.get("order_id").or(data.get("orderId")).and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))) {
@@ -541,11 +550,16 @@ async fn ws_private_connect_and_listen(
             }
         }
 
-        let (mut ws_stream, _) = match connect_async(ws_url).await {
-            Ok(s) => s,
-            Err(e) => {
+        let (mut ws_stream, _) = match tokio::time::timeout(std::time::Duration::from_secs(10), connect_async(ws_url)).await {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
                 retry_count += 1;
                 tracing::warn!("Private WebSocket connection failed: {}. Retrying...", e);
+                continue 'reconnect;
+            }
+            Err(_) => {
+                retry_count += 1;
+                tracing::warn!("Private WebSocket connection timed out after 10s. Retrying...");
                 continue 'reconnect;
             }
         };
@@ -563,6 +577,7 @@ async fn ws_private_connect_and_listen(
         let mut authed = false;
         let mut subscribed = false;
         let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         loop {
             tokio::select! {
@@ -629,11 +644,15 @@ async fn ws_private_connect_and_listen(
         }
     }
 
-    Ok(CommandOutput::json(serde_json::json!({
-        "status": "disconnected",
-        "events": events,
-        "event_count": events.len(),
-    })))
+    if output_format == OutputFormat::Json {
+        Ok(CommandOutput::new_empty().with_suppress_final_output(true))
+    } else {
+        Ok(CommandOutput::json(serde_json::json!({
+            "status": "disconnected",
+            "events": events,
+            "event_count": events.len(),
+        })))
+    }
 }
 
 #[cfg(test)]
@@ -754,7 +773,7 @@ mod tests {
             }
         });
 
-        let result = msg.get("result").or(msg.get("push")).or(Some(&msg)).unwrap();
+        let result = msg.get("result").or_else(|| msg.get("push")).unwrap_or(&msg);
         let data = result.get("data").unwrap_or(result);
         
         assert_eq!(data["order_id"], 12345);

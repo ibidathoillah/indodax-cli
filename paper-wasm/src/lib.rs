@@ -72,8 +72,6 @@ impl PaperTrader {
             let mut default_balances = std::collections::HashMap::new();
             default_balances.insert("idr".to_string(), 100_000_000.0);
             default_balances.insert("btc".to_string(), 1.0);
-            default_balances.insert("eth".to_string(), 10.0);
-            default_balances.insert("usdt".to_string(), 50_000.0);
             serde_wasm_bindgen::to_value(&default_balances).unwrap_or(JsValue::NULL)
         } else {
             serde_wasm_bindgen::to_value(&self.state.balances).unwrap_or(JsValue::NULL)
