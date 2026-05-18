@@ -50,6 +50,8 @@ Install from npm:
 npm install -g indodax-cli
 ```
 
+On Android/Termux, `npm install -g indodax-cli` builds the CLI from source, so `cargo` must be installed in the Termux environment.
+
 Run with Docker:
 
 ```bash

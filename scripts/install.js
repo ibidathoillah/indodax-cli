@@ -2,16 +2,24 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const os = require('os');
+const { spawnSync } = require('child_process');
 
 // Get version from package.json
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 const VERSION = pkg.version;
 const REPO = 'ibidathoillah/indodax-cli';
 
-function getBinaryUrl() {
-    const platform = os.platform();
-    const arch = os.arch();
+const binDir = path.join(__dirname, '..', 'bin');
+const platform = os.platform();
+const arch = os.arch();
+const binName = platform === 'win32' ? 'indodax-native.exe' : 'indodax-native';
+const binPath = path.join(binDir, binName);
 
+if (!fs.existsSync(binDir)) {
+    fs.mkdirSync(binDir, { recursive: true });
+}
+
+function getReleaseBinaryUrl() {
     let osName = '';
     let archName = '';
 
@@ -22,7 +30,7 @@ function getBinaryUrl() {
     } else if (platform === 'win32') {
         osName = 'windows';
     } else {
-        console.error(`Unsupported platform: ${platform}`);
+        console.error(`Unsupported platform for release download: ${platform}`);
         process.exit(1);
     }
 
@@ -39,12 +47,36 @@ function getBinaryUrl() {
     return `https://github.com/${REPO}/releases/download/v${VERSION}/indodax-${osName}-${archName}${ext}`;
 }
 
-const binDir = path.join(__dirname, '..', 'bin');
-const binName = os.platform() === 'win32' ? 'indodax.exe' : 'indodax';
-const binPath = path.join(binDir, binName);
+function getSourceBinaryPath() {
+    return path.join(__dirname, '..', 'target', 'release', platform === 'win32' ? 'indodax.exe' : 'indodax');
+}
 
-if (!fs.existsSync(binDir)) {
-    fs.mkdirSync(binDir, { recursive: true });
+function buildFromSource() {
+    console.log('Building indodax-cli from source for Android/Termux...');
+
+    const result = spawnSync('cargo', ['build', '--release'], {
+        cwd: path.join(__dirname, '..'),
+        stdio: 'inherit',
+    });
+
+    if (result.error) {
+        console.error(`\x1b[31mError running cargo:\x1b[0m ${result.error.message}`);
+        process.exit(1);
+    }
+
+    if (result.status !== 0) {
+        process.exit(result.status || 1);
+    }
+
+    const sourceBinary = getSourceBinaryPath();
+    if (!fs.existsSync(sourceBinary)) {
+        console.error(`\x1b[31mError:\x1b[0m built binary not found at ${sourceBinary}`);
+        process.exit(1);
+    }
+
+    fs.copyFileSync(sourceBinary, binPath);
+    fs.chmodSync(binPath, 0o755);
+    console.log('\x1b[32mindodax-cli binary installed successfully.\x1b[0m');
 }
 
 function download(url, dest) {
@@ -83,5 +115,9 @@ function download(url, dest) {
     });
 }
 
-const url = getBinaryUrl();
-download(url, binPath);
+if (platform === 'android') {
+    buildFromSource();
+} else {
+    const url = getReleaseBinaryUrl();
+    download(url, binPath);
+}
