@@ -50,6 +50,8 @@ Install from npm:
 npm install -g indodax-cli
 ```
 
+On Android/Termux, `npm install -g indodax-cli` downloads the Android release binary when available. If the release asset is missing, it falls back to a local `cargo build`, so `cargo` still needs to be installed in Termux for that fallback path.
+
 Run with Docker:
 
 ```bash

@@ -27,6 +27,10 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact_name: indodax-linux-aarch64
             binary_extension: ""
+          - os: ubuntu-latest
+            target: aarch64-linux-android
+            artifact_name: indodax-android-aarch64
+            binary_extension: ""
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: indodax-macos-x86_64
@@ -55,6 +59,24 @@ jobs:
           sudo apt-get update
           sudo dpkg --add-architecture arm64 && sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64
 
+      - name: Setup Java
+        if: matrix.target == 'aarch64-linux-android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        if: matrix.target == 'aarch64-linux-android'
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        if: matrix.target == 'aarch64-linux-android'
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
       - name: Build
         shell: bash
         run: |
@@ -62,6 +84,9 @@ jobs:
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
             export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
             export OPENSSL_DIR=/usr/lib/aarch64-linux-gnu
+          elif [ "${{ matrix.target }}" == "aarch64-linux-android" ]; then
+            export ANDROID_NDK_HOME="${{ steps.setup-ndk.outputs.ndk-path }}"
+            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
           fi
           
           cargo build --release --target ${{ matrix.target }}
@@ -201,6 +226,7 @@ jobs:
           files: |
             indodax-linux-x86_64
             indodax-linux-aarch64
+            indodax-android-aarch64
             indodax-macos-x86_64
             indodax-macos-aarch64
             indodax-windows-x86_64.exe
