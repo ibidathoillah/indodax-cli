@@ -27,6 +27,8 @@ function getReleaseBinaryUrl() {
         osName = 'linux';
     } else if (platform === 'darwin') {
         osName = 'macos';
+    } else if (platform === 'android') {
+        osName = 'android';
     } else if (platform === 'win32') {
         osName = 'windows';
     } else {
@@ -81,8 +83,7 @@ function buildFromSource() {
 
 function download(url, dest) {
     console.log(`Downloading indodax-cli binary from ${url}...`);
-
-    const file = fs.createWriteStream(dest);
+    const tempDest = `${dest}.download`;
 
     https.get(url, (response) => {
         if (response.statusCode === 301 || response.statusCode === 302) {
@@ -92,32 +93,44 @@ function download(url, dest) {
 
         if (response.statusCode !== 200) {
             console.warn(`\x1b[33mWarning:\x1b[0m Server returned status code ${response.statusCode}`);
+            if (platform === 'android') {
+                if (response.statusCode === 404) {
+                    console.warn(`Binary for version v${VERSION} not found on GitHub releases.`);
+                }
+                console.warn('Falling back to a local Termux build from source.');
+                fs.unlink(tempDest, () => { });
+                buildFromSource();
+                return;
+            }
             if (response.statusCode === 404) {
                 console.warn(`Binary for version v${VERSION} not found on GitHub releases.`);
                 console.warn(`The command 'indodax' will still be registered, but you may need to build it manually.`);
             }
-            fs.unlink(dest, () => { });
+            fs.unlink(tempDest, () => { });
             // Exit with 0 to allow the npm installation to complete
             process.exit(0);
         }
 
+        const file = fs.createWriteStream(tempDest);
         response.pipe(file);
 
         file.on('finish', () => {
             file.close();
+            fs.renameSync(tempDest, dest);
             fs.chmodSync(dest, 0o755);
             console.log('\x1b[32mindodax-cli binary installed successfully.\x1b[0m');
         });
     }).on('error', (err) => {
-        fs.unlink(dest, () => { });
+        if (platform === 'android') {
+            console.warn(`\x1b[33mWarning:\x1b[0m Download failed, falling back to a local Termux build from source.`);
+            fs.unlink(tempDest, () => { });
+            buildFromSource();
+            return;
+        }
+        fs.unlink(tempDest, () => { });
         console.error(`\x1b[31mError downloading binary:\x1b[0m ${err.message}`);
         process.exit(1);
     });
 }
 
-if (platform === 'android') {
-    buildFromSource();
-} else {
-    const url = getReleaseBinaryUrl();
-    download(url, binPath);
-}
+download(getReleaseBinaryUrl(), binPath);
