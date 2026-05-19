@@ -6,11 +6,14 @@ pub mod client;
 pub mod commands;
 pub mod config;
 pub mod errors;
+pub mod integration;
 pub mod mcp;
 pub mod output;
 
 use client::IndodaxClient;
 use errors::IndodaxError;
+
+pub use integration::prelude;
 
 #[derive(Debug, Parser)]
 #[command(

@@ -6,15 +6,16 @@ description = "A command-line interface for the Indodax cryptocurrency exchange"
 license = "MIT"
 repository = "https://github.com/ibidathoillah/indodax-cli"
 
+
 [[bin]]
 name = "indodax"
 path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
