@@ -10,6 +10,12 @@ repository = "https://github.com/ibidathoillah/indodax-cli"
 [[bin]]
 name = "indodax"
 path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = []
+sdk = []
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
