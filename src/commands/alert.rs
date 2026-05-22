@@ -1,7 +1,7 @@
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::output::CommandOutput;
-use crate::alerts::{self, PriceAlert, AlertCondition, AlertStatus};
+use crate::alerts::{PriceAlert, AlertCondition, AlertStatus, load_alerts, save_alerts};
 use anyhow::Result;
 use colored::*;
 use futures_util::{SinkExt, StreamExt};
@@ -126,7 +126,7 @@ async fn alert_add(
         ));
     };
 
-    let mut alerts = load_alerts();
+    let mut alerts = load_alerts()?;
     let id = get_next_id(&alerts);
     let alert = PriceAlert {
         id,
@@ -171,7 +171,7 @@ async fn alert_add(
 }
 
 fn alert_list(include_history: bool) -> Result<CommandOutput> {
-    let alerts = load_alerts();
+    let alerts = load_alerts()?;
 
     let filtered: Vec<&PriceAlert> = if include_history {
         alerts.iter().collect()
@@ -233,7 +233,7 @@ fn alert_list(include_history: bool) -> Result<CommandOutput> {
 }
 
 fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> {
-    let mut alerts = load_alerts();
+    let mut alerts = load_alerts()?;
 
     if cancel_all {
         let count = alerts.iter().filter(|a| a.status == AlertStatus::Active).count();
@@ -277,7 +277,7 @@ async fn alert_check(
     id: Option<u64>,
     pair_filter: Option<&str>,
 ) -> Result<CommandOutput> {
-    let mut alerts = load_alerts();
+    let mut alerts = load_alerts()?;
 
     let to_check: Vec<&mut PriceAlert> = if let Some(target_id) = id {
         alerts.iter_mut().filter(|a| a.id == target_id && a.status == AlertStatus::Active).collect()
@@ -368,7 +368,7 @@ async fn alert_check(
 }
 
 fn alert_triggered() -> Result<CommandOutput> {
-    let alerts = load_alerts();
+    let alerts = load_alerts()?;
     let triggered: Vec<&PriceAlert> = alerts.iter()
         .filter(|a| a.status == AlertStatus::Triggered)
         .collect();
@@ -432,7 +432,7 @@ async fn alert_watch(
     pair_filter: Option<&str>,
     threshold: f64,
 ) -> Result<CommandOutput> {
-    let mut alerts = load_alerts();
+    let mut alerts = load_alerts()?;
 
     let target_ids: std::collections::HashSet<u64> = if let Some(target_id) = id {
         alerts.iter().filter(|a| a.id == target_id && a.status == AlertStatus::Active).map(|a| a.id).collect()

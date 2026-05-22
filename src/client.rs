@@ -748,7 +748,7 @@ mod tests {
     #[test]
     fn test_public_base_url() {
         // In WASM mode, it might be a relative path like /api/indodax
-        assert!(!PUBLIC_BASE_URL.is_empty());
+        assert!(!public_base_url().is_empty());
     }
 
     #[test]
