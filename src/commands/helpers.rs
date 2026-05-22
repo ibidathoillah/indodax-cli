@@ -45,11 +45,38 @@ pub const ONE_DAY_MS: u64 = 24 * 60 * 60 * 1000;
 pub const ONE_DAY_SECS: u64 = 24 * 60 * 60;
 pub const BALANCE_EPSILON: f64 = 1e-8;
 
+use web_time::SystemTime;
+
 pub fn now_millis() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now() as u64
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+}
+
+pub fn now_seconds() -> u64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        (js_sys::Date::now() / 1000.0) as u64
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    }
+}
+
+pub fn get_system_time() -> SystemTime {
+    SystemTime::now()
 }
 
 pub fn flatten_json_to_table(json: &serde_json::Value) -> (Vec<String>, Vec<Vec<String>>) {

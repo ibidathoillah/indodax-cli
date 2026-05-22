@@ -40,7 +40,7 @@ impl Signer {
     }
 
     fn next_nonce(&self) -> u64 {
-        let now = crate::commands::helpers::now_millis();
+        let now = crate::now_millis();
         loop {
             let prev = self.last_nonce.load(Ordering::Acquire);
             let next = if now > prev { now } else { prev + 1 };
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_signer_now_millis() {
-        let millis = crate::commands::helpers::now_millis();
+        let millis = crate::now_millis();
         assert!(millis > 0);
         // Should be around current time in millis
         assert!(millis > 1_000_000_000_000); // After year 2001

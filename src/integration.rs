@@ -32,7 +32,7 @@ pub mod prelude {
 /// CLI-specific integration API.
 ///
 /// Use this only when the consumer needs to embed command dispatching.
-#[cfg(feature = "cli")]
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 pub mod cli {
     pub use crate::output::{CommandOutput, OutputFormat};
     pub use crate::{dispatch, map_anyhow_error, Cli, Command};

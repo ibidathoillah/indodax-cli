@@ -1,20 +1,45 @@
-use clap::{Parser, Subcommand};
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 use output::{CommandOutput, OutputFormat};
 
 pub mod auth;
 pub mod client;
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+pub mod alerts;
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 pub mod commands;
 pub mod config;
 pub mod errors;
 pub mod integration;
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 pub mod mcp;
 pub mod output;
 
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 use client::IndodaxClient;
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 use errors::IndodaxError;
 
 pub use integration::prelude;
 
+pub(crate) fn now_millis() -> u64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now() as u64
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+}
+
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+use clap::{Parser, Subcommand};
+
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 #[derive(Debug, Parser)]
 #[command(
     name = "indodax",
@@ -45,6 +70,7 @@ pub struct Cli {
     pub yes: bool,
 }
 
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 #[derive(Debug, Subcommand)]
 pub enum Command {
     // === Legacy Hidden Commands for Backward Compatibility ===
@@ -72,6 +98,18 @@ pub enum Command {
     Ticker {
         #[arg(default_value = "btc_idr")]
         pair: String,
+    },
+
+    /// Get OHLCV history for a pair
+    History {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+        #[arg(short, long, default_value = "60")]
+        timeframe: String,
+        #[arg(short, long, help = "Start timestamp in seconds (default: 24h ago)")]
+        from: Option<u64>,
+        #[arg(long, help = "End timestamp in seconds (default: now)")]
+        to: Option<u64>,
     },
 
     /// Get tickers for all pairs
@@ -197,6 +235,7 @@ pub enum Command {
     },
 }
 
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 #[derive(Debug, Subcommand)]
 pub enum WithdrawalSubcommand {
     /// Check withdrawal fee for a currency
@@ -218,6 +257,7 @@ pub enum WithdrawalSubcommand {
     },
 }
 
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 pub async fn dispatch(
     cli: Cli,
     client: &IndodaxClient,
@@ -240,6 +280,13 @@ pub async fn dispatch(
         Command::Pairs => commands::market::execute(client, &commands::market::MarketCommand::Pairs).await
             .map_err(map_anyhow_error)?,
         Command::Ticker { pair } => commands::market::execute(client, &commands::market::MarketCommand::Ticker { pair }).await
+            .map_err(map_anyhow_error)?,
+        Command::History { pair, timeframe, from, to } => commands::market::execute(client, &commands::market::MarketCommand::Ohlc {
+            symbol: pair,
+            timeframe,
+            from,
+            to,
+        }).await
             .map_err(map_anyhow_error)?,
         Command::TickerAll => commands::market::execute(client, &commands::market::MarketCommand::TickerAll).await
             .map_err(map_anyhow_error)?,
@@ -328,12 +375,13 @@ pub async fn dispatch(
     Ok(output.with_format(cli.output))
 }
 
+#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
 pub fn map_anyhow_error(e: anyhow::Error) -> IndodaxError {
     e.downcast::<IndodaxError>()
         .unwrap_or_else(|e| IndodaxError::Other(e.to_string()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cli", not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
 

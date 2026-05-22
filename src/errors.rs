@@ -21,6 +21,7 @@ pub enum IndodaxError {
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[error("WebSocket error: {0}")]
     WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
 
@@ -66,6 +67,7 @@ impl IndodaxError {
         match self {
             IndodaxError::Api { category, .. } => category.to_string(),
             IndodaxError::Http(_) => "connection_error".to_string(),
+            #[cfg(not(target_arch = "wasm32"))]
             IndodaxError::WebSocket(_) => "connection_error".to_string(),
             IndodaxError::Json(_) => "validation_error".to_string(),
             IndodaxError::Config(_) => "config_error".to_string(),
@@ -78,7 +80,9 @@ impl IndodaxError {
     pub fn is_retryable(&self) -> bool {
         match self {
             IndodaxError::Api { retryable, .. } => *retryable,
-            IndodaxError::Http(_) | IndodaxError::WebSocket(_) => true,
+            IndodaxError::Http(_) => true,
+            #[cfg(not(target_arch = "wasm32"))]
+            IndodaxError::WebSocket(_) => true,
             _ => false,
         }
     }
@@ -202,6 +206,7 @@ mod tests {
         assert_eq!(err.category(), "validation_error");
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_indodax_error_websocket() {
         // WebSocket errors are harder to construct, but we can test the category

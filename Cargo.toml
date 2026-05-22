@@ -19,9 +19,8 @@ sdk = []
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+anyhow = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
-tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
@@ -31,13 +30,16 @@ url = "2"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = { version = "0.3", features = ["sink"] }
-anyhow = "1"
 thiserror = "2"
 dirs = "6"
+tracing = "0.1"
+web-time = "1.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 comfy-table = "7"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 rmcp = { version = "1.6", features = ["server", "transport-io", "macros", "schemars"] }
 schemars = "0.8"
-tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 dialoguer = "0.11"
 rustyline = "17"
@@ -48,6 +50,13 @@ axum = "0.8"
 tower-http = { version = "0.6", features = ["trace"] }
 tempfile = "3"
 clap_complete = "4"
+tokio = { version = "1", features = ["full"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Location", "Window"] }
 
 [dev-dependencies]
 serial_test = "3.4.0"

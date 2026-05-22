@@ -99,12 +99,16 @@ impl CommandOutput {
 
     pub fn render(&self) -> String {
         match self.format {
+            #[cfg(not(target_arch = "wasm32"))]
             OutputFormat::Table => table::render(self),
+            #[cfg(target_arch = "wasm32")]
+            OutputFormat::Table => json::render(self),
             OutputFormat::Json => json::render(self),
         }
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod table;
 pub mod json;
 

@@ -1,45 +1,11 @@
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::output::CommandOutput;
+use crate::alerts::{self, PriceAlert, AlertCondition, AlertStatus};
 use anyhow::Result;
 use colored::*;
 use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriceAlert {
-    pub id: u64,
-    pub pair: String,
-    pub condition: AlertCondition,
-    pub created_at: u64,
-    pub triggered_at: Option<u64>,
-    pub status: AlertStatus,
-    pub note: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum AlertCondition {
-    #[serde(rename = "above")]
-    Above { price: f64 },
-    #[serde(rename = "below")]
-    Below { price: f64 },
-    #[serde(rename = "change_up")]
-    ChangeUp { percent: f64, from_price: f64 },
-    #[serde(rename = "change_down")]
-    ChangeDown { percent: f64, from_price: f64 },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum AlertStatus {
-    Active,
-    Triggered,
-    Cancelled,
-}
 
 #[derive(Debug, clap::Subcommand)]
 pub enum AlertCommand {
@@ -117,66 +83,6 @@ pub async fn execute(
         }
         AlertCommand::Triggered => alert_triggered(),
     }
-}
-
-pub fn alerts_path() -> PathBuf {
-    let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    config_dir.join("indodax").join("alerts.json")
-}
-
-fn ensure_alerts_dir() -> std::io::Result<()> {
-    let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    fs::create_dir_all(config_dir.join("indodax"))
-}
-
-fn load_alerts() -> Vec<PriceAlert> {
-    let path = alerts_path();
-    if path.exists() {
-        match fs::read_to_string(&path) {
-            Ok(content) => match serde_json::from_str(&content) {
-                Ok(alerts) => alerts,
-                Err(e) => {
-                    eprintln!("[ALERT] Warning: Corrupt alerts file ({}), attempting backup...", e);
-                    let backup_path = path.with_extension("json.bak");
-                    if let Err(copy_err) = fs::copy(&path, &backup_path) {
-                        eprintln!("[ALERT] Warning: Could not backup corrupt file: {}", copy_err);
-                    } else {
-                        eprintln!("[ALERT] Backed up corrupt file to {:?}. Starting fresh.", backup_path);
-                    }
-                    Vec::new()
-                }
-            },
-            Err(e) => {
-                eprintln!("[ALERT] Warning: Failed to read alerts file: {}. Starting fresh.", e);
-                Vec::new()
-            }
-        }
-    } else {
-        Vec::new()
-    }
-}
-
-fn save_alerts(alerts: &[PriceAlert]) -> Result<()> {
-    ensure_alerts_dir()?;
-    let path = alerts_path();
-    let content = serde_json::to_string_pretty(alerts)?;
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&path)?;
-        file.write_all(content.as_bytes())?;
-    }
-    #[cfg(not(unix))]
-    {
-        fs::write(&path, content)?;
-    }
-    Ok(())
 }
 
 fn get_next_id(alerts: &[PriceAlert]) -> u64 {

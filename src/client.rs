@@ -5,13 +5,46 @@ use serde::de::DeserializeOwned;
 use std::collections::{HashMap, BTreeMap};
 use tokio::sync::Mutex;
 
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
-const PUBLIC_BASE_URL: &str = "https://indodax.com";
+#[cfg(target_arch = "wasm32")]
+async fn sleep(duration: Duration) {
+    let mut cb = |resolve: js_sys::Function, _reject: js_sys::Function| {
+        web_sys::window()
+            .unwrap()
+            .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, duration.as_millis() as i32)
+            .unwrap();
+    };
+    let p = js_sys::Promise::new(&mut cb);
+    wasm_bindgen_futures::JsFuture::from(p).await.unwrap();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::time::sleep;
+
 const PRIVATE_V1_URL: &str = "https://indodax.com/tapi";
 const PRIVATE_V2_BASE: &str = "https://tapi.btcapi.net";
 const WS_TOKEN_URL: &str = "https://indodax.com/api/private_ws/v1/generate_token";
 const MAX_RETRIES: u32 = 3;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn public_base_url() -> String {
+    "https://indodax.com".to_owned()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn public_base_url() -> String {
+    let base = option_env!("INDODAX_PUBLIC_BASE_URL").unwrap_or("/api/indodax");
+    if base.starts_with("http://") || base.starts_with("https://") {
+        return base.to_owned();
+    }
+
+    let origin = web_sys::window()
+        .and_then(|window| window.location().origin().ok())
+        .unwrap_or_default();
+
+    format!("{origin}{base}")
+}
 
 #[derive(Debug)]
 struct RateLimiterState {
@@ -40,11 +73,16 @@ impl RateLimiter {
     }
 
     fn from_env() -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
         let rps = std::env::var("INDODAX_RATE_LIMIT")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(5)
             .max(1);
+
+        #[cfg(target_arch = "wasm32")]
+        let rps = 5;
+
         Self::new(rps, rps)
     }
 
@@ -70,7 +108,7 @@ impl RateLimiter {
                 Duration::from_millis(50)
             };
             drop(state);
-            tokio::time::sleep(wait.max(Duration::from_millis(10))).await;
+            sleep(wait.max(Duration::from_millis(10))).await;
         }
     }
 }
@@ -99,12 +137,37 @@ pub struct IndodaxV2Response<T> {
     pub error: Option<String>,
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct TvHistoryResponse {
+    #[serde(rename = "t")]
+    pub time: Vec<u64>,
+    #[serde(rename = "o")]
+    pub open: Vec<f64>,
+    #[serde(rename = "h")]
+    pub high: Vec<f64>,
+    #[serde(rename = "l")]
+    pub low: Vec<f64>,
+    #[serde(rename = "c")]
+    pub close: Vec<f64>,
+    #[serde(rename = "v")]
+    pub volume: Vec<f64>,
+    #[serde(rename = "s")]
+    pub status: String,
+    #[serde(rename = "nextTime", skip_serializing_if = "Option::is_none")]
+    pub next_time: Option<u64>,
+}
+
 impl IndodaxClient {
     pub fn new(signer: Option<Signer>) -> Result<Self, IndodaxError> {
-        let http = Client::builder()
+        let builder = Client::builder();
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let builder = builder
             .user_agent(format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(30))
-            .pool_max_idle_per_host(2)
+            .pool_max_idle_per_host(2);
+
+        let http = builder
             .build()
             .map_err(|e| IndodaxError::Other(format!("Failed to create HTTP client: {}", e)))?;
 
@@ -133,11 +196,29 @@ impl IndodaxClient {
         &self.http
     }
 
+    pub async fn get_tradingview_history(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        from: u64,
+        to: u64,
+    ) -> Result<TvHistoryResponse, IndodaxError> {
+        let from_str = from.to_string();
+        let to_str = to.to_string();
+        let params = [
+            ("symbol", symbol),
+            ("tf", timeframe),
+            ("from", &from_str),
+            ("to", &to_str),
+        ];
+        self.public_get_v2("/tradingview/history_v2", &params).await
+    }
+
     pub async fn public_get<T: DeserializeOwned>(
         &self,
         path: &str,
     ) -> Result<T, IndodaxError> {
-        let url = format!("{}{}", PUBLIC_BASE_URL, path);
+        let url = format!("{}{}", public_base_url(), path);
         let resp = self.retry_get(&url).await?;
         self.handle_response(resp).await
     }
@@ -217,7 +298,7 @@ impl IndodaxClient {
         path: &str,
         params: &[(&str, &str)],
     ) -> Result<T, IndodaxError> {
-        let url = format!("{}{}", PUBLIC_BASE_URL, path);
+        let url = format!("{}{}", public_base_url(), path);
         let resp = self.retry_get_with_params(&url, params).await?;
         self.handle_response(resp).await
     }
@@ -292,7 +373,7 @@ impl IndodaxClient {
             .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect();
-        let timestamp = crate::commands::helpers::now_millis();
+        let timestamp = crate::now_millis();
         qs_parts.push(format!("timestamp={}", timestamp));
         qs_parts.push("recvWindow=5000".to_string());
         qs_parts.sort();
@@ -366,17 +447,31 @@ impl IndodaxClient {
         let mut last_err = None;
         let mut total_retries = 0u32;
         let mut backoff_count = 0u32;
+        let mut current_builder = Some(builder);
 
         while total_retries <= MAX_RETRIES {
             if backoff_count > 0 {
-                tokio::time::sleep(Duration::from_millis(500 * 2u64.pow(backoff_count - 1))).await;
+                sleep(Duration::from_millis(500 * 2u64.pow(backoff_count - 1))).await;
             }
 
-            let req = builder
-                .try_clone()
-                .ok_or_else(|| IndodaxError::Other("Failed to clone request".into()))?;
+            let req = if total_retries == 0 {
+                let b = current_builder.take().unwrap();
+                current_builder = b.try_clone();
+                b.build()
+            } else {
+                Ok(match &current_builder {
+                    Some(b) => {
+                        let retry_req = b.try_clone().map(|b| b.build());
+                        match retry_req {
+                            Some(Ok(r)) => r,
+                            _ => return Err(last_err.unwrap_or_else(|| IndodaxError::Other("Request not cloneable for retry".into()))),
+                        }
+                    }
+                    None => return Err(last_err.unwrap_or_else(|| IndodaxError::Other("Request not cloneable for retry".into()))),
+                })
+            }.map_err(|e| IndodaxError::Other(format!("Failed to build request: {}", e)))?;
 
-            match req.send().await {
+            match self.http.execute(req).await {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_success() {
@@ -390,7 +485,7 @@ impl IndodaxClient {
                             .and_then(|s| s.parse::<u64>().ok())
                             .map(Duration::from_secs);
                         if let Some(delay) = retry_after {
-                            tokio::time::sleep(delay).await;
+                            sleep(delay).await;
                             backoff_count = 0;
                         } else {
                             backoff_count += 1;
@@ -401,6 +496,10 @@ impl IndodaxClient {
                             ErrorCategory::RateLimit,
                             None,
                         ));
+                        
+                        if current_builder.is_none() {
+                             return Err(last_err.unwrap());
+                        }
                         continue;
                     }
 
@@ -412,6 +511,10 @@ impl IndodaxClient {
                             ErrorCategory::Server,
                             None,
                         ));
+                        
+                        if current_builder.is_none() {
+                             return Err(last_err.unwrap());
+                        }
                         continue;
                     }
 
@@ -425,10 +528,19 @@ impl IndodaxClient {
                 Err(e) => {
                     total_retries += 1;
                     backoff_count += 1;
-                    if e.is_timeout() || e.is_connect() {
+                    
+                    let is_retryable = e.is_timeout() || {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        { e.is_connect() }
+                        #[cfg(target_arch = "wasm32")]
+                        { false }
+                    };
+
+                    if is_retryable && current_builder.is_some() {
                         last_err = Some(IndodaxError::Http(e));
                         continue;
                     }
+                    
                     return Err(IndodaxError::Http(e));
                 }
             }
@@ -577,7 +689,8 @@ mod tests {
 
     #[test]
     fn test_public_base_url() {
-        assert!(PUBLIC_BASE_URL.contains("indodax.com"));
+        // In WASM mode, it might be a relative path like /api/indodax
+        assert!(!PUBLIC_BASE_URL.is_empty());
     }
 
     #[test]
