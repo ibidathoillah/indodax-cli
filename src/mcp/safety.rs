@@ -59,6 +59,7 @@ mod tests {
         assert!(config.check_group(&ServiceGroup::Account).is_ok());
         assert!(config.check_group(&ServiceGroup::Paper).is_ok());
         assert!(config.check_group(&ServiceGroup::Auth).is_ok());
+        assert!(config.check_group(&ServiceGroup::Alert).is_ok());
     }
 
     #[test]

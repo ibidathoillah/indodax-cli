@@ -10,6 +10,7 @@ pub enum ServiceGroup {
     Funding,
     Paper,
     Auth,
+    Alert,
 }
 
 impl ServiceGroup {
@@ -22,12 +23,13 @@ impl ServiceGroup {
             ServiceGroup::Funding,
             ServiceGroup::Paper,
             ServiceGroup::Auth,
+            ServiceGroup::Alert,
         ]
     }
 
     /// Default service groups (safe operations, no auth required for some).
     pub fn default_groups() -> Vec<ServiceGroup> {
-        vec![ServiceGroup::Market, ServiceGroup::Account, ServiceGroup::Paper]
+        vec![ServiceGroup::Market, ServiceGroup::Account, ServiceGroup::Paper, ServiceGroup::Alert]
     }
 
     /// Whether this group contains dangerous operations (trade, funding).
@@ -57,6 +59,7 @@ impl ServiceGroup {
                 "funding" => groups.push(ServiceGroup::Funding),
                 "paper" => groups.push(ServiceGroup::Paper),
                 "auth" => groups.push(ServiceGroup::Auth),
+                "alert" => groups.push(ServiceGroup::Alert),
                 _ => return Err(format!("Unknown service group: '{}'", part)),
             }
         }
@@ -78,6 +81,7 @@ impl fmt::Display for ServiceGroup {
             ServiceGroup::Funding => write!(f, "funding"),
             ServiceGroup::Paper => write!(f, "paper"),
             ServiceGroup::Auth => write!(f, "auth"),
+            ServiceGroup::Alert => write!(f, "alert"),
         }
     }
 }
@@ -92,6 +96,7 @@ impl FromStr for ServiceGroup {
             "funding" => Ok(ServiceGroup::Funding),
             "paper" => Ok(ServiceGroup::Paper),
             "auth" => Ok(ServiceGroup::Auth),
+            "alert" => Ok(ServiceGroup::Alert),
             _ => Err(format!("Unknown service group: '{}'", s)),
         }
     }
@@ -125,9 +130,10 @@ mod tests {
     #[test]
     fn test_parse_all() {
         let groups = ServiceGroup::parse("all").unwrap();
-        assert_eq!(groups.len(), 6);
+        assert_eq!(groups.len(), 7);
         assert!(groups.contains(&ServiceGroup::Market));
         assert!(groups.contains(&ServiceGroup::Funding));
+        assert!(groups.contains(&ServiceGroup::Alert));
     }
 
     #[test]
@@ -152,10 +158,11 @@ mod tests {
     #[test]
     fn test_default_groups() {
         let groups = ServiceGroup::default_groups();
-        assert_eq!(groups.len(), 3);
+        assert_eq!(groups.len(), 4);
         assert!(groups.contains(&ServiceGroup::Market));
         assert!(groups.contains(&ServiceGroup::Account));
         assert!(groups.contains(&ServiceGroup::Paper));
+        assert!(groups.contains(&ServiceGroup::Alert));
     }
 
     #[test]
@@ -184,9 +191,10 @@ mod tests {
     #[test]
     fn test_all_contains_all() {
         let all = ServiceGroup::all();
-        assert_eq!(all.len(), 6);
+        assert_eq!(all.len(), 7);
         for group in &[ServiceGroup::Market, ServiceGroup::Account, ServiceGroup::Trade,
-                       ServiceGroup::Funding, ServiceGroup::Paper, ServiceGroup::Auth] {
+                       ServiceGroup::Funding, ServiceGroup::Paper, ServiceGroup::Auth,
+                       ServiceGroup::Alert] {
             assert!(all.contains(group));
         }
     }

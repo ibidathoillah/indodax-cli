@@ -23,6 +23,7 @@ Unofficial Rust CLI for Indodax. Use it to inspect markets, manage account data,
 
 ## Recent Highlights
 
+- **MCP server overhaul**: Alert tools, deposit address, auth configuration, WebSocket snapshot tools, Resources, and Prompts support.
 - WebSocket reliability overhaul: application-level pings, automatic reconnection with exponential backoff, and private WebSocket support for real-time order and balance updates.
 - Secure WebSocket authentication: configurable WebSocket tokens with fallback to a stable default.
 - TradeAPI-2 compliance: normalized symbol formats and stricter request handling across commands.
@@ -253,14 +254,35 @@ Service groups:
 
 | Group | Tools | Auth Required | Dangerous |
 |-------|-------|---------------|-----------|
-| `market` | Server time, ticker, pairs, orderbook, trades, OHLC, price increments | No | No |
-| `account` | Balance, trade history, transactions, account info | Yes | No |
-| `trade` | Buy, sell, cancel orders | Yes | Yes |
-| `funding` | Withdraw fees, withdraw crypto | Yes | Yes |
-| `paper` | Paper trading init, balance, buy, sell, orders, cancel, history, status | No | No |
-| `auth` | Show config, test credentials | Varies | No |
+| `market` | Server time, ticker, pairs, orderbook, trades, OHLC, price increments, WS snapshots | No | No |
+| `account` | Balance, trade history, transactions, account info, open orders, order history, get order | Yes | No |
+| `trade` | Buy, sell, cancel, cancel all orders | Yes | Yes |
+| `funding` | Withdraw fees, withdraw crypto, deposit address | Yes | Yes |
+| `paper` | Paper trading init, balance, buy, sell, orders, cancel, fill, history, status | No | No |
+| `auth` | Show config, test credentials, set credentials | Varies | No |
+| `alert` | Add, list, cancel, check price alerts | No | No |
 
 By default, `trade` and `funding` MCP tools require `acknowledged: true`. Use `--allow-dangerous` only for controlled local automation.
+
+#### MCP Resources
+
+The server exposes read-only resources that MCP clients can inspect:
+
+| Resource URI | Description |
+|---|---|
+| `config://current` | Current API configuration status |
+| `pairs://list` | All available trading pairs from the API |
+| `paper://state` | Current paper trading state (balances, orders count) |
+
+#### MCP Prompts
+
+Pre-built prompt templates for common workflows:
+
+| Prompt | Arguments | Description |
+|---|---|---|
+| `create_order` | `side`, `pair`, `price`, `amount`, `idr` | Generate buy/sell order with safety checks |
+| `check_portfolio` | (none) | Account balance and open orders overview |
+| `analyze_market` | `pair` | Market analysis with ticker, order book, and trades |
 
 Example MCP client configuration:
 

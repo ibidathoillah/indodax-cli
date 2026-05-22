@@ -33,6 +33,15 @@ pub fn funding_tools() -> Vec<Tool> {
             }),
             vec!["currency", "amount", "address", "acknowledged"],
         ),
+        IndodaxMcp::tool_def(
+            "deposit_address",
+            "[REQUIRES AUTH] Generate a deposit address for a currency",
+            serde_json::json!({
+                "currency": IndodaxMcp::str_param("Currency to deposit, e.g. btc", true, None),
+                "network": IndodaxMcp::str_param("Blockchain network (optional)", false, None),
+            }),
+            vec!["currency"],
+        ),
     ]
 }
 
@@ -83,6 +92,30 @@ impl IndodaxMcp {
         match self
             .client
             .private_post_v1::<Value>("withdrawCoin", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_deposit_address(
+        &self,
+        currency: &str,
+        network: Option<&str>,
+    ) -> CallToolResult {
+        if currency.is_empty() {
+            return Self::validation_error_result("Missing required parameter: currency".into());
+        }
+        let mut params = HashMap::new();
+        params.insert("currency".to_string(), currency.to_string());
+        if let Some(n) = network {
+            params.insert("network".to_string(), n.to_string());
+        }
+
+        match self
+            .client
+            .private_post_v1::<Value>("depositAddress", &params)
             .await
         {
             Ok(data) => Self::json_result(data),

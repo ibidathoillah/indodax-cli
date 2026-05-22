@@ -89,7 +89,7 @@ fn get_next_id(alerts: &[PriceAlert]) -> u64 {
     alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1
 }
 
-async fn alert_add(
+pub async fn alert_add(
     pair: &str,
     above: Option<f64>,
     below: Option<f64>,
@@ -170,7 +170,7 @@ async fn alert_add(
         .with_addendum(format!("[ALERT] Created {} alert for {} @ {}", id, pair, condition_str)))
 }
 
-fn alert_list(include_history: bool) -> Result<CommandOutput> {
+pub fn alert_list(include_history: bool) -> Result<CommandOutput> {
     let alerts = load_alerts()?;
 
     let filtered: Vec<&PriceAlert> = if include_history {
@@ -232,7 +232,7 @@ fn alert_list(include_history: bool) -> Result<CommandOutput> {
         .with_addendum(format!("[ALERT] {} alert(s)", filtered.len())))
 }
 
-fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> {
+pub fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> {
     let mut alerts = load_alerts()?;
 
     if cancel_all {
@@ -272,7 +272,7 @@ fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> {
     }
 }
 
-async fn alert_check(
+pub async fn alert_check(
     client: &IndodaxClient,
     id: Option<u64>,
     pair_filter: Option<&str>,

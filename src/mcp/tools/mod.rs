@@ -1,9 +1,11 @@
 pub mod account;
+pub mod alert;
 pub mod auth;
 pub mod funding;
 pub mod market;
 pub mod paper;
 pub mod trade;
+pub mod websocket;
 
 use std::sync::Arc;
 
@@ -13,6 +15,8 @@ use serde_json::{Map, Value};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, Content, Implementation, InitializeResult,
     ListToolsResult, PaginatedRequestParams, ServerCapabilities, Tool,
+    ListResourcesResult, Resource, ReadResourceResult, ListPromptsResult,
+    GetPromptRequestParams,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::ErrorData as McpError;
@@ -31,7 +35,7 @@ pub struct IndodaxMcp {
     pub config: Arc<Mutex<IndodaxConfig>>,
     pub safety: SafetyConfig,
     pub enabled_groups: Vec<ServiceGroup>,
-    pub paper_mutex: Arc<tokio::sync::Mutex<()>>,
+    pub paper_state: Arc<tokio::sync::Mutex<Option<crate::commands::paper::PaperState>>>,
 }
 
 impl IndodaxMcp {
@@ -46,7 +50,7 @@ impl IndodaxMcp {
             config: Arc::new(Mutex::new(config)),
             safety,
             enabled_groups,
-            paper_mutex: Arc::new(tokio::sync::Mutex::new(())),
+            paper_state: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -54,7 +58,27 @@ impl IndodaxMcp {
         self.enabled_groups.contains(group)
     }
 
-    pub fn str_param(description: &str, _required: bool, default_: Option<&str>) -> Value {
+    async fn load_paper_state(&self) -> crate::commands::paper::PaperState {
+        let mut state_guard = self.paper_state.lock().await;
+        if let Some(state) = state_guard.as_ref() {
+            return state.clone();
+        }
+        let config = self.config.lock().await;
+        let state = crate::commands::paper::PaperState::load(&config);
+        *state_guard = Some(state.clone());
+        state
+    }
+
+    async fn save_paper_state(
+        &self,
+        state: &crate::commands::paper::PaperState,
+    ) -> Result<(), IndodaxError> {
+        let mut state_guard = self.paper_state.lock().await;
+        *state_guard = Some(state.clone());
+        state.save()
+    }
+
+    pub fn str_param(description: &str, required: bool, default_: Option<&str>) -> Value {
         let mut schema = serde_json::json!({
             "type": "string",
             "description": description,
@@ -62,14 +86,21 @@ impl IndodaxMcp {
         if let Some(d) = default_ {
             schema["default"] = Value::String(d.to_string());
         }
+        if required {
+            schema["required"] = Value::Bool(true);
+        }
         schema
     }
 
-    pub fn num_param(description: &str, _required: bool) -> Value {
-        serde_json::json!({
+    pub fn num_param(description: &str, required: bool) -> Value {
+        let mut schema = serde_json::json!({
             "type": "number",
             "description": description,
-        })
+        });
+        if required {
+            schema["required"] = Value::Bool(true);
+        }
+        schema
     }
 
     pub fn bool_param(description: &str) -> Value {
@@ -185,12 +216,189 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
         InitializeResult::new(
             ServerCapabilities::builder()
                 .enable_tools()
+                .enable_resources()
+                .enable_prompts()
                 .build(),
         )
         .with_server_info(Implementation::new(
             "indodax-cli",
             env!("CARGO_PKG_VERSION"),
         ))
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let resources = vec![
+            Resource::new(
+                rmcp::model::RawResource::new("config://current", "Current API config"),
+                None,
+            ),
+            Resource::new(
+                rmcp::model::RawResource::new("pairs://list", "Available trading pairs"),
+                None,
+            ),
+            Resource::new(
+                rmcp::model::RawResource::new("paper://state", "Paper trading state"),
+                None,
+            ),
+        ];
+        Ok(ListResourcesResult::with_all_items(resources))
+    }
+
+    async fn read_resource(
+        &self,
+        request: rmcp::model::ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, McpError> {
+        let uri = request.uri.as_str();
+        let content = match uri {
+            "config://current" => {
+                let config = self.config.lock().await;
+                serde_json::json!({
+                    "api_key_set": config.api_key.is_some(),
+                    "api_secret_set": config.api_secret.is_some(),
+                    "callback_url": config.callback_url,
+                })
+            }
+            "pairs://list" => {
+                match self.client.public_get::<Value>("/api/pairs").await {
+                    Ok(data) => data,
+                    Err(e) => serde_json::json!({"error": e.to_string()}),
+                }
+            }
+            "paper://state" => {
+                let state = self.load_paper_state().await;
+                serde_json::json!({
+                    "balances": state.balances,
+                    "open_orders_count": state.orders.len(),
+                    "trade_count": state.trade_count,
+                })
+            }
+            _ => {
+                return Err(McpError::invalid_params(
+                    format!("Unknown resource URI: {}", uri),
+                    None,
+                ));
+            }
+        };
+
+        let text = serde_json::to_string_pretty(&content).unwrap_or_default();
+        let text_content = rmcp::model::ResourceContents::TextResourceContents {
+            uri: request.uri,
+            mime_type: Some("application/json".to_string()),
+            text,
+            meta: None,
+        };
+        Ok(ReadResourceResult::new(vec![text_content]))
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        let prompts = vec![
+            rmcp::model::Prompt::new(
+                "create_order",
+                Some("Generate a buy or sell order with proper parameters and safety checks".to_string()),
+                Some(vec![
+                    rmcp::model::PromptArgument::new("side"),
+                    rmcp::model::PromptArgument::new("pair"),
+                    rmcp::model::PromptArgument::new("price"),
+                    rmcp::model::PromptArgument::new("amount"),
+                    rmcp::model::PromptArgument::new("idr"),
+                ]),
+            ),
+            rmcp::model::Prompt::new(
+                "check_portfolio",
+                Some("Get account balance and open orders summary".to_string()),
+                None,
+            ),
+            rmcp::model::Prompt::new(
+                "analyze_market",
+                Some("Analyze market conditions for a trading pair".to_string()),
+                Some(vec![
+                    rmcp::model::PromptArgument::new("pair"),
+                ]),
+            ),
+        ];
+        Ok(ListPromptsResult::with_all_items(prompts))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::GetPromptResult, McpError> {
+        let name = request.name.as_str();
+        let args = request.arguments.unwrap_or_default();
+
+        let description = match name {
+            "create_order" => {
+                let side = args.get("side").and_then(|v| v.as_str()).unwrap_or("buy");
+                let pair = args.get("pair").and_then(|v| v.as_str()).unwrap_or("btc_idr");
+                let price = args.get("price").and_then(|v| v.as_str()).unwrap_or("");
+                let amount = args.get("amount").and_then(|v| v.as_str()).unwrap_or("");
+                let idr = args.get("idr").and_then(|v| v.as_str()).unwrap_or("");
+
+                if side == "buy" {
+                    format!(
+                        "Place a buy order for {} pair. Use the buy_order tool. \
+                         Pair: {}. {}{}{}. \
+                         IMPORTANT: Set acknowledged=true to confirm this is intentional.",
+                        pair,
+                        pair,
+                        if !price.is_empty() { format!("Price: {}. ", price) } else { String::new() },
+                        if !idr.is_empty() { format!("IDR amount: {}. ", idr) } else { String::new() },
+                        if price.is_empty() { "This will be a market order (no price specified). " } else { "" }
+                    )
+                } else {
+                    format!(
+                        "Place a sell order for {} pair. Use the sell_order tool. \
+                         Pair: {}. {}{} \
+                         IMPORTANT: Set acknowledged=true to confirm this is intentional.",
+                        pair,
+                        pair,
+                        if !price.is_empty() { format!("Price: {}. ", price) } else { String::new() },
+                        if !amount.is_empty() { format!("Amount: {}. ", amount) } else { "Amount is required for sell orders. ".to_string() }
+                    )
+                }
+            }
+            "check_portfolio" => {
+                "Call account_info to get all balances, then call open_orders to see all open orders. \
+                 Summarize the results showing: total IDR balance, crypto balances (non-zero only), \
+                 and count of open orders per pair."
+                    .to_string()
+            }
+            "analyze_market" => {
+                let pair = args.get("pair").and_then(|v| v.as_str()).unwrap_or("btc_idr");
+                let normalized = crate::commands::helpers::normalize_pair(pair);
+                format!(
+                    "Analyze market for {} pair:\n\
+                     1. Call ticker to get current price and 24h stats\n\
+                     2. Call orderbook to see bid/ask spread and depth\n\
+                     3. Call trades to see recent trade activity\n\
+                     Provide a summary with: current price, 24h change, bid-ask spread, \
+                     and recent trade volume trend.",
+                    normalized
+                )
+            }
+            _ => {
+                return Err(McpError::invalid_params(
+                    format!("Unknown prompt: {}", name),
+                    None,
+                ));
+            }
+        };
+
+        let messages = vec![rmcp::model::PromptMessage::new_text(
+            rmcp::model::PromptMessageRole::User,
+            description,
+        )];
+        Ok(rmcp::model::GetPromptResult::new(messages))
     }
 
     async fn list_tools(
@@ -386,6 +594,11 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 )
                 .await
             }
+            "deposit_address" => {
+                let currency = Self::get_str(&args, "currency").unwrap_or_default();
+                let network = Self::get_str(&args, "network");
+                self.handle_deposit_address(&currency, network.as_deref()).await
+            }
 
             // Paper
             "paper_init" => {
@@ -442,6 +655,57 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             // Auth
             "auth_show" => self.handle_auth_show().await,
             "auth_test" => self.handle_auth_test().await,
+            "auth_set" => {
+                let api_key = Self::get_str(&args, "api_key").unwrap_or_default();
+                let api_secret = Self::get_str(&args, "api_secret").unwrap_or_default();
+                let callback_url = Self::get_str(&args, "callback_url");
+                let test = Self::get_bool(&args, "test");
+                self.handle_auth_set(api_key, api_secret, callback_url, test).await
+            },
+
+            // Alert
+            "alert_add" => {
+                let pair = Self::get_str(&args, "pair").unwrap_or_default();
+                let above = Self::get_num(&args, "above");
+                let below = Self::get_num(&args, "below");
+                let percent_up = Self::get_num(&args, "percent_up");
+                let percent_down = Self::get_num(&args, "percent_down");
+                let note = Self::get_str(&args, "note");
+                self.handle_alert_add(&pair, above, below, percent_up, percent_down, note).await
+            }
+            "alert_list" => {
+                let history = Self::get_bool(&args, "history");
+                self.handle_alert_list(history).await
+            }
+            "alert_cancel" => {
+                let id = Self::get_num(&args, "id");
+                let all = Self::get_bool(&args, "all");
+                self.handle_alert_cancel(id, all).await
+            }
+            "alert_check" => {
+                let id = Self::get_num(&args, "id");
+                let pair = Self::get_str(&args, "pair");
+                self.handle_alert_check(id, pair).await
+            }
+
+            // WebSocket snapshots (Market group)
+            "ws_snapshot_ticker" => {
+                let pair = helpers::normalize_pair(
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+                );
+                self.handle_ws_snapshot_ticker(&pair).await
+            }
+            "ws_snapshot_book" => {
+                let pair = helpers::normalize_pair(
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+                );
+                self.handle_ws_snapshot_book(&pair).await
+            }
+            "ws_snapshot_summary" => self.handle_ws_snapshot_summary().await,
+            "ws_token" => {
+                let private = Self::get_bool(&args, "private");
+                self.handle_ws_token(private).await
+            }
 
             _ => Self::error_result(format!("Unknown tool: {}", name)),
         };
@@ -477,6 +741,12 @@ fn all_tools(mcp: &IndodaxMcp) -> Vec<Tool> {
     if mcp.is_group_enabled(&ServiceGroup::Auth) {
         tools.extend(auth::auth_tools());
     }
+    if mcp.is_group_enabled(&ServiceGroup::Alert) {
+        tools.extend(alert::alert_tools());
+    }
+    if mcp.is_group_enabled(&ServiceGroup::Market) {
+        tools.extend(websocket::websocket_tools());
+    }
 
     tools
 }
@@ -495,10 +765,10 @@ mod tests {
     use crate::config::IndodaxConfig;
 
 fn test_mcp() -> IndodaxMcp {
-    let client = IndodaxClient::new(None).unwrap();
+        let client = IndodaxClient::new(None).unwrap();
         let config = IndodaxConfig::default();
         let safety = SafetyConfig::new(false);
-        let groups = vec![ServiceGroup::Market, ServiceGroup::Paper];
+        let groups = vec![ServiceGroup::Market, ServiceGroup::Paper, ServiceGroup::Alert];
         IndodaxMcp::new(client, config, safety, groups)
     }
 
@@ -583,15 +853,23 @@ fn test_mcp() -> IndodaxMcp {
 
     #[test]
     fn test_str_param() {
-        let param = IndodaxMcp::str_param("A test string", false, Some("default"));
+        let param = IndodaxMcp::str_param("A test string", true, Some("default"));
         assert_eq!(param["type"], "string");
         assert_eq!(param["default"], "default");
+        assert_eq!(param["required"], true);
+
+        let param_opt = IndodaxMcp::str_param("Optional string", false, None);
+        assert_eq!(param_opt["required"], Value::Null);
     }
 
     #[test]
-    fn test_num_param() {
+    fn test_num_param_required() {
         let param = IndodaxMcp::num_param("A test number", true);
         assert_eq!(param["type"], "number");
+        assert_eq!(param["required"], true);
+
+        let param_opt = IndodaxMcp::num_param("Optional number", false);
+        assert_eq!(param_opt["required"], Value::Null);
     }
 
     #[test]
@@ -605,6 +883,7 @@ fn test_mcp() -> IndodaxMcp {
         let mcp = test_mcp();
         assert!(mcp.is_group_enabled(&ServiceGroup::Market));
         assert!(mcp.is_group_enabled(&ServiceGroup::Paper));
+        assert!(mcp.is_group_enabled(&ServiceGroup::Alert));
         assert!(!mcp.is_group_enabled(&ServiceGroup::Trade));
         assert!(!mcp.is_group_enabled(&ServiceGroup::Account));
         assert!(!mcp.is_group_enabled(&ServiceGroup::Funding));
@@ -648,6 +927,8 @@ fn test_mcp() -> IndodaxMcp {
         assert!(names.contains(&"ticker".to_string()));
         assert!(names.contains(&"paper_init".to_string()));
         assert!(names.contains(&"paper_balance".to_string()));
+        assert!(names.contains(&"alert_add".to_string()));
+        assert!(names.contains(&"alert_list".to_string()));
         assert!(!names.contains(&"buy_order".to_string()));
         assert!(!names.contains(&"sell_order".to_string()));
         assert!(!names.contains(&"account_info".to_string()));

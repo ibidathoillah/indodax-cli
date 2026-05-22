@@ -1,6 +1,7 @@
 {
   "name": "@ibidathoillah/indodax-cli",
-  "version": "0.1.28",
+  "version": "0.1.29",
+  "mcpName": "io.github.ibidathoillah/indodax-cli",
   "description": "Command-line interface for the Indodax cryptocurrency exchange",
   "bin": {
     "indodax": "./bin/indodax.js"
