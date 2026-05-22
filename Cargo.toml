@@ -1,6 +1,6 @@
 [package]
 name = "indodax-cli"
-version = "0.1.26"
+version = "0.1.27"
 edition = "2021"
 description = "A command-line interface for the Indodax cryptocurrency exchange"
 license = "MIT"
@@ -57,6 +57,7 @@ tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Location", "Window"] }
+
 
 [dev-dependencies]
 serial_test = "3.4.0"
