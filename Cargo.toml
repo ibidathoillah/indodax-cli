@@ -1,6 +1,6 @@
 [package]
 name = "indodax-cli"
-version = "0.1.26"
+version = "0.1.27"
 edition = "2021"
 description = "A command-line interface for the Indodax cryptocurrency exchange"
 license = "MIT"
@@ -41,6 +41,7 @@ axum = "0.8"
 tower-http = { version = "0.6", features = ["trace"] }
 tempfile = "3"
 clap_complete = "4"
+
 
 [dev-dependencies]
 serial_test = "3.4.0"
