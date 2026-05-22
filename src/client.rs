@@ -32,6 +32,11 @@ fn public_base_url() -> String {
     "https://indodax.com".to_owned()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn api_base_url() -> String {
+    "https://api.indodax.com".to_owned()
+}
+
 #[cfg(target_arch = "wasm32")]
 fn public_base_url() -> String {
     let base = option_env!("INDODAX_PUBLIC_BASE_URL").unwrap_or("/api/indodax");
@@ -44,6 +49,12 @@ fn public_base_url() -> String {
         .unwrap_or_default();
 
     format!("{origin}{base}")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn api_base_url() -> String {
+    // For WASM, we usually proxy through the same origin or a specific path
+    public_base_url()
 }
 
 #[derive(Debug)]
@@ -212,6 +223,53 @@ impl IndodaxClient {
             ("to", &to_str),
         ];
         self.public_get_v2("/tradingview/history_v2", &params).await
+    }
+
+    pub async fn get_webdata(&self, pair: &str) -> Result<serde_json::Value, IndodaxError> {
+        let path = format!("/api/webdata/{}", pair);
+        self.public_get_v2(&path, &[("lang", "indonesia")]).await
+    }
+
+    pub async fn get_chatroom_history(&self) -> Result<serde_json::Value, IndodaxError> {
+        self.public_get_v2("/api/v2/chatroom/history", &[]).await
+    }
+
+    pub async fn get_pairs_v2(&self, pair: Option<&str>) -> Result<serde_json::Value, IndodaxError> {
+        if let Some(p) = pair {
+            self.public_get_v2("/api/pairs_v2", &[("pair", p)]).await
+        } else {
+            self.public_get_v2("/api/pairs_v2", &[]).await
+        }
+    }
+
+    pub async fn get_tv_search(&self) -> Result<serde_json::Value, IndodaxError> {
+        self.public_get_v2("/tradingview/search_v2", &[]).await
+    }
+
+    pub async fn get_terminal_trade(&self, pair: &str) -> Result<serde_json::Value, IndodaxError> {
+        let path = format!("/terminal-trading/trade?pair={}", pair);
+        self.public_get_v2(&path, &[]).await
+    }
+
+    pub async fn get_terminal_market_data(&self, pair: &str) -> Result<serde_json::Value, IndodaxError> {
+        let path = format!("/terminal-trading/market/data?pair={}", pair);
+        self.public_get_v2(&path, &[]).await
+    }
+
+    pub async fn get_terminal_market_category(&self) -> Result<serde_json::Value, IndodaxError> {
+        self.public_get_v2("/terminal-trading/market/category", &[]).await
+    }
+
+    pub async fn get_onramp_config(&self, pair: &str) -> Result<serde_json::Value, IndodaxError> {
+        let url = format!("{}/deposit-idr/v1/onramp/config?pair={}", api_base_url(), pair);
+        let resp = self.retry_get(&url).await?;
+        self.handle_response(resp).await
+    }
+
+    pub async fn get_news(&self, asset: &str, page: u32) -> Result<String, IndodaxError> {
+        let url = format!("{}/news?page={}&asset={}", public_base_url(), page, asset);
+        let resp = self.retry_get(&url).await?;
+        Ok(resp.text().await?)
     }
 
     pub async fn public_get<T: DeserializeOwned>(

@@ -132,7 +132,7 @@ pub enum Command {
         pair: String,
     },
 
-    /// Get OHLCV candle data (default --since is 24h ago)
+    /// Get OHLCV candle data (default --from is 24h ago)
     Ohlc {
         #[arg(short, long, default_value = "btc_idr")]
         pair: String,
@@ -142,6 +142,53 @@ pub enum Command {
         since: Option<u64>,
         #[arg(long, help = "End timestamp in seconds (default: now)")]
         to: Option<u64>,
+    },
+
+    /// Get market webdata for a pair
+    Webdata {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+    },
+
+    /// Get chatroom history
+    ChatHistory,
+
+    /// Get detailed pairs info (V2)
+    PairsV2 {
+        #[arg(short, long)]
+        pair: Option<String>,
+    },
+
+    /// Search markets (TradingView Search V2)
+    SearchV2,
+
+    /// Get terminal trading data
+    TerminalTrade {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+    },
+
+    /// Get terminal market data
+    TerminalMarket {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+    },
+
+    /// Get terminal market categories
+    TerminalCategories,
+
+    /// Get onramp config for a pair
+    OnrampConfig {
+        #[arg(default_value = "usdt_idr")]
+        pair: String,
+    },
+
+    /// Get news for an asset
+    News {
+        #[arg(default_value = "btc")]
+        asset: String,
+        #[arg(short, long, default_value = "1")]
+        page: u32,
     },
 
     /// Get price increments (tick sizes)
@@ -302,6 +349,24 @@ pub async fn dispatch(
             from: since,
             to,
         }).await
+            .map_err(map_anyhow_error)?,
+        Command::Webdata { pair } => commands::market::execute(client, &commands::market::MarketCommand::WebData { pair }).await
+            .map_err(map_anyhow_error)?,
+        Command::ChatHistory => commands::market::execute(client, &commands::market::MarketCommand::ChatHistory).await
+            .map_err(map_anyhow_error)?,
+        Command::PairsV2 { pair } => commands::market::execute(client, &commands::market::MarketCommand::PairsV2 { pair }).await
+            .map_err(map_anyhow_error)?,
+        Command::SearchV2 => commands::market::execute(client, &commands::market::MarketCommand::SearchV2).await
+            .map_err(map_anyhow_error)?,
+        Command::TerminalTrade { pair } => commands::market::execute(client, &commands::market::MarketCommand::TerminalTrade { pair }).await
+            .map_err(map_anyhow_error)?,
+        Command::TerminalMarket { pair } => commands::market::execute(client, &commands::market::MarketCommand::TerminalMarket { pair }).await
+            .map_err(map_anyhow_error)?,
+        Command::TerminalCategories => commands::market::execute(client, &commands::market::MarketCommand::TerminalCategories).await
+            .map_err(map_anyhow_error)?,
+        Command::OnrampConfig { pair } => commands::market::execute(client, &commands::market::MarketCommand::OnrampConfig { pair }).await
+            .map_err(map_anyhow_error)?,
+        Command::News { asset, page } => commands::market::execute(client, &commands::market::MarketCommand::News { asset, page }).await
             .map_err(map_anyhow_error)?,
         Command::PriceIncrements => commands::market::execute(client, &commands::market::MarketCommand::PriceIncrements).await
             .map_err(map_anyhow_error)?,

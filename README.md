@@ -128,6 +128,15 @@ indodax orderbook btc/idr --count 10
 indodax trades btc/idr
 indodax ohlc --pair btc/idr --interval 60
 indodax history btc/idr --timeframe 15 --from 1779158061 --to 1779454161
+indodax webdata btc/idr
+indodax chat-history
+indodax pairs-v2
+indodax search-v2
+indodax terminal-trade usdt/idr
+indodax terminal-market usdt/idr
+indodax terminal-categories
+indodax onramp-config usdt/idr
+indodax news btc
 indodax price-increments
 ```
 

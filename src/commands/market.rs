@@ -52,6 +52,53 @@ pub enum MarketCommand {
 
     #[command(name = "price-increments", about = "Get price increments (tick sizes)")]
     PriceIncrements,
+
+    #[command(name = "webdata", about = "Get market webdata for a pair")]
+    WebData {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+    },
+
+    #[command(name = "chatroom-history", about = "Get chatroom history")]
+    ChatHistory,
+
+    #[command(name = "pairs-v2", about = "Get detailed pairs info (V2)")]
+    PairsV2 {
+        #[arg(short, long)]
+        pair: Option<String>,
+    },
+
+    #[command(name = "search-v2", about = "Search markets (TradingView Search V2)")]
+    SearchV2,
+
+    #[command(name = "terminal-trade", about = "Get terminal trading data")]
+    TerminalTrade {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+    },
+
+    #[command(name = "terminal-market", about = "Get terminal market data")]
+    TerminalMarket {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+    },
+
+    #[command(name = "terminal-categories", about = "Get terminal market categories")]
+    TerminalCategories,
+
+    #[command(name = "onramp-config", about = "Get onramp config for a pair")]
+    OnrampConfig {
+        #[arg(default_value = "usdt_idr")]
+        pair: String,
+    },
+
+    #[command(name = "news", about = "Get news for an asset")]
+    News {
+        #[arg(default_value = "btc")]
+        asset: String,
+        #[arg(short, long, default_value = "1")]
+        page: u32,
+    },
 }
 
 pub async fn execute(
@@ -81,6 +128,27 @@ pub async fn execute(
             ohlc(client, &sym, timeframe, *from, *to).await
         }
         MarketCommand::PriceIncrements => price_increments(client).await,
+        MarketCommand::WebData { pair } => {
+            let sym = helpers::normalize_pair_v2(pair).to_uppercase();
+            webdata(client, &sym).await
+        }
+        MarketCommand::ChatHistory => chat_history(client).await,
+        MarketCommand::PairsV2 { pair } => pairs_v2(client, pair.as_deref()).await,
+        MarketCommand::SearchV2 => search_v2(client).await,
+        MarketCommand::TerminalTrade { pair } => {
+            let sym = helpers::normalize_pair_v2(pair).to_lowercase();
+            terminal_trade(client, &sym).await
+        }
+        MarketCommand::TerminalMarket { pair } => {
+            let sym = helpers::normalize_pair_v2(pair).to_lowercase();
+            terminal_market(client, &sym).await
+        }
+        MarketCommand::TerminalCategories => terminal_categories(client).await,
+        MarketCommand::OnrampConfig { pair } => {
+            let sym = helpers::normalize_pair_v2(pair).to_lowercase();
+            onramp_config(client, &sym).await
+        }
+        MarketCommand::News { asset, page } => news(client, asset, *page).await,
     }
 }
 
@@ -329,6 +397,72 @@ async fn price_increments(client: &IndodaxClient) -> Result<CommandOutput> {
         let (headers, rows) = helpers::flatten_json_to_table(&data);
         Ok(CommandOutput::new(data, headers, rows))
     }
+}
+
+async fn webdata(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
+    let data = client.get_webdata(pair).await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn chat_history(client: &IndodaxClient) -> Result<CommandOutput> {
+    let data = client.get_chatroom_history().await?;
+    let headers = vec!["User".into(), "Message".into(), "Time".into()];
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    if let Some(arr) = data.as_array() {
+        for msg in arr {
+            rows.push(vec![
+                helpers::value_to_string(&msg["username"]),
+                helpers::value_to_string(&msg["message"]),
+                helpers::value_to_string(&msg["time"]),
+            ]);
+        }
+    }
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn pairs_v2(client: &IndodaxClient, pair: Option<&str>) -> Result<CommandOutput> {
+    let data = client.get_pairs_v2(pair).await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn search_v2(client: &IndodaxClient) -> Result<CommandOutput> {
+    let data = client.get_tv_search().await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn terminal_trade(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
+    let data = client.get_terminal_trade(pair).await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn terminal_market(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
+    let data = client.get_terminal_market_data(pair).await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn terminal_categories(client: &IndodaxClient) -> Result<CommandOutput> {
+    let data = client.get_terminal_market_category().await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn onramp_config(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
+    let data = client.get_onramp_config(pair).await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn news(client: &IndodaxClient, asset: &str, page: u32) -> Result<CommandOutput> {
+    let html = client.get_news(asset, page).await?;
+    let data = serde_json::json!({ "html_summary": html.chars().take(200).collect::<String>() + "..." });
+    let headers = vec!["News Content".into()];
+    let rows = vec![vec![html]];
+    Ok(CommandOutput::new(data, headers, rows))
 }
 
 #[cfg(test)]
