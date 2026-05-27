@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use serde_json::Value;
 use rmcp::model::{CallToolResult, Tool};
+use serde_json::Value;
 
 use super::IndodaxMcp;
 
@@ -61,15 +61,25 @@ pub fn trade_tools() -> Vec<Tool> {
 const BALANCE_EPSILON: f64 = 1e-8;
 
 impl IndodaxMcp {
-    pub async fn handle_buy_order(&self, pair: &str, idr: f64, price: Option<f64>) -> CallToolResult {
+    pub async fn handle_buy_order(
+        &self,
+        pair: &str,
+        idr: f64,
+        price: Option<f64>,
+    ) -> CallToolResult {
         if idr <= 0.0 || !idr.is_finite() {
-            return Self::validation_error_result(format!("IDR amount must be positive and finite, got {}", idr));
+            return Self::validation_error_result(format!(
+                "IDR amount must be positive and finite, got {}",
+                idr
+            ));
         }
         if let Some(p) = price {
             if p <= 0.0 || !p.is_finite() {
-                return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
+                return Self::validation_error_result(format!(
+                    "Price must be positive and finite, got {}",
+                    p
+                ));
             }
-
         }
 
         let info = match self.get_account_info().await {
@@ -104,11 +114,7 @@ impl IndodaxMcp {
             None
         };
 
-        match self
-            .client
-            .private_post_v1::<Value>("trade", &params)
-            .await
-        {
+        match self.client.private_post_v1::<Value>("trade", &params).await {
             Ok(data) => Self::json_result_with_warning(data, tick_warning),
             Err(e) => Self::error_from_indodax(&e),
         }
@@ -122,13 +128,18 @@ impl IndodaxMcp {
         order_type: &str,
     ) -> CallToolResult {
         if amount <= 0.0 || !amount.is_finite() {
-            return Self::validation_error_result(format!("Amount must be positive and finite, got {}", amount));
+            return Self::validation_error_result(format!(
+                "Amount must be positive and finite, got {}",
+                amount
+            ));
         }
         if let Some(p) = price {
             if p <= 0.0 || !p.is_finite() {
-                return Self::validation_error_result(format!("Price must be positive and finite, got {}", p));
+                return Self::validation_error_result(format!(
+                    "Price must be positive and finite, got {}",
+                    p
+                ));
             }
-
         }
 
         let base_currency = pair.split('_').next().unwrap_or_default();
@@ -197,11 +208,7 @@ impl IndodaxMcp {
             None
         };
 
-        match self
-            .client
-            .private_post_v1::<Value>("trade", &params)
-            .await
-        {
+        match self.client.private_post_v1::<Value>("trade", &params).await {
             Ok(data) => Self::json_result_with_warning(data, tick_warning),
             Err(e) => Self::error_from_indodax(&e),
         }
@@ -234,10 +241,7 @@ impl IndodaxMcp {
         }
     }
 
-    pub async fn handle_cancel_all_orders(
-        &self,
-        pair: Option<&str>,
-    ) -> CallToolResult {
+    pub async fn handle_cancel_all_orders(&self, pair: Option<&str>) -> CallToolResult {
         let scope_warning = if pair.is_none() {
             Some("[WARN] No pair filter specified — cancelling ALL open orders across all pairs. This is a global operation.")
         } else {

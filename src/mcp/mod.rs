@@ -38,7 +38,9 @@ pub async fn run(
     );
 
     // Block forever while the MCP server runs
-    service.waiting().await
+    service
+        .waiting()
+        .await
         .map_err(|e| IndodaxError::Other(format!("MCP server error: {}", e)))?;
 
     Ok(())

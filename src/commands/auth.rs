@@ -34,7 +34,12 @@ pub async fn execute(
     cmd: &AuthCommand,
 ) -> Result<CommandOutput> {
     match cmd {
-        AuthCommand::Set { api_key, api_secret, api_secret_stdin, callback_url } => {
+        AuthCommand::Set {
+            api_key,
+            api_secret,
+            api_secret_stdin,
+            callback_url,
+        } => {
             if let Some(key) = api_key {
                 config.api_key = Some(SecretValue::new(key));
             }
@@ -63,18 +68,9 @@ pub async fn execute(
         }
 
         AuthCommand::Show => {
-            let key_status = config
-                .api_key
-                .as_ref()
-                .map_or("not set", |_| "set");
-            let secret_status = config
-                .api_secret
-                .as_ref()
-                .map_or("not set", |_| "set");
-            let callback_url = config
-                .callback_url
-                .as_deref()
-                .unwrap_or("not set");
+            let key_status = config.api_key.as_ref().map_or("not set", |_| "set");
+            let secret_status = config.api_secret.as_ref().map_or("not set", |_| "set");
+            let callback_url = config.callback_url.as_deref().unwrap_or("not set");
             let config_path = IndodaxConfig::config_path();
 
             let headers = vec!["Field".into(), "Value".into()];
@@ -129,8 +125,20 @@ pub async fn execute(
             let headers = vec!["Field".into(), "Value".into()];
             let rows = vec![
                 vec!["Status".into(), "OK - Credentials valid".into()],
-                vec!["Name".into(), helpers::value_to_string(result.get("name").unwrap_or(&serde_json::Value::Null))],
-                vec!["Server Time".into(), helpers::value_to_string(result.get("server_time").unwrap_or(&serde_json::Value::Null))],
+                vec![
+                    "Name".into(),
+                    helpers::value_to_string(
+                        result.get("name").unwrap_or(&serde_json::Value::Null),
+                    ),
+                ],
+                vec![
+                    "Server Time".into(),
+                    helpers::value_to_string(
+                        result
+                            .get("server_time")
+                            .unwrap_or(&serde_json::Value::Null),
+                    ),
+                ],
                 vec!["Balances (non-zero)".into(), bal_summary],
             ];
 
@@ -147,7 +155,7 @@ pub async fn execute(
                 "status": "ok",
                 "message": "API credentials removed"
             });
-                Ok(CommandOutput::json(data))
+            Ok(CommandOutput::json(data))
         }
     }
 }
@@ -165,7 +173,12 @@ mod tests {
             callback_url: Some("http://callback.test".into()),
         };
         match cmd {
-            AuthCommand::Set { api_key, api_secret, api_secret_stdin, callback_url } => {
+            AuthCommand::Set {
+                api_key,
+                api_secret,
+                api_secret_stdin,
+                callback_url,
+            } => {
                 assert_eq!(api_key, Some("key123".into()));
                 assert_eq!(api_secret, Some("secret456".into()));
                 assert!(!api_secret_stdin);
@@ -211,7 +224,12 @@ mod tests {
             callback_url: None,
         };
         match cmd {
-            AuthCommand::Set { api_key, api_secret, api_secret_stdin, callback_url } => {
+            AuthCommand::Set {
+                api_key,
+                api_secret,
+                api_secret_stdin,
+                callback_url,
+            } => {
                 assert!(api_key.is_none());
                 assert!(api_secret.is_none());
                 assert!(api_secret_stdin);
@@ -223,11 +241,11 @@ mod tests {
 
     #[test]
     fn test_auth_command_variants() {
-        let _cmd1 = AuthCommand::Set { 
-            api_key: None, 
-            api_secret: None, 
-            api_secret_stdin: false, 
-            callback_url: None 
+        let _cmd1 = AuthCommand::Set {
+            api_key: None,
+            api_secret: None,
+            api_secret_stdin: false,
+            callback_url: None,
         };
         let _cmd2 = AuthCommand::Show;
         let _cmd3 = AuthCommand::Test;

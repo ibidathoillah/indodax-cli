@@ -21,7 +21,7 @@ pub enum IndodaxError {
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), any(feature = "cli", feature = "server")))]
     #[error("WebSocket error: {0}")]
     WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
 
@@ -67,7 +67,7 @@ impl IndodaxError {
         match self {
             IndodaxError::Api { category, .. } => category.to_string(),
             IndodaxError::Http(_) => "connection_error".to_string(),
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(all(not(target_arch = "wasm32"), any(feature = "cli", feature = "server")))]
             IndodaxError::WebSocket(_) => "connection_error".to_string(),
             IndodaxError::Json(_) => "validation_error".to_string(),
             IndodaxError::Config(_) => "config_error".to_string(),
@@ -81,7 +81,7 @@ impl IndodaxError {
         match self {
             IndodaxError::Api { retryable, .. } => *retryable,
             IndodaxError::Http(_) => true,
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(all(not(target_arch = "wasm32"), any(feature = "cli", feature = "server")))]
             IndodaxError::WebSocket(_) => true,
             _ => false,
         }
@@ -202,15 +202,18 @@ mod tests {
 
     #[test]
     fn test_indodax_error_json() {
-        let err = IndodaxError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err());
+        let err =
+            IndodaxError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err());
         assert_eq!(err.category(), "validation_error");
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), any(feature = "cli", feature = "server")))]
     #[test]
     fn test_indodax_error_websocket() {
         // WebSocket errors are harder to construct, but we can test the category
-        let err = IndodaxError::WebSocket(Box::new(tokio_tungstenite::tungstenite::Error::ConnectionClosed));
+        let err = IndodaxError::WebSocket(Box::new(
+            tokio_tungstenite::tungstenite::Error::ConnectionClosed,
+        ));
         assert_eq!(err.category(), "connection_error");
         assert!(err.is_retryable());
     }

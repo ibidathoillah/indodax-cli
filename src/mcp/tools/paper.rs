@@ -109,8 +109,22 @@ impl IndodaxMcp {
     pub async fn handle_paper_init(&self, idr: Option<f64>, btc: Option<f64>) -> CallToolResult {
         let state = crate::commands::paper::init_paper_state(idr, btc);
         use crate::commands::paper::{DEFAULT_BALANCE_BTC, DEFAULT_BALANCE_IDR};
-        let idr_str = crate::commands::helpers::format_balance("idr", state.balances.get("idr").copied().unwrap_or(DEFAULT_BALANCE_IDR));
-        let btc_str = crate::commands::helpers::format_balance("btc", state.balances.get("btc").copied().unwrap_or(DEFAULT_BALANCE_BTC));
+        let idr_str = crate::commands::helpers::format_balance(
+            "idr",
+            state
+                .balances
+                .get("idr")
+                .copied()
+                .unwrap_or(DEFAULT_BALANCE_IDR),
+        );
+        let btc_str = crate::commands::helpers::format_balance(
+            "btc",
+            state
+                .balances
+                .get("btc")
+                .copied()
+                .unwrap_or(DEFAULT_BALANCE_BTC),
+        );
         let msg = format!(
             "[PAPER] Paper trading initialized with {} IDR and {} BTC",
             idr_str, btc_str,
@@ -145,17 +159,30 @@ impl IndodaxMcp {
         let mut state = self.load_paper_state().await;
         let result = if side == "buy" {
             if let Some(idr_val) = idr {
-                crate::commands::paper::place_paper_order_idr(&mut state, pair, side, idr_val, price)
+                crate::commands::paper::place_paper_order_idr(
+                    &mut state, pair, side, idr_val, price,
+                )
             } else if let Some(amt) = amount {
                 crate::commands::paper::place_paper_order(&mut state, pair, side, price, amt)
             } else {
-                return Self::validation_error_result("Either amount or idr must be specified for buy".into());
+                return Self::validation_error_result(
+                    "Either amount or idr must be specified for buy".into(),
+                );
             }
         } else {
             let amt = match amount {
                 Some(v) if v > 0.0 => v,
-                Some(v) => return Self::validation_error_result(format!("Amount must be positive, got {}", v)),
-                None => return Self::validation_error_result("Missing required parameter: amount".into()),
+                Some(v) => {
+                    return Self::validation_error_result(format!(
+                        "Amount must be positive, got {}",
+                        v
+                    ))
+                }
+                None => {
+                    return Self::validation_error_result(
+                        "Missing required parameter: amount".into(),
+                    )
+                }
             };
             crate::commands::paper::place_paper_order(&mut state, pair, side, price, amt)
         };
@@ -164,7 +191,9 @@ impl IndodaxMcp {
                 if let Err(e) = self.save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
                 }
-                let response_amount = state.orders.last()
+                let response_amount = state
+                    .orders
+                    .last()
                     .map(|o| o.amount)
                     .or(amount)
                     .unwrap_or(0.0);
@@ -212,8 +241,16 @@ impl IndodaxMcp {
         let msg = if failures.is_empty() {
             format!("[PAPER] Cancelled {} orders", count)
         } else {
-            let reasons: Vec<String> = failures.iter().map(|(id, e)| format!("{}: {}", id, e)).collect();
-            format!("[PAPER] Cancelled {} orders, {} failed: {}", count, failures.len(), reasons.join("; "))
+            let reasons: Vec<String> = failures
+                .iter()
+                .map(|(id, e)| format!("{}: {}", id, e))
+                .collect();
+            format!(
+                "[PAPER] Cancelled {} orders, {} failed: {}",
+                count,
+                failures.len(),
+                reasons.join("; ")
+            )
         };
         Self::ok_result(msg)
     }
@@ -237,7 +274,10 @@ impl IndodaxMcp {
     ) -> CallToolResult {
         let order_id = match order_id {
             Some(v) if v.fract() != 0.0 || v <= 0.0 => {
-                return Self::validation_error_result(format!("order_id must be a positive whole number, got {}", v));
+                return Self::validation_error_result(format!(
+                    "order_id must be a positive whole number, got {}",
+                    v
+                ));
             }
             Some(v) => Some(v as u64),
             None => None,

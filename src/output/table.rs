@@ -53,16 +53,13 @@ mod tests {
         let output = CommandOutput {
             data: json!({}),
             headers: vec!["Col1".into(), "Col2".into()],
-            rows: vec![
-                vec!["a".into(), "b".into()],
-                vec!["c".into(), "d".into()],
-            ],
+            rows: vec![vec!["a".into(), "b".into()], vec!["c".into(), "d".into()]],
             format: super::super::OutputFormat::Table,
             addendum: None,
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         assert!(rendered.contains("Col1"));
         assert!(rendered.contains("Col2"));
@@ -81,9 +78,11 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
-        assert!(rendered.contains("fallback") || rendered.contains("data") || rendered.contains("{}"));
+        assert!(
+            rendered.contains("fallback") || rendered.contains("data") || rendered.contains("{}")
+        );
     }
 
     #[test]
@@ -97,7 +96,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         assert!(rendered.contains("Extra info here"));
     }
@@ -113,7 +112,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         assert!(!rendered.ends_with('\n') || !rendered.trim().is_empty());
     }

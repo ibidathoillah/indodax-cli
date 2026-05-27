@@ -10,7 +10,11 @@ pub fn render(output: &CommandOutput) -> String {
     }
     if !output.warnings.is_empty() {
         envelope["warnings"] = serde_json::Value::Array(
-            output.warnings.iter().map(|w| serde_json::Value::String(w.clone())).collect()
+            output
+                .warnings
+                .iter()
+                .map(|w| serde_json::Value::String(w.clone()))
+                .collect(),
         );
     }
     serde_json::to_string_pretty(&envelope).unwrap_or_else(|_| "{}".into())
@@ -32,7 +36,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["data"]["key"], "value");
@@ -49,7 +53,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["data"]["nested"]["a"], 1);
@@ -67,7 +71,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["data"][0], 1);
@@ -86,7 +90,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["data"], json!({}));
@@ -103,7 +107,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert!(parsed["data"].is_null());
@@ -120,7 +124,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["data"]["msg"], "hello\nworld\t!");
@@ -137,7 +141,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = render(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["data"]["key"], "value");

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use serde_json::Value;
 use rmcp::model::{CallToolResult, Tool};
+use serde_json::Value;
 
 use super::IndodaxMcp;
 use crate::commands::helpers;
@@ -92,12 +92,10 @@ impl IndodaxMcp {
 
     pub async fn handle_balance(&self) -> CallToolResult {
         match self.get_account_info().await {
-            Ok(data) => {
-                match data.get("balance") {
-                    Some(balance) => Self::json_result(balance.clone()),
-                    None => Self::error_result("API response missing 'balance' field".into()),
-                }
-            }
+            Ok(data) => match data.get("balance") {
+                Some(balance) => Self::json_result(balance.clone()),
+                None => Self::error_result("API response missing 'balance' field".into()),
+            },
             Err(e) => Self::error_from_indodax(&e),
         }
     }

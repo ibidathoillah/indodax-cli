@@ -6,50 +6,47 @@ description = "A command-line interface for the Indodax cryptocurrency exchange"
 license = "MIT"
 repository = "https://github.com/ibidathoillah/indodax-cli"
 
+[features]
+default = ["sdk"]
+sdk = []
+cli = ["dep:colored", "dep:dialoguer", "dep:rustyline", "dep:comfy-table", "dep:clap", "dep:tokio-tungstenite"]
+mcp = ["dep:rmcp"]
+server = ["dep:axum", "dep:tokio-tungstenite"]
 
 [[bin]]
-name = "indodax"
+name = "indodax-cli"
 path = "src/main.rs"
 required-features = ["cli"]
 
-[features]
-default = ["cli"]
-cli = []
-sdk = []
-
 [dependencies]
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4.4", features = ["derive"], optional = true }
 anyhow = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+indexmap = "2.2.0"
+hashbrown = "0.14"
+toml = "0.7"
 hmac = "0.12"
 sha2 = "0.10"
 url = "2"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = { version = "0.3", features = ["sink"] }
-thiserror = "2"
-dirs = "6"
+thiserror = "1"
+dirs = "5"
 tracing = "0.1"
-web-time = "1.1"
+web-time = "1.0"
+colored = { version = "2", optional = true }
+dialoguer = { version = "0.10", optional = true }
+rustyline = { version = "10", optional = true }
+comfy-table = { version = "7", optional = true }
+rmcp = { version = "0.1", optional = true }
+axum = { version = "0.7", optional = true }
+tokio-tungstenite = { version = "0.24", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-comfy-table = "7"
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
-rmcp = { version = "1.6", features = ["server", "transport-io", "macros", "schemars"] }
-schemars = "0.8"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-dialoguer = "0.11"
-rustyline = "17"
-colored = "3"
 indicatif = "0.17"
-shlex = "1"
-axum = "0.8"
-tower-http = { version = "0.6", features = ["trace"] }
-tempfile = "3"
-clap_complete = "4"
 tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -57,7 +54,5 @@ tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Location", "Window"] }
-
-
 [dev-dependencies]
 serial_test = "3.4.0"

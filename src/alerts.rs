@@ -1,7 +1,7 @@
+use crate::errors::IndodaxError;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use crate::errors::IndodaxError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceAlert {
@@ -53,9 +53,8 @@ impl PriceAlert {
 }
 
 pub fn get_alerts_path() -> Result<PathBuf, IndodaxError> {
-    let config_dir = dirs::config_dir().ok_or_else(|| {
-        IndodaxError::Config("Could not find config directory".into())
-    })?;
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| IndodaxError::Config("Could not find config directory".into()))?;
     let path = config_dir.join("indodax");
     if !path.exists() {
         fs::create_dir_all(&path).map_err(|e| {
@@ -70,9 +69,8 @@ pub fn load_alerts() -> Result<Vec<PriceAlert>, IndodaxError> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let content = fs::read_to_string(&path).map_err(|e| {
-        IndodaxError::Config(format!("Failed to read alerts file: {}", e))
-    })?;
+    let content = fs::read_to_string(&path)
+        .map_err(|e| IndodaxError::Config(format!("Failed to read alerts file: {}", e)))?;
     if content.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -83,10 +81,9 @@ pub fn load_alerts() -> Result<Vec<PriceAlert>, IndodaxError> {
 
 pub fn save_alerts(alerts: &[PriceAlert]) -> Result<(), IndodaxError> {
     let path = get_alerts_path()?;
-    let content = serde_json::to_string_pretty(alerts).map_err(|e| {
-        IndodaxError::Config(format!("Failed to serialize alerts: {}", e))
-    })?;
-    
+    let content = serde_json::to_string_pretty(alerts)
+        .map_err(|e| IndodaxError::Config(format!("Failed to serialize alerts: {}", e)))?;
+
     #[cfg(unix)]
     {
         use std::io::Write;
@@ -103,9 +100,8 @@ pub fn save_alerts(alerts: &[PriceAlert]) -> Result<(), IndodaxError> {
     }
     #[cfg(not(unix))]
     {
-        fs::write(&path, content).map_err(|e| {
-            IndodaxError::Config(format!("Failed to write alerts file: {}", e))
-        })?;
+        fs::write(&path, content)
+            .map_err(|e| IndodaxError::Config(format!("Failed to write alerts file: {}", e)))?;
     }
     Ok(())
 }

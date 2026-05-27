@@ -54,8 +54,6 @@ impl Signer {
         }
     }
 
-
-
     pub fn sign_v1(&self, payload: &str) -> Result<(String, String), IndodaxError> {
         let signature = self.hmac_sha512(payload, &self.secret_key)?;
         let encoded_sign = hex::encode(signature);
@@ -151,7 +149,7 @@ mod tests {
         let signer = Signer::new("key", "secret");
         let query_string = "symbol=BTCIDR";
         let signature = signer.sign_v2(query_string).unwrap();
-        
+
         // We can't easily verify the HMAC without knowing the secret, but we can verify it's valid hex
         assert!(!signature.is_empty());
     }

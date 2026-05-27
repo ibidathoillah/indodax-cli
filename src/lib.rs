@@ -1,22 +1,23 @@
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 use output::{CommandOutput, OutputFormat};
 
+#[cfg(feature = "cli")]
+pub mod alerts;
 pub mod auth;
 pub mod client;
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
-pub mod alerts;
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 pub mod commands;
 pub mod config;
 pub mod errors;
 pub mod integration;
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "mcp")]
 pub mod mcp;
+#[cfg(feature = "cli")]
 pub mod output;
 
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 use client::IndodaxClient;
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 use errors::IndodaxError;
 
 pub use integration::prelude;
@@ -36,10 +37,10 @@ pub(crate) fn now_millis() -> u64 {
     }
 }
 
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 use clap::{Parser, Subcommand};
 
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 #[derive(Debug, Parser)]
 #[command(
     name = "indodax",
@@ -51,26 +52,54 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 
-    #[arg(short = 'o', long = "output", default_value = "table", help = "Output format: table or json", global = true)]
+    #[arg(
+        short = 'o',
+        long = "output",
+        default_value = "table",
+        help = "Output format: table or json",
+        global = true
+    )]
     pub output: OutputFormat,
 
-    #[arg(long = "api-key", help = "API key (overrides config file and env var)", global = true)]
+    #[arg(
+        long = "api-key",
+        help = "API key (overrides config file and env var)",
+        global = true
+    )]
     pub api_key: Option<String>,
 
-    #[arg(long = "api-secret", help = "API secret (overrides config file and env var)", global = true)]
+    #[arg(
+        long = "api-secret",
+        help = "API secret (overrides config file and env var)",
+        global = true
+    )]
     pub api_secret: Option<String>,
 
-    #[arg(long = "api-secret-stdin", help = "Read API secret from stdin (more secure than --api-secret)", global = true)]
+    #[arg(
+        long = "api-secret-stdin",
+        help = "Read API secret from stdin (more secure than --api-secret)",
+        global = true
+    )]
     pub api_secret_stdin: bool,
 
-    #[arg(short = 'v', long = "verbose", help = "Enable verbose output", global = true)]
+    #[arg(
+        short = 'v',
+        long = "verbose",
+        help = "Enable verbose output",
+        global = true
+    )]
     pub verbose: bool,
 
-    #[arg(long = "yes", alias = "force", help = "Skip confirmation prompts for destructive operations", global = true)]
+    #[arg(
+        long = "yes",
+        alias = "force",
+        help = "Skip confirmation prompts for destructive operations",
+        global = true
+    )]
     pub yes: bool,
 }
 
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 #[derive(Debug, Subcommand)]
 pub enum Command {
     // === Legacy Hidden Commands for Backward Compatibility ===
@@ -230,7 +259,10 @@ pub enum Command {
         asset: String,
         #[arg(short = 'v', long, help = "Amount to withdraw")]
         volume: f64,
-        #[arg(long, help = "Crypto destination address (or Indodax username if --username is set)")]
+        #[arg(
+            long,
+            help = "Crypto destination address (or Indodax username if --username is set)"
+        )]
         address: String,
         #[arg(long, help = "Withdraw to Indodax username instead of blockchain")]
         username: bool,
@@ -274,15 +306,24 @@ pub enum Command {
     Shell,
 
     /// Start MCP stdio server for AI agent integration
+    #[cfg(feature = "mcp")]
     Mcp {
-        #[arg(short = 's', long = "groups", default_value = "market,account,paper,auth", help = "Comma-separated service groups: market, account, trade, funding, paper, auth")]
+        #[arg(
+            short = 's',
+            long = "groups",
+            default_value = "market,account,paper,auth",
+            help = "Comma-separated service groups: market, account, trade, funding, paper, auth"
+        )]
         groups: String,
-        #[arg(long, help = "Allow dangerous operations (trade, funding) without acknowledged flag")]
+        #[arg(
+            long,
+            help = "Allow dangerous operations (trade, funding) without acknowledged flag"
+        )]
         allow_dangerous: bool,
     },
 }
 
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 #[derive(Debug, Subcommand)]
 pub enum WithdrawalSubcommand {
     /// Check withdrawal fee for a currency
@@ -294,17 +335,26 @@ pub enum WithdrawalSubcommand {
     },
 
     /// Start a temporary HTTP server to handle Indodax withdrawal callback
+    #[cfg(feature = "server")]
     ServeCallback {
         #[arg(short, long, default_value = "8080")]
         port: u16,
-        #[arg(short, long, help = "When true, auto-confirms all callback requests. When false, prompts for each request.", default_value = "false")]
+        #[arg(
+            short,
+            long,
+            help = "When true, auto-confirms all callback requests. When false, prompts for each request.",
+            default_value = "false"
+        )]
         auto_ok: bool,
-        #[arg(long, help = "Listen address (default: 127.0.0.1). Use 0.0.0.0 for network access")]
+        #[arg(
+            long,
+            help = "Listen address (default: 127.0.0.1). Use 0.0.0.0 for network access"
+        )]
         listen: Option<String>,
     },
 }
 
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 pub async fn dispatch(
     cli: Cli,
     client: &IndodaxClient,
@@ -312,84 +362,191 @@ pub async fn dispatch(
 ) -> Result<CommandOutput, IndodaxError> {
     let output = match cli.command {
         // === Legacy Hidden Commands ===
-        Command::Market(ref cmd) => commands::market::execute(client, cmd).await
+        Command::Market(ref cmd) => commands::market::execute(client, cmd)
+            .await
             .map_err(map_anyhow_error)?,
-        Command::Account(ref cmd) => commands::account::execute(client, cmd).await
+        Command::Account(ref cmd) => commands::account::execute(client, cmd)
+            .await
             .map_err(map_anyhow_error)?,
-        Command::Trade(ref cmd) => commands::trade::execute(client, cmd, cli.yes).await
+        Command::Trade(ref cmd) => commands::trade::execute(client, cmd, cli.yes)
+            .await
             .map_err(map_anyhow_error)?,
-        Command::Funding(ref cmd) => commands::funding::execute(client, config, cmd, cli.output).await
+        Command::Funding(ref cmd) => commands::funding::execute(client, config, cmd, cli.output)
+            .await
             .map_err(map_anyhow_error)?,
 
         // === Public Market Commands ===
-        Command::ServerTime => commands::market::execute(client, &commands::market::MarketCommand::ServerTime).await
-            .map_err(map_anyhow_error)?,
-        Command::Pairs => commands::market::execute(client, &commands::market::MarketCommand::Pairs).await
-            .map_err(map_anyhow_error)?,
-        Command::Ticker { pair } => commands::market::execute(client, &commands::market::MarketCommand::Ticker { pair }).await
-            .map_err(map_anyhow_error)?,
-        Command::History { pair, timeframe, from, to } => commands::market::execute(client, &commands::market::MarketCommand::Ohlc {
-            symbol: pair,
+        Command::ServerTime => {
+            commands::market::execute(client, &commands::market::MarketCommand::ServerTime)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::Pairs => {
+            commands::market::execute(client, &commands::market::MarketCommand::Pairs)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::Ticker { pair } => {
+            commands::market::execute(client, &commands::market::MarketCommand::Ticker { pair })
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::History {
+            pair,
             timeframe,
             from,
             to,
-        }).await
-            .map_err(map_anyhow_error)?,
-        Command::TickerAll => commands::market::execute(client, &commands::market::MarketCommand::TickerAll).await
-            .map_err(map_anyhow_error)?,
-        Command::Summaries => commands::market::execute(client, &commands::market::MarketCommand::Summaries).await
-            .map_err(map_anyhow_error)?,
-        Command::Orderbook { pair, count } => commands::market::execute(client, &commands::market::MarketCommand::Orderbook { pair, levels: count }).await
-            .map_err(map_anyhow_error)?,
-        Command::Trades { pair } => commands::market::execute(client, &commands::market::MarketCommand::Trades { pair }).await
-            .map_err(map_anyhow_error)?,
-        Command::Ohlc { pair, interval, since, to } => commands::market::execute(client, &commands::market::MarketCommand::Ohlc {
-            symbol: pair,
-            timeframe: interval,
-            from: since,
+        } => commands::market::execute(
+            client,
+            &commands::market::MarketCommand::Ohlc {
+                symbol: pair,
+                timeframe,
+                from,
+                to,
+            },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
+        Command::TickerAll => {
+            commands::market::execute(client, &commands::market::MarketCommand::TickerAll)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::Summaries => {
+            commands::market::execute(client, &commands::market::MarketCommand::Summaries)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::Orderbook { pair, count } => commands::market::execute(
+            client,
+            &commands::market::MarketCommand::Orderbook {
+                pair,
+                levels: count,
+            },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
+        Command::Trades { pair } => {
+            commands::market::execute(client, &commands::market::MarketCommand::Trades { pair })
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::Ohlc {
+            pair,
+            interval,
+            since,
             to,
-        }).await
-            .map_err(map_anyhow_error)?,
-        Command::Webdata { pair } => commands::market::execute(client, &commands::market::MarketCommand::WebData { pair }).await
-            .map_err(map_anyhow_error)?,
-        Command::ChatHistory => commands::market::execute(client, &commands::market::MarketCommand::ChatHistory).await
-            .map_err(map_anyhow_error)?,
-        Command::PairsV2 { pair } => commands::market::execute(client, &commands::market::MarketCommand::PairsV2 { pair }).await
-            .map_err(map_anyhow_error)?,
-        Command::SearchV2 => commands::market::execute(client, &commands::market::MarketCommand::SearchV2).await
-            .map_err(map_anyhow_error)?,
-        Command::TerminalTrade { pair } => commands::market::execute(client, &commands::market::MarketCommand::TerminalTrade { pair }).await
-            .map_err(map_anyhow_error)?,
-        Command::TerminalMarket { pair } => commands::market::execute(client, &commands::market::MarketCommand::TerminalMarket { pair }).await
-            .map_err(map_anyhow_error)?,
-        Command::TerminalCategories => commands::market::execute(client, &commands::market::MarketCommand::TerminalCategories).await
-            .map_err(map_anyhow_error)?,
-        Command::OnrampConfig { pair } => commands::market::execute(client, &commands::market::MarketCommand::OnrampConfig { pair }).await
-            .map_err(map_anyhow_error)?,
-        Command::News { asset, page } => commands::market::execute(client, &commands::market::MarketCommand::News { asset, page }).await
-            .map_err(map_anyhow_error)?,
-        Command::PriceIncrements => commands::market::execute(client, &commands::market::MarketCommand::PriceIncrements).await
-            .map_err(map_anyhow_error)?,
+        } => commands::market::execute(
+            client,
+            &commands::market::MarketCommand::Ohlc {
+                symbol: pair,
+                timeframe: interval,
+                from: since,
+                to,
+            },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
+        Command::Webdata { pair } => {
+            commands::market::execute(client, &commands::market::MarketCommand::WebData { pair })
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::ChatHistory => {
+            commands::market::execute(client, &commands::market::MarketCommand::ChatHistory)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::PairsV2 { pair } => {
+            commands::market::execute(client, &commands::market::MarketCommand::PairsV2 { pair })
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::SearchV2 => {
+            commands::market::execute(client, &commands::market::MarketCommand::SearchV2)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::TerminalTrade { pair } => commands::market::execute(
+            client,
+            &commands::market::MarketCommand::TerminalTrade { pair },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
+        Command::TerminalMarket { pair } => commands::market::execute(
+            client,
+            &commands::market::MarketCommand::TerminalMarket { pair },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
+        Command::TerminalCategories => {
+            commands::market::execute(client, &commands::market::MarketCommand::TerminalCategories)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::OnrampConfig { pair } => commands::market::execute(
+            client,
+            &commands::market::MarketCommand::OnrampConfig { pair },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
+        Command::News { asset, page } => commands::market::execute(
+            client,
+            &commands::market::MarketCommand::News { asset, page },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
+        Command::PriceIncrements => {
+            commands::market::execute(client, &commands::market::MarketCommand::PriceIncrements)
+                .await
+                .map_err(map_anyhow_error)?
+        }
 
         // === Account & Balances Commands ===
-        Command::AccountInfo => commands::account::execute(client, &commands::account::AccountCommand::Info).await
-            .map_err(map_anyhow_error)?,
-        Command::Balance => commands::account::execute(client, &commands::account::AccountCommand::Balance).await
-            .map_err(map_anyhow_error)?,
-        Command::Transactions => commands::account::execute(client, &commands::account::AccountCommand::TransHistory).await
-            .map_err(map_anyhow_error)?,
-        Command::TradesHistory { pair, limit, from_id: _ } => commands::account::execute(client, &commands::account::AccountCommand::TradeHistory {
-            symbol: pair,
-            limit: limit as u32,
-        }).await
-            .map_err(map_anyhow_error)?,
+        Command::AccountInfo => {
+            commands::account::execute(client, &commands::account::AccountCommand::Info)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::Balance => {
+            commands::account::execute(client, &commands::account::AccountCommand::Balance)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::Transactions => {
+            commands::account::execute(client, &commands::account::AccountCommand::TransHistory)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+        Command::TradesHistory {
+            pair,
+            limit,
+            from_id: _,
+        } => commands::account::execute(
+            client,
+            &commands::account::AccountCommand::TradeHistory {
+                symbol: pair,
+                limit: limit as u32,
+            },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
 
         // === Order Execution ===
-        Command::Order(ref cmd) => commands::trade::execute(client, cmd, cli.yes).await
+        Command::Order(ref cmd) => commands::trade::execute(client, cmd, cli.yes)
+            .await
             .map_err(map_anyhow_error)?,
 
         // === Funding / Withdrawal Operations ===
-        Command::Withdraw { asset, volume, address, username, memo, network, callback_url } => {
+        Command::Withdraw {
+            asset,
+            volume,
+            address,
+            username,
+            memo,
+            network,
+            callback_url,
+        } => {
             let funding_cmd = commands::funding::FundingCommand::Withdraw {
                 currency: asset,
                 amount: volume,
@@ -399,7 +556,8 @@ pub async fn dispatch(
                 network,
                 callback_url,
             };
-            commands::funding::execute(client, config, &funding_cmd, cli.output).await
+            commands::funding::execute(client, config, &funding_cmd, cli.output)
+                .await
                 .map_err(map_anyhow_error)?
         }
         Command::Withdrawal(ref sub) => {
@@ -410,43 +568,59 @@ pub async fn dispatch(
                         network: network.clone(),
                     }
                 }
-                WithdrawalSubcommand::ServeCallback { port, auto_ok, listen } => {
-                    commands::funding::FundingCommand::ServeCallback {
-                        port: *port,
-                        auto_ok: *auto_ok,
-                        listen: listen.clone(),
-                    }
-                }
+                #[cfg(feature = "server")]
+                WithdrawalSubcommand::ServeCallback {
+                    port,
+                    auto_ok,
+                    listen,
+                } => commands::funding::FundingCommand::ServeCallback {
+                    port: *port,
+                    auto_ok: *auto_ok,
+                    listen: listen.clone(),
+                },
             };
-            commands::funding::execute(client, config, &funding_cmd, cli.output).await
+            commands::funding::execute(client, config, &funding_cmd, cli.output)
+                .await
                 .map_err(map_anyhow_error)?
         }
 
         // === WS, Paper, Auth, Alert ===
-        Command::Ws(ref cmd) => commands::websocket::execute(client, cmd, cli.output).await
+        Command::Ws(ref cmd) => commands::websocket::execute(client, cmd, cli.output)
+            .await
             .map_err(map_anyhow_error)?,
-        Command::Paper(ref cmd) => commands::paper::execute(client, config, cmd).await
+        Command::Paper(ref cmd) => commands::paper::execute(client, config, cmd)
+            .await
             .map_err(map_anyhow_error)?,
-        Command::Auth(ref cmd) => commands::auth::execute(client, config, cmd).await
+        Command::Auth(ref cmd) => commands::auth::execute(client, config, cmd)
+            .await
             .map_err(map_anyhow_error)?,
-        Command::Alert(ref cmd) => commands::alert::execute(client, &None, cmd).await
+        Command::Alert(ref cmd) => commands::alert::execute(client, &None, cmd)
+            .await
             .map_err(map_anyhow_error)?,
 
-        Command::Setup | Command::Shell | Command::Mcp { .. } => {
-            return Err(IndodaxError::Other("This command is handled separately".into()));
+        Command::Setup | Command::Shell => {
+            return Err(IndodaxError::Other(
+                "This command is handled separately".into(),
+            ));
+        }
+        #[cfg(feature = "mcp")]
+        Command::Mcp { .. } => {
+            return Err(IndodaxError::Other(
+                "This command is handled separately".into(),
+            ));
         }
     };
 
     Ok(output.with_format(cli.output))
 }
 
-#[cfg(all(feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(feature = "cli")]
 pub fn map_anyhow_error(e: anyhow::Error) -> IndodaxError {
     e.downcast::<IndodaxError>()
         .unwrap_or_else(|e| IndodaxError::Other(e.to_string()))
 }
 
-#[cfg(all(test, feature = "cli", not(target_arch = "wasm32")))]
+#[cfg(all(test, feature = "cli"))]
 mod tests {
     use super::*;
 
@@ -494,24 +668,28 @@ mod tests {
     fn test_command_variants() {
         let _cmd1 = Command::ServerTime;
         let _cmd2 = Command::AccountInfo;
-        let _cmd3 = Command::Order(crate::commands::trade::TradeCommand::Buy { 
-            pair: "btc_idr".into(), 
-            idr: 100_000.0, 
+        let _cmd3 = Command::Order(crate::commands::trade::TradeCommand::Buy {
+            pair: "btc_idr".into(),
+            idr: 100_000.0,
             price: None,
             order_type: None,
         });
-        let _cmd4 = Command::Withdrawal(WithdrawalSubcommand::Fee { 
-            asset: "btc".into(), 
-            network: None 
+        let _cmd4 = Command::Withdrawal(WithdrawalSubcommand::Fee {
+            asset: "btc".into(),
+            network: None,
         });
-        let _cmd5 = Command::Ws(crate::commands::websocket::WebSocketCommand::Ticker { 
-            pair: "btc_idr".into() 
+        let _cmd5 = Command::Ws(crate::commands::websocket::WebSocketCommand::Ticker {
+            pair: "btc_idr".into(),
         });
         let _cmd6 = Command::Paper(crate::commands::paper::PaperCommand::Balance);
         let _cmd7 = Command::Auth(crate::commands::auth::AuthCommand::Show);
         let _cmd8 = Command::Setup;
         let _cmd9 = Command::Shell;
-        let _cmd10 = Command::Mcp { groups: "market,paper".into(), allow_dangerous: false };
+        #[cfg(feature = "mcp")]
+        let _cmd10 = Command::Mcp {
+            groups: "market,paper".into(),
+            allow_dangerous: false,
+        };
     }
 
     #[test]

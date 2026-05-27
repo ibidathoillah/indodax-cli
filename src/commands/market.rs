@@ -38,7 +38,10 @@ pub enum MarketCommand {
         pair: String,
     },
 
-    #[command(name = "ohlc", about = "Get OHLCV candle data (default --from is 24h ago)")]
+    #[command(
+        name = "ohlc",
+        about = "Get OHLCV candle data (default --from is 24h ago)"
+    )]
     Ohlc {
         #[arg(short, long, default_value = "btc_idr")]
         symbol: String,
@@ -101,10 +104,7 @@ pub enum MarketCommand {
     },
 }
 
-pub async fn execute(
-    client: &IndodaxClient,
-    cmd: &MarketCommand,
-) -> Result<CommandOutput> {
+pub async fn execute(client: &IndodaxClient, cmd: &MarketCommand) -> Result<CommandOutput> {
     match cmd {
         MarketCommand::ServerTime => server_time(client).await,
         MarketCommand::Pairs => pairs(client).await,
@@ -122,7 +122,12 @@ pub async fn execute(
             let pair = helpers::normalize_pair(p);
             trades(client, &pair).await
         }
-        MarketCommand::Ohlc { symbol, timeframe, from, to } => {
+        MarketCommand::Ohlc {
+            symbol,
+            timeframe,
+            from,
+            to,
+        } => {
             // Indodax history API requires symbols like BTCIDR (no underscore, uppercase)
             let sym = helpers::normalize_pair_v2(symbol).to_uppercase();
             ohlc(client, &sym, timeframe, *from, *to).await
@@ -186,8 +191,14 @@ async fn ticker_all(client: &IndodaxClient) -> Result<CommandOutput> {
     let tickers = &data["tickers"];
     if tickers.is_object() {
         let headers = vec![
-            "Pair".into(), "Last".into(), "High".into(), "Low".into(),
-            "Buy".into(), "Sell".into(), "Vol (base)".into(), "Vol (quote)".into(),
+            "Pair".into(),
+            "Last".into(),
+            "High".into(),
+            "Low".into(),
+            "Buy".into(),
+            "Sell".into(),
+            "Vol (base)".into(),
+            "Vol (quote)".into(),
         ];
         let mut rows: Vec<Vec<String>> = Vec::new();
         if let Value::Object(map) = tickers {
@@ -217,8 +228,12 @@ async fn summaries(client: &IndodaxClient) -> Result<CommandOutput> {
     let summaries = &data["summaries"];
     if summaries.is_object() {
         let headers = vec![
-            "Pair".into(), "Last".into(), "High".into(), "Low".into(),
-            "Vol (base)".into(), "Vol (quote)".into(),
+            "Pair".into(),
+            "Last".into(),
+            "High".into(),
+            "Low".into(),
+            "Vol (base)".into(),
+            "Vol (quote)".into(),
         ];
         let mut rows: Vec<Vec<String>> = Vec::new();
         if let Value::Object(map) = summaries {
@@ -250,14 +265,22 @@ async fn orderbook(client: &IndodaxClient, pair: &str, levels: usize) -> Result<
     if let Value::Array(arr) = buys {
         for entry in arr.iter().take(levels) {
             if let Some(row_arr) = entry.as_array().filter(|a| a.len() >= 2) {
-                rows.push(vec!["BUY".into(), helpers::value_to_string(&row_arr[0]), helpers::value_to_string(&row_arr[1])]);
+                rows.push(vec![
+                    "BUY".into(),
+                    helpers::value_to_string(&row_arr[0]),
+                    helpers::value_to_string(&row_arr[1]),
+                ]);
             }
         }
     }
     if let Value::Array(arr) = sells {
         for entry in arr.iter().rev().take(levels) {
             if let Some(row_arr) = entry.as_array().filter(|a| a.len() >= 2) {
-                rows.push(vec!["SELL".into(), helpers::value_to_string(&row_arr[0]), helpers::value_to_string(&row_arr[1])]);
+                rows.push(vec![
+                    "SELL".into(),
+                    helpers::value_to_string(&row_arr[0]),
+                    helpers::value_to_string(&row_arr[1]),
+                ]);
             }
         }
     }
@@ -268,16 +291,29 @@ async fn orderbook(client: &IndodaxClient, pair: &str, levels: usize) -> Result<
 
 async fn trades(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
     let pair_v2 = pair.replace('_', "");
-    let data: Value = client.public_get(&format!("/api/trades/{}", pair_v2)).await?;
-    let headers = vec!["TID".into(), "Date".into(), "Price".into(), "Amount".into(), "Type".into()];
+    let data: Value = client
+        .public_get(&format!("/api/trades/{}", pair_v2))
+        .await?;
+    let headers = vec![
+        "TID".into(),
+        "Date".into(),
+        "Price".into(),
+        "Amount".into(),
+        "Type".into(),
+    ];
     let mut rows: Vec<Vec<String>> = Vec::new();
     if let Value::Array(arr) = &data {
         for trade in arr.iter().take(50) {
-            let ts = trade["date"].as_str()
+            let ts = trade["date"]
+                .as_str()
                 .and_then(|s| s.parse::<u64>().ok())
                 .or_else(|| trade["date"].as_u64())
                 .unwrap_or(0);
-            let ts = if ts > 1_000_000_000_000 { ts / 1000 } else { ts };
+            let ts = if ts > 1_000_000_000_000 {
+                ts / 1000
+            } else {
+                ts
+            };
             rows.push(vec![
                 helpers::value_to_string(&trade["tid"]),
                 helpers::format_timestamp(ts, false),
@@ -310,26 +346,32 @@ async fn ohlc(
     let now_secs = crate::commands::helpers::now_millis() / 1000;
     let from = from.map(|v| normalize_ohlc_ts(v, "--from", &mut ohlc_warnings));
     let to = to.map(|v| normalize_ohlc_ts(v, "--to", &mut ohlc_warnings));
-    let from_val = from.map(|v| v.to_string()).unwrap_or_else(|| {
-        (now_secs - crate::commands::helpers::ONE_DAY_SECS).to_string()
-    });
-    let to_val = to.map(|v| v.to_string()).unwrap_or_else(|| {
-        now_secs.to_string()
-    });
+    let from_val = from
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| (now_secs - crate::commands::helpers::ONE_DAY_SECS).to_string());
+    let to_val = to
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| now_secs.to_string());
 
-    let data: Value = client.public_get_v2(
-        "/tradingview/history_v2",
-        &[
-            ("symbol", symbol),
-            ("tf", timeframe),
-            ("from", &from_val),
-            ("to", &to_val),
-        ],
-    ).await?;
+    let data: Value = client
+        .public_get_v2(
+            "/tradingview/history_v2",
+            &[
+                ("symbol", symbol),
+                ("tf", timeframe),
+                ("from", &from_val),
+                ("to", &to_val),
+            ],
+        )
+        .await?;
 
     let headers = vec![
-        "Time".into(), "Open".into(), "High".into(), "Low".into(),
-        "Close".into(), "Volume".into(),
+        "Time".into(),
+        "Open".into(),
+        "High".into(),
+        "Low".into(),
+        "Close".into(),
+        "Volume".into(),
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
@@ -338,14 +380,25 @@ async fn ohlc(
         for item in arr {
             rows.push(vec![
                 helpers::format_timestamp(
-                    item.get("Time").or(item.get("t")).and_then(|v| v.as_u64()).unwrap_or(0),
-                    false
+                    item.get("Time")
+                        .or(item.get("t"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                    false,
                 ),
-                helpers::value_to_string(item.get("Open").or(item.get("o")).unwrap_or(&Value::Null)),
-                helpers::value_to_string(item.get("High").or(item.get("h")).unwrap_or(&Value::Null)),
+                helpers::value_to_string(
+                    item.get("Open").or(item.get("o")).unwrap_or(&Value::Null),
+                ),
+                helpers::value_to_string(
+                    item.get("High").or(item.get("h")).unwrap_or(&Value::Null),
+                ),
                 helpers::value_to_string(item.get("Low").or(item.get("l")).unwrap_or(&Value::Null)),
-                helpers::value_to_string(item.get("Close").or(item.get("c")).unwrap_or(&Value::Null)),
-                helpers::value_to_string(item.get("Volume").or(item.get("v")).unwrap_or(&Value::Null)),
+                helpers::value_to_string(
+                    item.get("Close").or(item.get("c")).unwrap_or(&Value::Null),
+                ),
+                helpers::value_to_string(
+                    item.get("Volume").or(item.get("v")).unwrap_or(&Value::Null),
+                ),
             ]);
         }
     } else if let Value::Object(ref map) = data {
@@ -360,7 +413,13 @@ async fn ohlc(
         if let (Some(t), Some(o), Some(h), Some(l), Some(c), Some(vol)) =
             (times, opens, highs, lows, closes, volumes)
         {
-            let len = t.len().min(o.len()).min(h.len()).min(l.len()).min(c.len()).min(vol.len());
+            let len = t
+                .len()
+                .min(o.len())
+                .min(h.len())
+                .min(l.len())
+                .min(c.len())
+                .min(vol.len());
             for i in 0..len {
                 rows.push(vec![
                     helpers::format_timestamp(t[i].as_u64().unwrap_or(0), false),
@@ -459,7 +518,8 @@ async fn onramp_config(client: &IndodaxClient, pair: &str) -> Result<CommandOutp
 
 async fn news(client: &IndodaxClient, asset: &str, page: u32) -> Result<CommandOutput> {
     let html = client.get_news(asset, page).await?;
-    let data = serde_json::json!({ "html_summary": html.chars().take(200).collect::<String>() + "..." });
+    let data =
+        serde_json::json!({ "html_summary": html.chars().take(200).collect::<String>() + "..." });
     let headers = vec!["News Content".into()];
     let rows = vec![vec![html]];
     Ok(CommandOutput::new(data, headers, rows))
@@ -474,16 +534,23 @@ mod tests {
     fn test_market_command_variants() {
         let _cmd1 = MarketCommand::ServerTime;
         let _cmd2 = MarketCommand::Pairs;
-        let _cmd3 = MarketCommand::Ticker { pair: "btc_idr".into() };
+        let _cmd3 = MarketCommand::Ticker {
+            pair: "btc_idr".into(),
+        };
         let _cmd4 = MarketCommand::TickerAll;
         let _cmd5 = MarketCommand::Summaries;
-        let _cmd6 = MarketCommand::Orderbook { pair: "btcidr".into(), levels: 20 };
-        let _cmd7 = MarketCommand::Trades { pair: "btcidr".into() };
-        let _cmd8 = MarketCommand::Ohlc { 
-            symbol: "BTCIDR".into(), 
-            timeframe: "60".into(), 
-            from: None, 
-            to: None 
+        let _cmd6 = MarketCommand::Orderbook {
+            pair: "btcidr".into(),
+            levels: 20,
+        };
+        let _cmd7 = MarketCommand::Trades {
+            pair: "btcidr".into(),
+        };
+        let _cmd8 = MarketCommand::Ohlc {
+            symbol: "BTCIDR".into(),
+            timeframe: "60".into(),
+            from: None,
+            to: None,
         };
         let _cmd9 = MarketCommand::PriceIncrements;
     }

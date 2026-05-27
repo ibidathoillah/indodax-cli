@@ -33,11 +33,7 @@ pub struct CommandOutput {
 }
 
 impl CommandOutput {
-    pub fn new(
-        data: serde_json::Value,
-        headers: Vec<String>,
-        rows: Vec<Vec<String>>,
-    ) -> Self {
+    pub fn new(data: serde_json::Value, headers: Vec<String>, rows: Vec<Vec<String>>) -> Self {
         Self {
             data,
             headers,
@@ -108,9 +104,9 @@ impl CommandOutput {
     }
 }
 
+pub mod json;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod table;
-pub mod json;
 
 #[cfg(test)]
 mod tests {
@@ -140,7 +136,7 @@ mod tests {
         let headers = vec!["H1".into(), "H2".into()];
         let rows = vec![vec!["a".into(), "b".into()]];
         let output = CommandOutput::new(data.clone(), headers.clone(), rows.clone());
-        
+
         assert_eq!(output.data, data);
         assert_eq!(output.headers, headers);
         assert_eq!(output.rows, rows);
@@ -152,7 +148,7 @@ mod tests {
     fn test_command_output_json() {
         let data = json!({"test": 123});
         let output = CommandOutput::json(data.clone());
-        
+
         assert_eq!(output.data, data);
         assert!(output.headers.is_empty());
         assert!(output.rows.is_empty());
@@ -162,7 +158,7 @@ mod tests {
     #[test]
     fn test_command_output_new_empty() {
         let output = CommandOutput::new_empty();
-        
+
         assert_eq!(output.data, json!({}));
         assert!(output.headers.is_empty());
         assert!(output.rows.is_empty());
@@ -170,17 +166,15 @@ mod tests {
 
     #[test]
     fn test_command_output_with_format() {
-        let output = CommandOutput::json(json!({"test": true}))
-            .with_format(OutputFormat::Json);
-        
+        let output = CommandOutput::json(json!({"test": true})).with_format(OutputFormat::Json);
+
         assert_eq!(output.format, OutputFormat::Json);
     }
 
     #[test]
     fn test_command_output_with_addendum() {
-        let output = CommandOutput::new_empty()
-            .with_addendum("test addendum");
-        
+        let output = CommandOutput::new_empty().with_addendum("test addendum");
+
         assert_eq!(output.addendum, Some("test addendum".into()));
     }
 
@@ -195,7 +189,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = output.render();
         assert!(!rendered.is_empty());
     }
@@ -204,7 +198,7 @@ mod tests {
     fn test_command_output_render_json() {
         let data = json!({"hello": "world"});
         let output = CommandOutput::json(data.clone()).with_format(OutputFormat::Json);
-        
+
         let rendered = output.render();
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["data"], data);
@@ -229,7 +223,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = output.render();
         assert!(rendered.contains("Extra info"));
     }
@@ -245,10 +239,10 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let serialized = serde_json::to_string(&output).unwrap();
         let deserialized: serde_json::Value = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized["data"]["test"], true);
         assert_eq!(deserialized["headers"][0], "H");
         assert_eq!(deserialized["rows"][0][0], "v");
@@ -266,7 +260,7 @@ mod tests {
             warnings: vec![],
             suppress_final_output: false,
         };
-        
+
         let rendered = output.render();
         // Should fall back to rendering data as JSON
         assert!(rendered.contains("key") || rendered.contains("value") || rendered.is_empty());

@@ -80,7 +80,9 @@ mod tests {
     fn test_operation_blocked_without_acknowledged() {
         let config = SafetyConfig::new(false);
         assert!(config.check_operation(&ServiceGroup::Trade, false).is_err());
-        assert!(config.check_operation(&ServiceGroup::Funding, false).is_err());
+        assert!(config
+            .check_operation(&ServiceGroup::Funding, false)
+            .is_err());
     }
 
     #[test]
@@ -94,7 +96,9 @@ mod tests {
     fn test_safe_operation_no_acknowledgment_needed() {
         let config = SafetyConfig::new(false);
         assert!(config.check_operation(&ServiceGroup::Market, false).is_ok());
-        assert!(config.check_operation(&ServiceGroup::Account, false).is_ok());
+        assert!(config
+            .check_operation(&ServiceGroup::Account, false)
+            .is_ok());
         assert!(config.check_operation(&ServiceGroup::Paper, false).is_ok());
     }
 
@@ -103,13 +107,17 @@ mod tests {
         let config = SafetyConfig::new(true);
         // Even without acknowledged, dangerous ops are allowed
         assert!(config.check_operation(&ServiceGroup::Trade, false).is_ok());
-        assert!(config.check_operation(&ServiceGroup::Funding, false).is_ok());
+        assert!(config
+            .check_operation(&ServiceGroup::Funding, false)
+            .is_ok());
     }
 
     #[test]
     fn test_error_message_mentions_acknowledged() {
         let config = SafetyConfig::new(false);
-        let err = config.check_operation(&ServiceGroup::Trade, false).unwrap_err();
+        let err = config
+            .check_operation(&ServiceGroup::Trade, false)
+            .unwrap_err();
         assert!(err.contains("acknowledged"));
         assert!(err.contains("true"));
     }

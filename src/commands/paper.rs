@@ -76,20 +76,18 @@ impl PaperState {
         let path = IndodaxConfig::paper_state_path();
         if path.exists() {
             match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    match serde_json::from_str::<PaperState>(&content) {
-                        Ok(mut state) => {
-                            if state.initial_balances.is_none() {
-                                eprintln!("[PAPER] Warning: Saved state predates balance tracking. Snapshotting current balances as initial (P&L will reflect only future changes).");
-                                state.initial_balances = Some(state.balances.clone());
-                            }
-                            return state;
+                Ok(content) => match serde_json::from_str::<PaperState>(&content) {
+                    Ok(mut state) => {
+                        if state.initial_balances.is_none() {
+                            eprintln!("[PAPER] Warning: Saved state predates balance tracking. Snapshotting current balances as initial (P&L will reflect only future changes).");
+                            state.initial_balances = Some(state.balances.clone());
                         }
-                        Err(e) => {
-                            eprintln!("[PAPER] Warning: Failed to deserialize paper state file: {}. Falling back to config.", e);
-                        }
+                        return state;
                     }
-                }
+                    Err(e) => {
+                        eprintln!("[PAPER] Warning: Failed to deserialize paper state file: {}. Falling back to config.", e);
+                    }
+                },
                 Err(e) => {
                     eprintln!("[PAPER] Warning: Failed to read paper state file: {}. Falling back to config.", e);
                 }
@@ -101,7 +99,9 @@ impl PaperState {
             .and_then(|v| serde_json::from_value(v.clone()).ok());
 
         if let Some(mut state) = result {
-            eprintln!("[PAPER] Legacy paper state found in config.toml. Migrating to paper_state.json...");
+            eprintln!(
+                "[PAPER] Legacy paper state found in config.toml. Migrating to paper_state.json..."
+            );
             if state.initial_balances.is_none() {
                 state.initial_balances = Some(state.balances.clone());
             }
@@ -114,17 +114,23 @@ impl PaperState {
 
     pub fn save(&self) -> Result<(), IndodaxError> {
         let dir = IndodaxConfig::config_dir();
-        std::fs::create_dir_all(&dir).map_err(|e| IndodaxError::Other(format!("Failed to create config dir: {}", e)))?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| IndodaxError::Other(format!("Failed to create config dir: {}", e)))?;
         let path = IndodaxConfig::paper_state_path();
-        let content = serde_json::to_string_pretty(self).map_err(|e| IndodaxError::Other(e.to_string()))?;
-        std::fs::write(&path, content).map_err(|e| IndodaxError::Other(format!("Failed to write paper state: {}", e)))?;
+        let content =
+            serde_json::to_string_pretty(self).map_err(|e| IndodaxError::Other(e.to_string()))?;
+        std::fs::write(&path, content)
+            .map_err(|e| IndodaxError::Other(format!("Failed to write paper state: {}", e)))?;
         Ok(())
     }
 }
 
 #[derive(Debug, clap::Subcommand)]
 pub enum PaperCommand {
-    #[command(name = "init", about = "Initialize paper trading with custom or default balances")]
+    #[command(
+        name = "init",
+        about = "Initialize paper trading with custom or default balances"
+    )]
     Init {
         #[arg(long, help = "Initial IDR balance (default: 100000000)")]
         idr: Option<f64>,
@@ -152,9 +158,17 @@ pub enum PaperCommand {
         pair: String,
         #[arg(short = 'i', long, help = "The total IDR amount to spend.")]
         idr: Option<f64>,
-        #[arg(short = 'a', long, help = "Amount in base currency (e.g. BTC) (alternative to --idr)")]
+        #[arg(
+            short = 'a',
+            long,
+            help = "Amount in base currency (e.g. BTC) (alternative to --idr)"
+        )]
         amount: Option<f64>,
-        #[arg(short = 'r', long, help = "Limit price. If omitted, a market order will be placed.")]
+        #[arg(
+            short = 'r',
+            long,
+            help = "Limit price. If omitted, a market order will be placed."
+        )]
         price: Option<f64>,
     },
 
@@ -164,15 +178,25 @@ pub enum PaperCommand {
         pair: String,
         #[arg(short = 'a', long, help = "Amount in base currency (e.g. BTC)")]
         amount: f64,
-        #[arg(short = 'r', long, help = "Limit price. If omitted, a market order will be placed.")]
+        #[arg(
+            short = 'r',
+            long,
+            help = "Limit price. If omitted, a market order will be placed."
+        )]
         price: Option<f64>,
     },
 
-    #[command(name = "orders", about = "List open paper orders (use history for all orders)")]
+    #[command(
+        name = "orders",
+        about = "List open paper orders (use history for all orders)"
+    )]
     Orders {
         #[arg(short = 'p', long, help = "Filter by trading pair (e.g. btc_idr)")]
         pair: Option<String>,
-        #[arg(long, help = "Sort by field: id, pair, side, price, amount, remaining, status")]
+        #[arg(
+            long,
+            help = "Sort by field: id, pair, side, price, amount, remaining, status"
+        )]
         sort_by: Option<String>,
         #[arg(long, default_value = "asc", help = "Sort order: asc or desc")]
         sort_order: Option<String>,
@@ -189,13 +213,21 @@ pub enum PaperCommand {
 
     #[command(name = "fill", about = "Fill an open paper order")]
     Fill {
-        #[arg(short = 'i', long, help = "Order ID to fill (required unless --all is set)")]
+        #[arg(
+            short = 'i',
+            long,
+            help = "Order ID to fill (required unless --all is set)"
+        )]
         order_id: Option<u64>,
         #[arg(short = 'r', long, help = "Fill price (defaults to order price)")]
         price: Option<f64>,
         #[arg(short = 'a', long, help = "Fill all open orders at once")]
         all: bool,
-        #[arg(short = 'f', long, help = "Fetch live prices from Indodax to fill matching orders")]
+        #[arg(
+            short = 'f',
+            long,
+            help = "Fetch live prices from Indodax to fill matching orders"
+        )]
         fetch: bool,
     },
 
@@ -203,24 +235,46 @@ pub enum PaperCommand {
     History {
         #[arg(long, help = "Sort by field: id, pair, side, price, amount, status")]
         sort_by: Option<String>,
-        #[arg(long, default_value = "desc", help = "Sort order: asc or desc (default: newest first)")]
+        #[arg(
+            long,
+            default_value = "desc",
+            help = "Sort order: asc or desc (default: newest first)"
+        )]
         sort_order: Option<String>,
     },
 
-    #[command(name = "check-fills", about = "Auto-fill open orders when market conditions match")]
+    #[command(
+        name = "check-fills",
+        about = "Auto-fill open orders when market conditions match"
+    )]
     CheckFills {
-        #[arg(short = 'p', long, help = "JSON object of current market prices, e.g. '{\"btc_idr\": 100000000}'")]
+        #[arg(
+            short = 'p',
+            long,
+            help = "JSON object of current market prices, e.g. '{\"btc_idr\": 100000000}'"
+        )]
         prices: Option<String>,
-        #[arg(long, help = "Auto-fetch current market prices from Indodax API for relevant pairs")]
+        #[arg(
+            long,
+            help = "Auto-fetch current market prices from Indodax API for relevant pairs"
+        )]
         fetch: bool,
     },
 
     #[command(name = "status", about = "Show paper trading status summary")]
     Status,
 
-    #[command(name = "watch", about = "Automatically watch market and fill matching orders in real-time")]
+    #[command(
+        name = "watch",
+        about = "Automatically watch market and fill matching orders in real-time"
+    )]
     Watch {
-        #[arg(short, long, default_value = "30", help = "Polling interval in seconds")]
+        #[arg(
+            short,
+            long,
+            default_value = "30",
+            help = "Polling interval in seconds"
+        )]
         interval: u64,
         #[arg(long, help = "Stop after first fill")]
         once: bool,
@@ -251,33 +305,63 @@ async fn dispatch_paper(
         PaperCommand::Reset => paper_reset(state),
         PaperCommand::Topup { currency, amount } => paper_topup(state, currency, *amount),
         PaperCommand::Balance => paper_balance(state),
-        PaperCommand::Buy { pair, idr, amount, price } => {
+        PaperCommand::Buy {
+            pair,
+            idr,
+            amount,
+            price,
+        } => {
             let pair = helpers::normalize_pair(pair);
             if let Some(idr_val) = idr {
                 place_paper_order_idr(state, &pair, "buy", *idr_val, *price)
             } else if let Some(amt) = amount {
                 place_paper_order(state, &pair, "buy", *price, *amt)
             } else {
-                Err(IndodaxError::Other("Either --idr or --amount must be specified".to_string()))
+                Err(IndodaxError::Other(
+                    "Either --idr or --amount must be specified".to_string(),
+                ))
             }
         }
-        PaperCommand::Sell { pair, price, amount } => {
+        PaperCommand::Sell {
+            pair,
+            price,
+            amount,
+        } => {
             let pair = helpers::normalize_pair(pair);
             place_paper_order(state, &pair, "sell", *price, *amount)
         }
-        PaperCommand::Orders { pair, sort_by, sort_order } => {
+        PaperCommand::Orders {
+            pair,
+            sort_by,
+            sort_order,
+        } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
-            paper_orders(state, pair.as_deref(), sort_by.as_deref(), sort_order.as_deref())
+            paper_orders(
+                state,
+                pair.as_deref(),
+                sort_by.as_deref(),
+                sort_order.as_deref(),
+            )
         }
         PaperCommand::Cancel { order_id } => paper_cancel(state, *order_id),
         PaperCommand::CancelAll => paper_cancel_all(state),
-        PaperCommand::Fill { order_id, price, all, fetch } => paper_fill(state, *order_id, *price, *all, Some(client), *fetch).await,
-        PaperCommand::CheckFills { prices, fetch } => paper_check_fills(client, state, prices.as_deref(), *fetch).await,
-        PaperCommand::History { sort_by, sort_order } => {
-            paper_history(state, sort_by.as_deref(), sort_order.as_deref())
+        PaperCommand::Fill {
+            order_id,
+            price,
+            all,
+            fetch,
+        } => paper_fill(state, *order_id, *price, *all, Some(client), *fetch).await,
+        PaperCommand::CheckFills { prices, fetch } => {
+            paper_check_fills(client, state, prices.as_deref(), *fetch).await
         }
+        PaperCommand::History {
+            sort_by,
+            sort_order,
+        } => paper_history(state, sort_by.as_deref(), sort_order.as_deref()),
         PaperCommand::Status => paper_status(state),
-        PaperCommand::Watch { interval, once } => paper_watch(client, config, *interval, *once).await,
+        PaperCommand::Watch { interval, once } => {
+            paper_watch(client, config, *interval, *once).await
+        }
     }
 }
 
@@ -297,14 +381,21 @@ pub fn init_paper_state(idr: Option<f64>, btc: Option<f64>) -> PaperState {
     }
 }
 
-fn paper_init(state: &mut PaperState, idr: Option<f64>, btc: Option<f64>) -> Result<CommandOutput, IndodaxError> {
+fn paper_init(
+    state: &mut PaperState,
+    idr: Option<f64>,
+    btc: Option<f64>,
+) -> Result<CommandOutput, IndodaxError> {
     *state = init_paper_state(idr, btc);
     let data = serde_json::json!({
         "mode": "paper",
         "status": "initialized",
         "balances": state.balances,
     });
-    Ok(CommandOutput::json(data).with_addendum("[PAPER] Trading initialized with virtual balances"))
+    Ok(
+        CommandOutput::json(data)
+            .with_addendum("[PAPER] Trading initialized with virtual balances"),
+    )
 }
 
 fn paper_reset(state: &mut PaperState) -> Result<CommandOutput, IndodaxError> {
@@ -316,12 +407,17 @@ fn paper_reset(state: &mut PaperState) -> Result<CommandOutput, IndodaxError> {
     Ok(CommandOutput::json(data).with_addendum("[PAPER] Trading state reset"))
 }
 
-fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<CommandOutput, IndodaxError> {
+fn paper_topup(
+    state: &mut PaperState,
+    currency: &str,
+    amount: f64,
+) -> Result<CommandOutput, IndodaxError> {
     state.dirty = true;
     if amount <= 0.0 {
-        return Err(IndodaxError::Other(
-            format!("[PAPER] Amount must be positive, got {}", amount)
-        ));
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] Amount must be positive, got {}",
+            amount
+        )));
     }
     let balance_val = {
         let balance = state.balances.entry(currency.to_lowercase()).or_insert(0.0);
@@ -329,7 +425,10 @@ fn paper_topup(state: &mut PaperState, currency: &str, amount: f64) -> Result<Co
         *balance
     };
     round_balance(&mut state.balances, &currency.to_lowercase());
-    let current_balance = *state.balances.get(&currency.to_lowercase()).unwrap_or(&balance_val);
+    let current_balance = *state
+        .balances
+        .get(&currency.to_lowercase())
+        .unwrap_or(&balance_val);
     let data = serde_json::json!({
         "mode": "paper",
         "currency": currency.to_uppercase(),
@@ -351,9 +450,7 @@ fn paper_balance(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
         .iter()
         .map(|(k, v)| (*v, vec![k.to_uppercase(), helpers::format_balance(k, *v)]))
         .collect();
-    rows_with_balance.sort_by(|a, b| {
-        b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    rows_with_balance.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     let rows: Vec<Vec<String>> = rows_with_balance.into_iter().map(|(_, r)| r).collect();
 
     let data = paper_balance_value(state);
@@ -371,16 +468,18 @@ pub fn place_paper_order(
 ) -> Result<CommandOutput, IndodaxError> {
     state.dirty = true;
     if amount <= 0.0 {
-        return Err(IndodaxError::Other(
-            format!("[PAPER] Amount must be positive, got {}", amount)
-        ));
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] Amount must be positive, got {}",
+            amount
+        )));
     }
     let is_market = price.is_none();
     let order_price = price.unwrap_or(0.0);
     if !is_market && order_price <= 0.0 {
-        return Err(IndodaxError::Other(
-            format!("[PAPER] Price must be positive, got {}", order_price)
-        ));
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] Price must be positive, got {}",
+            order_price
+        )));
     }
     let base = pair.split('_').next().unwrap_or(pair);
     let quote = pair.split('_').next_back().unwrap_or("idr");
@@ -398,10 +497,12 @@ pub fn place_paper_order(
         } else {
             let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
             if *quote_balance + helpers::BALANCE_EPSILON < total_cost {
-                return Err(IndodaxError::Other(
-                    format!("[PAPER] Insufficient {} balance. Need {}, have {}",
-                        quote.to_uppercase(), helpers::format_balance(quote, total_cost), helpers::format_balance(quote, *quote_balance))
-                ));
+                return Err(IndodaxError::Other(format!(
+                    "[PAPER] Insufficient {} balance. Need {}, have {}",
+                    quote.to_uppercase(),
+                    helpers::format_balance(quote, total_cost),
+                    helpers::format_balance(quote, *quote_balance)
+                )));
             }
             *quote_balance -= total_cost;
             round_balance(&mut state.balances, quote);
@@ -409,10 +510,12 @@ pub fn place_paper_order(
     } else {
         let base_balance = state.balances.entry(base.to_string()).or_insert(0.0);
         if *base_balance + helpers::BALANCE_EPSILON < amount {
-            return Err(IndodaxError::Other(
-                format!("[PAPER] Insufficient {} balance. Need {}, have {}",
-                    base.to_uppercase(), helpers::format_balance(base, amount), helpers::format_balance(base, *base_balance))
-            ));
+            return Err(IndodaxError::Other(format!(
+                "[PAPER] Insufficient {} balance. Need {}, have {}",
+                base.to_uppercase(),
+                helpers::format_balance(base, amount),
+                helpers::format_balance(base, *base_balance)
+            )));
         }
         *base_balance -= amount;
     }
@@ -427,17 +530,29 @@ pub fn place_paper_order(
         price: order_price,
         amount,
         remaining: amount,
-        order_type: if is_market { "market".into() } else { "limit".into() },
+        order_type: if is_market {
+            "market".into()
+        } else {
+            "limit".into()
+        },
         status: "open".into(),
         created_at: helpers::now_millis(),
         fees_paid: 0.0,
         filled_price: 0.0,
-        total_spent: if side == "buy" && !is_market { total_cost } else { 0.0 },
+        total_spent: if side == "buy" && !is_market {
+            total_cost
+        } else {
+            0.0
+        },
     });
 
     state.trade_count += 1;
 
-    let price_display = if is_market { "market".to_string() } else { order_price.to_string() };
+    let price_display = if is_market {
+        "market".to_string()
+    } else {
+        order_price.to_string()
+    };
     let data = serde_json::json!({
         "mode": "paper",
         "order_id": order_id,
@@ -456,12 +571,23 @@ pub fn place_paper_order(
         vec!["Side".into(), side.to_string()],
         vec!["Price".into(), price_display.clone()],
         vec!["Amount".into(), amount.to_string()],
-        vec!["Type".into(), if is_market { "market".into() } else { "limit".into() }],
+        vec![
+            "Type".into(),
+            if is_market {
+                "market".into()
+            } else {
+                "limit".into()
+            },
+        ],
         vec!["Status".into(), "open".into()],
     ];
 
-    Ok(CommandOutput::new(data, headers, rows)
-        .with_addendum(format!("[PAPER] {} {} {} @ {} — open", side, amount, pair, price_display)))
+    Ok(
+        CommandOutput::new(data, headers, rows).with_addendum(format!(
+            "[PAPER] {} {} {} @ {} — open",
+            side, amount, pair, price_display
+        )),
+    )
 }
 
 pub fn place_paper_order_idr(
@@ -473,13 +599,14 @@ pub fn place_paper_order_idr(
 ) -> Result<CommandOutput, IndodaxError> {
     state.dirty = true;
     if idr_amount <= 0.0 {
-        return Err(IndodaxError::Other(
-            format!("[PAPER] IDR amount must be positive, got {}", idr_amount)
-        ));
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] IDR amount must be positive, got {}",
+            idr_amount
+        )));
     }
     if side != "buy" {
         return Err(IndodaxError::Other(
-            "[PAPER] --idr is only valid for buy orders".to_string()
+            "[PAPER] --idr is only valid for buy orders".to_string(),
         ));
     }
     if price.is_none() {
@@ -489,19 +616,22 @@ pub fn place_paper_order_idr(
     }
     let order_price = price.unwrap_or(0.0);
     if order_price <= 0.0 {
-        return Err(IndodaxError::Other(
-            format!("[PAPER] Price must be positive, got {}", order_price)
-        ));
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] Price must be positive, got {}",
+            order_price
+        )));
     }
     let quote = pair.split('_').next_back().unwrap_or("idr");
 
     let amount = {
         let quote_balance = state.balances.entry(quote.to_string()).or_insert(0.0);
         if *quote_balance + helpers::BALANCE_EPSILON < idr_amount {
-                return Err(IndodaxError::Other(
-                    format!("[PAPER] Insufficient {} balance. Need {}, have {}",
-                        quote.to_uppercase(), helpers::format_balance(quote, idr_amount), helpers::format_balance(quote, *quote_balance))
-                ));
+            return Err(IndodaxError::Other(format!(
+                "[PAPER] Insufficient {} balance. Need {}, have {}",
+                quote.to_uppercase(),
+                helpers::format_balance(quote, idr_amount),
+                helpers::format_balance(quote, *quote_balance)
+            )));
         }
         *quote_balance -= idr_amount;
         round_balance(&mut state.balances, quote);
@@ -553,8 +683,12 @@ pub fn place_paper_order_idr(
     ];
 
     let base = pair.split('_').next().unwrap_or("btc");
-    Ok(CommandOutput::new(data, headers, rows)
-        .with_addendum(format!("[PAPER] buy {} {} for {} IDR @ {} — open", amount, base, idr_amount, price_display)))
+    Ok(
+        CommandOutput::new(data, headers, rows).with_addendum(format!(
+            "[PAPER] buy {} {} for {} IDR @ {} — open",
+            amount, base, idr_amount, price_display
+        )),
+    )
 }
 
 fn round_balance(balances: &mut HashMap<String, f64>, currency: &str) {
@@ -584,7 +718,10 @@ fn execute_fill(
         if *quote_balance < fee {
             return Err(IndodaxError::Other(format!(
                 "[PAPER] Insufficient {} balance to pay fee of {:.2}. Need {:.2}, have {:.2}",
-                quote.to_uppercase(), fee, fee, *quote_balance
+                quote.to_uppercase(),
+                fee,
+                fee,
+                *quote_balance
             )));
         }
         *quote_balance -= fee;
@@ -607,7 +744,11 @@ fn execute_fill(
     Ok(())
 }
 
-fn sort_paper_orders(orders: &mut Vec<&PaperOrder>, sort_by: Option<&str>, sort_order: Option<&str>) {
+fn sort_paper_orders(
+    orders: &mut Vec<&PaperOrder>,
+    sort_by: Option<&str>,
+    sort_order: Option<&str>,
+) {
     let desc = sort_order.map(|o| o == "desc" || o == "d").unwrap_or(true);
     let by = sort_by.unwrap_or("id");
     orders.sort_by(|a, b| {
@@ -615,17 +756,35 @@ fn sort_paper_orders(orders: &mut Vec<&PaperOrder>, sort_by: Option<&str>, sort_
             "id" => a.id.cmp(&b.id),
             "pair" => a.pair.cmp(&b.pair),
             "side" => a.side.cmp(&b.side),
-            "price" => a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal),
-            "amount" => a.amount.partial_cmp(&b.amount).unwrap_or(std::cmp::Ordering::Equal),
-            "remaining" => a.remaining.partial_cmp(&b.remaining).unwrap_or(std::cmp::Ordering::Equal),
+            "price" => a
+                .price
+                .partial_cmp(&b.price)
+                .unwrap_or(std::cmp::Ordering::Equal),
+            "amount" => a
+                .amount
+                .partial_cmp(&b.amount)
+                .unwrap_or(std::cmp::Ordering::Equal),
+            "remaining" => a
+                .remaining
+                .partial_cmp(&b.remaining)
+                .unwrap_or(std::cmp::Ordering::Equal),
             "status" => a.status.cmp(&b.status),
             _ => a.id.cmp(&b.id),
         };
-        if desc { cmp.reverse() } else { cmp }
+        if desc {
+            cmp.reverse()
+        } else {
+            cmp
+        }
     });
 }
 
-fn paper_orders(state: &PaperState, filter_pair: Option<&str>, sort_by: Option<&str>, sort_order: Option<&str>) -> Result<CommandOutput, IndodaxError> {
+fn paper_orders(
+    state: &PaperState,
+    filter_pair: Option<&str>,
+    sort_by: Option<&str>,
+    sort_order: Option<&str>,
+) -> Result<CommandOutput, IndodaxError> {
     let mut filtered: Vec<&PaperOrder> = state
         .orders
         .iter()
@@ -636,8 +795,13 @@ fn paper_orders(state: &PaperState, filter_pair: Option<&str>, sort_by: Option<&
     sort_paper_orders(&mut filtered, sort_by, sort_order);
 
     let headers = vec![
-        "Order ID".into(), "Pair".into(), "Side".into(), "Price".into(),
-        "Amount".into(), "Remaining".into(), "Status".into(),
+        "Order ID".into(),
+        "Pair".into(),
+        "Side".into(),
+        "Price".into(),
+        "Amount".into(),
+        "Remaining".into(),
+        "Status".into(),
     ];
     let rows: Vec<Vec<String>> = filtered
         .iter()
@@ -688,17 +852,28 @@ fn paper_cancel_all(state: &mut PaperState) -> Result<CommandOutput, IndodaxErro
         "failed_count": failures.len(),
     });
     if !failures.is_empty() {
-        data["failures"] = serde_json::json!(failures.iter().map(|(id, e)| serde_json::json!({
-            "order_id": id,
-            "error": e,
-        })).collect::<Vec<_>>());
+        data["failures"] = serde_json::json!(failures
+            .iter()
+            .map(|(id, e)| serde_json::json!({
+                "order_id": id,
+                "error": e,
+            }))
+            .collect::<Vec<_>>());
     }
 
     let addendum = if failures.is_empty() {
         format!("[PAPER] Cancelled {} orders", count)
     } else {
-        let reasons: Vec<String> = failures.iter().map(|(id, e)| format!("{}: {}", id, e)).collect();
-        format!("[PAPER] Cancelled {} orders, {} failed: {}", count, failures.len(), reasons.join("; "))
+        let reasons: Vec<String> = failures
+            .iter()
+            .map(|(id, e)| format!("{}: {}", id, e))
+            .collect();
+        format!(
+            "[PAPER] Cancelled {} orders, {} failed: {}",
+            count,
+            failures.len(),
+            reasons.join("; ")
+        )
     };
 
     Ok(CommandOutput::json(data).with_addendum(addendum))
@@ -715,14 +890,19 @@ pub async fn paper_fill(
     let mut fetched_prices: HashMap<String, f64> = HashMap::new();
 
     if fetch {
-        let client = client.ok_or_else(|| IndodaxError::Other("client required when fetch is true".to_string()))?;
+        let client = client
+            .ok_or_else(|| IndodaxError::Other("client required when fetch is true".to_string()))?;
         let pairs_to_fetch: std::collections::HashSet<String> = if let Some(id) = order_id {
-            state.orders.iter()
+            state
+                .orders
+                .iter()
                 .filter(|o| o.id == id && o.status == "open")
                 .map(|o| o.pair.clone())
                 .collect()
         } else if fill_all {
-            state.orders.iter()
+            state
+                .orders
+                .iter()
                 .filter(|o| o.status == "open")
                 .map(|o| o.pair.clone())
                 .collect()
@@ -731,15 +911,25 @@ pub async fn paper_fill(
         };
 
         if !pairs_to_fetch.is_empty() {
-            eprintln!("[PAPER] Fetching live prices for {} pair(s)...", pairs_to_fetch.len());
-            let futures: Vec<_> = pairs_to_fetch.iter().map(|p| async move {
-                let ticker: serde_json::Value = client.public_get(&format!("/api/ticker/{}", p)).await?;
-                let price = ticker["ticker"]["last"].as_str()
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .or_else(|| ticker["ticker"]["last"].as_f64())
-                    .ok_or_else(|| IndodaxError::Other(format!("Failed to parse price for {}", p)))?;
-                Ok::<(String, f64), IndodaxError>((p.clone(), price))
-            }).collect();
+            eprintln!(
+                "[PAPER] Fetching live prices for {} pair(s)...",
+                pairs_to_fetch.len()
+            );
+            let futures: Vec<_> = pairs_to_fetch
+                .iter()
+                .map(|p| async move {
+                    let ticker: serde_json::Value =
+                        client.public_get(&format!("/api/ticker/{}", p)).await?;
+                    let price = ticker["ticker"]["last"]
+                        .as_str()
+                        .and_then(|s| s.parse::<f64>().ok())
+                        .or_else(|| ticker["ticker"]["last"].as_f64())
+                        .ok_or_else(|| {
+                            IndodaxError::Other(format!("Failed to parse price for {}", p))
+                        })?;
+                    Ok::<(String, f64), IndodaxError>((p.clone(), price))
+                })
+                .collect();
 
             for (pair, price) in join_all(futures).await.into_iter().flatten() {
                 fetched_prices.insert(pair, price);
@@ -748,7 +938,9 @@ pub async fn paper_fill(
     }
 
     if fill_all {
-        let open_ids: Vec<u64> = state.orders.iter()
+        let open_ids: Vec<u64> = state
+            .orders
+            .iter()
             .filter(|o| o.status == "open")
             .map(|o| o.id)
             .collect();
@@ -757,7 +949,8 @@ pub async fn paper_fill(
             return Ok(CommandOutput::json(serde_json::json!({
                 "mode": "paper",
                 "filled_count": 0,
-            })).with_addendum("[PAPER] No open orders to fill"));
+            }))
+            .with_addendum("[PAPER] No open orders to fill"));
         }
 
         let mut skipped = 0u64;
@@ -766,11 +959,16 @@ pub async fn paper_fill(
         for id in &open_ids {
             let order = match state.orders.iter().find(|o| o.id == *id) {
                 Some(o) => o.clone(),
-                None => { skipped += 1; continue; }
+                None => {
+                    skipped += 1;
+                    continue;
+                }
             };
-            
+
             // Priority: fetched price > explicit fill_price > order price
-            let price = fetched_prices.get(&order.pair).copied()
+            let price = fetched_prices
+                .get(&order.pair)
+                .copied()
                 .or(fill_price)
                 .unwrap_or(order.price);
 
@@ -801,11 +999,27 @@ pub async fn paper_fill(
                 }
             };
 
-            if !should_fill { skipped += 1; continue; }
-            
+            if !should_fill {
+                skipped += 1;
+                continue;
+            }
+
             let base = order.pair.split('_').next().unwrap_or("btc").to_string();
-            let quote = order.pair.split('_').next_back().unwrap_or("idr").to_string();
-            match execute_fill(state, *id, &base, &quote, &order.side, price, order.remaining) {
+            let quote = order
+                .pair
+                .split('_')
+                .next_back()
+                .unwrap_or("idr")
+                .to_string();
+            match execute_fill(
+                state,
+                *id,
+                &base,
+                &quote,
+                &order.side,
+                price,
+                order.remaining,
+            ) {
                 Ok(()) => filled += 1,
                 Err(e) => {
                     errors.push(format!("Order {}: {}", id, e));
@@ -823,14 +1037,22 @@ pub async fn paper_fill(
         });
 
         let addendum = if !errors.is_empty() {
-            format!("[PAPER] Filled {} order(s), {} errors: {}", filled, errors.len(), errors.join("; "))
+            format!(
+                "[PAPER] Filled {} order(s), {} errors: {}",
+                filled,
+                errors.len(),
+                errors.join("; ")
+            )
         } else if skipped > 0 {
             let skip_reason = if fill_price.is_some() {
                 " (orders not matching fill price condition)"
             } else {
                 ""
             };
-            format!("[PAPER] Filled {} order(s), skipped {}{}", filled, skipped, skip_reason)
+            format!(
+                "[PAPER] Filled {} order(s), skipped {}{}",
+                filled, skipped, skip_reason
+            )
         } else {
             format!("[PAPER] Filled {} order(s)", filled)
         };
@@ -838,20 +1060,37 @@ pub async fn paper_fill(
         return Ok(CommandOutput::json(data).with_addendum(addendum));
     }
 
-    let order_id = order_id.ok_or_else(|| IndodaxError::Other("[PAPER] Either --order-id or --all must be specified".into()))?;
+    let order_id = order_id.ok_or_else(|| {
+        IndodaxError::Other("[PAPER] Either --order-id or --all must be specified".into())
+    })?;
 
     let (status, side, pair, order_price, amount, remaining) = {
-        let order = state.orders.iter().find(|o| o.id == order_id)
+        let order = state
+            .orders
+            .iter()
+            .find(|o| o.id == order_id)
             .ok_or_else(|| IndodaxError::Other(format!("[PAPER] Order {} not found", order_id)))?;
-        (order.status.clone(), order.side.clone(), order.pair.clone(), order.price, order.amount, order.remaining)
+        (
+            order.status.clone(),
+            order.side.clone(),
+            order.pair.clone(),
+            order.price,
+            order.amount,
+            order.remaining,
+        )
     };
 
     if status != "open" {
-        return Err(IndodaxError::Other(format!("[PAPER] Order {} status is '{}', only open orders can be filled", order_id, status)));
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] Order {} status is '{}', only open orders can be filled",
+            order_id, status
+        )));
     }
 
     // Priority: fetched price > explicit fill_price > order price
-    let price = fetched_prices.get(&pair).copied()
+    let price = fetched_prices
+        .get(&pair)
+        .copied()
         .or(fill_price)
         .unwrap_or(order_price);
 
@@ -876,7 +1115,10 @@ pub async fn paper_fill(
                 )));
             }
         } else {
-            return Err(IndodaxError::Other(format!("[PAPER] Failed to fetch live price for {}", pair)));
+            return Err(IndodaxError::Other(format!(
+                "[PAPER] Failed to fetch live price for {}",
+                pair
+            )));
         }
     } else if let Some(fp) = fill_price {
         let should_fill = match side.as_str() {
@@ -921,7 +1163,11 @@ pub async fn paper_fill(
         .with_addendum(format!("[PAPER] Order {} filled at {}", order_id, price)))
 }
 
-fn paper_history(state: &PaperState, sort_by: Option<&str>, sort_order: Option<&str>) -> Result<CommandOutput, IndodaxError> {
+fn paper_history(
+    state: &PaperState,
+    sort_by: Option<&str>,
+    sort_order: Option<&str>,
+) -> Result<CommandOutput, IndodaxError> {
     let mut sorted: Vec<&PaperOrder> = state.orders.iter().collect();
     sort_paper_orders(&mut sorted, sort_by, sort_order);
 
@@ -991,10 +1237,12 @@ fn paper_status(state: &PaperState) -> Result<CommandOutput, IndodaxError> {
         rows.push(vec![format!("{} balance", currency), bal.clone()]);
     }
 
-    Ok(CommandOutput::new(data, headers, rows).with_addendum(format!(
-        "[PAPER] {} trades, {} filled, {} open, {} cancelled",
-        state.trade_count, filled_count, open_count, cancelled_count
-    )))
+    Ok(
+        CommandOutput::new(data, headers, rows).with_addendum(format!(
+            "[PAPER] {} trades, {} filled, {} open, {} cancelled",
+            state.trade_count, filled_count, open_count, cancelled_count
+        )),
+    )
 }
 
 async fn paper_watch(
@@ -1005,7 +1253,10 @@ async fn paper_watch(
 ) -> Result<CommandOutput, IndodaxError> {
     use tokio::time::{sleep, Duration};
 
-    eprintln!("[PAPER] Monitoring market for open orders (interval: {}s)...", interval_secs);
+    eprintln!(
+        "[PAPER] Monitoring market for open orders (interval: {}s)...",
+        interval_secs
+    );
     eprintln!("[PAPER] Press Ctrl+C to stop.");
 
     let initial_state = PaperState::load(config);
@@ -1015,7 +1266,8 @@ async fn paper_watch(
         return Ok(CommandOutput::json(serde_json::json!({
             "mode": "paper",
             "status": "no_open_orders",
-        })).with_addendum("[PAPER] No open orders. Nothing to watch.".to_string()));
+        }))
+        .with_addendum("[PAPER] No open orders. Nothing to watch.".to_string()));
     }
 
     loop {
@@ -1050,7 +1302,13 @@ async fn paper_watch(
                     state.save()?;
                 }
                 if filled > 0 {
-                    eprintln!("{}", output.addendum.as_deref().unwrap_or("[PAPER] Orders filled"));
+                    eprintln!(
+                        "{}",
+                        output
+                            .addendum
+                            .as_deref()
+                            .unwrap_or("[PAPER] Orders filled")
+                    );
                     if once {
                         return Ok(output);
                     }
@@ -1064,8 +1322,12 @@ async fn paper_watch(
 }
 
 async fn fetch_market_prices(
-client: &IndodaxClient, state: &PaperState) -> Result<HashMap<String, f64>, IndodaxError> {
-    let pairs: std::collections::BTreeSet<String> = state.orders.iter()
+    client: &IndodaxClient,
+    state: &PaperState,
+) -> Result<HashMap<String, f64>, IndodaxError> {
+    let pairs: std::collections::BTreeSet<String> = state
+        .orders
+        .iter()
         .filter(|o| o.status == "open")
         .map(|o| o.pair.clone())
         .collect();
@@ -1074,29 +1336,33 @@ client: &IndodaxClient, state: &PaperState) -> Result<HashMap<String, f64>, Indo
         return Ok(HashMap::new());
     }
 
-    let tasks: Vec<_> = pairs.iter().map(|pair| {
-        let pair = pair.clone();
-        let path = format!("/api/ticker/{}", pair);
-        async move {
-            match client.public_get::<serde_json::Value>(&path).await {
-                Ok(data) => {
-                    if let Some(ticker) = data.get("ticker") {
-                        let last = ticker.get("last")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse::<f64>().ok())
-                            .or_else(|| ticker.get("last").and_then(|v| v.as_f64()));
-                        last.map(|price| (pair, price))
-                    } else {
+    let tasks: Vec<_> = pairs
+        .iter()
+        .map(|pair| {
+            let pair = pair.clone();
+            let path = format!("/api/ticker/{}", pair);
+            async move {
+                match client.public_get::<serde_json::Value>(&path).await {
+                    Ok(data) => {
+                        if let Some(ticker) = data.get("ticker") {
+                            let last = ticker
+                                .get("last")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.parse::<f64>().ok())
+                                .or_else(|| ticker.get("last").and_then(|v| v.as_f64()));
+                            last.map(|price| (pair, price))
+                        } else {
+                            None
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[PAPER] Warning: Failed to fetch price for {}: {}", pair, e);
                         None
                     }
                 }
-                Err(e) => {
-                    eprintln!("[PAPER] Warning: Failed to fetch price for {}: {}", pair, e);
-                    None
-                }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     let results = join_all(tasks).await;
     let mut prices = HashMap::new();
@@ -1106,14 +1372,21 @@ client: &IndodaxClient, state: &PaperState) -> Result<HashMap<String, f64>, Indo
     Ok(prices)
 }
 
-pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, prices: Option<&str>, fetch: bool) -> Result<CommandOutput, IndodaxError> {
+pub async fn paper_check_fills(
+    client: &IndodaxClient,
+    state: &mut PaperState,
+    prices: Option<&str>,
+    fetch: bool,
+) -> Result<CommandOutput, IndodaxError> {
     let market_prices: HashMap<String, f64> = if fetch {
         fetch_market_prices(client, state).await?
     } else if let Some(p) = prices {
         serde_json::from_str(p)
             .map_err(|e| IndodaxError::Other(format!("[PAPER] Invalid prices JSON: {}", e)))?
     } else {
-        return Err(IndodaxError::Other("[PAPER] Either --prices or --fetch must be specified".into()));
+        return Err(IndodaxError::Other(
+            "[PAPER] Either --prices or --fetch must be specified".into(),
+        ));
     };
 
     // Normalize price keys to match stored order pairs
@@ -1126,7 +1399,9 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
     let mut errors: Vec<String> = Vec::new();
     let mut skipped_pairs: Vec<String> = Vec::new();
 
-    let open_ids: Vec<(u64, String, String, f64, f64)> = state.orders.iter()
+    let open_ids: Vec<(u64, String, String, f64, f64)> = state
+        .orders
+        .iter()
         .filter(|o| o.status == "open")
         .map(|o| (o.id, o.pair.clone(), o.side.clone(), o.price, o.remaining))
         .collect();
@@ -1151,7 +1426,15 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
         if should_fill {
             let base = pair.split('_').next().unwrap_or("btc");
             let quote = pair.split('_').next_back().unwrap_or("idr");
-            match execute_fill(state, *order_id, base, quote, side, current_price, *remaining) {
+            match execute_fill(
+                state,
+                *order_id,
+                base,
+                quote,
+                side,
+                current_price,
+                *remaining,
+            ) {
                 Ok(()) => filled_ids.push(*order_id),
                 Err(e) => errors.push(format!("Order {}: {}", order_id, e)),
             }
@@ -1170,19 +1453,33 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
     let skipped_msg = if skipped_pairs.is_empty() {
         String::new()
     } else {
-        format!(" (skipped pairs without prices: {})", skipped_pairs.join(", "))
+        format!(
+            " (skipped pairs without prices: {})",
+            skipped_pairs.join(", ")
+        )
     };
 
     let msg = if !errors.is_empty() {
-        format!("[PAPER] Filled {} order(s) with {} error(s): {}{}",
-            filled_ids.len(), errors.len(), errors.join("; "), skipped_msg)
+        format!(
+            "[PAPER] Filled {} order(s) with {} error(s): {}{}",
+            filled_ids.len(),
+            errors.len(),
+            errors.join("; "),
+            skipped_msg
+        )
     } else if filled_ids.is_empty() {
         format!("[PAPER] No orders matched market conditions{}", skipped_msg)
     } else {
-        format!("[PAPER] Filled {} order(s): {}{}",
+        format!(
+            "[PAPER] Filled {} order(s): {}{}",
             filled_ids.len(),
-            filled_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "),
-            skipped_msg)
+            filled_ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            skipped_msg
+        )
     };
 
     Ok(CommandOutput::json(data).with_addendum(msg))
@@ -1193,7 +1490,9 @@ pub async fn paper_check_fills(client: &IndodaxClient, state: &mut PaperState, p
 // ──────────────────────────────────────────────
 
 pub fn paper_balance_value(state: &PaperState) -> serde_json::Value {
-    let rounded: std::collections::HashMap<String, f64> = state.balances.iter()
+    let rounded: std::collections::HashMap<String, f64> = state
+        .balances
+        .iter()
         .map(|(k, v)| {
             let val = if helpers::is_fiat_or_stable(k) {
                 (*v * 100.0).round() / 100.0
@@ -1210,23 +1509,22 @@ pub fn paper_balance_value(state: &PaperState) -> serde_json::Value {
 }
 
 pub fn paper_orders_value(state: &PaperState) -> serde_json::Value {
-    let open_orders: Vec<&PaperOrder> = state
-        .orders
-        .iter()
-        .filter(|o| o.status == "open")
-        .collect();
+    let open_orders: Vec<&PaperOrder> =
+        state.orders.iter().filter(|o| o.status == "open").collect();
     let count = open_orders.len();
     let orders: Vec<serde_json::Value> = open_orders
         .iter()
-        .map(|o| serde_json::json!({
-            "id": o.id,
-            "pair": o.pair,
-            "side": o.side,
-            "price": o.price,
-            "amount": o.amount,
-            "remaining": o.remaining,
-            "status": o.status,
-        }))
+        .map(|o| {
+            serde_json::json!({
+                "id": o.id,
+                "pair": o.pair,
+                "side": o.side,
+                "price": o.price,
+                "amount": o.amount,
+                "remaining": o.remaining,
+                "status": o.status,
+            })
+        })
         .collect();
     serde_json::json!({
         "mode": "paper",
@@ -1246,18 +1544,25 @@ pub fn paper_history_value(state: &PaperState) -> serde_json::Value {
 pub fn paper_status_value(state: &PaperState) -> serde_json::Value {
     let filled = state.orders.iter().filter(|o| o.status == "filled").count();
     let open = state.orders.iter().filter(|o| o.status == "open").count();
-    let cancelled = state.orders.iter().filter(|o| o.status == "cancelled").count();
+    let cancelled = state
+        .orders
+        .iter()
+        .filter(|o| o.status == "cancelled")
+        .count();
     let pnl: std::collections::HashMap<String, serde_json::Value> = state
         .balances
         .iter()
         .filter_map(|(k, v)| {
             let init = state.initial_balance(k);
             if init > 0.0 || *v > 0.0 {
-                Some((k.to_uppercase(), serde_json::json!({
-                    "current": v,
-                    "initial": init,
-                    "diff": v - init,
-                })))
+                Some((
+                    k.to_uppercase(),
+                    serde_json::json!({
+                        "current": v,
+                        "initial": init,
+                        "diff": v - init,
+                    }),
+                ))
             } else {
                 None
             }
@@ -1308,11 +1613,17 @@ pub fn cancel_all_paper_orders(state: &mut PaperState) -> (usize, Vec<(u64, Stri
 
 fn refund_and_cancel(state: &mut PaperState, order_id: u64) -> Result<(), IndodaxError> {
     state.dirty = true;
-    let order = state.orders.iter().find(|o| o.id == order_id)
+    let order = state
+        .orders
+        .iter()
+        .find(|o| o.id == order_id)
         .ok_or_else(|| IndodaxError::Other(format!("[PAPER] Order {} not found", order_id)))?;
 
     if order.status == "filled" || order.status == "cancelled" {
-        return Err(IndodaxError::Other(format!("[PAPER] Order {} already {}", order_id, order.status)));
+        return Err(IndodaxError::Other(format!(
+            "[PAPER] Order {} already {}",
+            order_id, order.status
+        )));
     }
 
     let base = order.pair.split('_').next().unwrap_or("btc");
@@ -1371,7 +1682,7 @@ mod tests {
             "initial_balances": {"btc": 2.0, "idr": 50_000_000.0}
         });
         config.paper_balances = Some(state_json);
-        
+
         let state = PaperState::load(&config);
         assert_eq!(state.balances.get("btc"), Some(&2.0));
         assert_eq!(state.next_order_id, 5);
@@ -1384,15 +1695,19 @@ mod tests {
         let mut state = PaperState::default();
         state.balances.insert("eth".into(), 10.0);
         state.next_order_id = 42;
-        
+
         let paper_path = IndodaxConfig::paper_state_path();
         // Clean up any previous test file
         let _ = std::fs::remove_file(&paper_path);
-        
+
         let result = state.save();
         assert!(result.is_ok());
-        assert!(paper_path.exists(), "Paper state file should exist at {:?}", paper_path);
-        
+        assert!(
+            paper_path.exists(),
+            "Paper state file should exist at {:?}",
+            paper_path
+        );
+
         // Clean up
         let _ = std::fs::remove_file(&paper_path);
     }
@@ -1402,7 +1717,7 @@ mod tests {
         let mut state = PaperState::default();
         state.balances.insert("eth".into(), 100.0);
         state.next_order_id = 99;
-        
+
         let output = paper_init(&mut state, None, None).unwrap();
         assert_eq!(state.balances.get("idr"), Some(&100_000_000.0));
         assert_eq!(state.balances.get("btc"), Some(&1.0));
@@ -1415,11 +1730,23 @@ mod tests {
     #[test]
     fn test_paper_reset() {
         let mut state = PaperState {
-            balances: { let mut m = std::collections::HashMap::new(); m.insert("custom".into(), 999.0); m },
+            balances: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("custom".into(), 999.0);
+                m
+            },
             orders: vec![PaperOrder {
-                id: 1, pair: "test".into(), side: "buy".into(), price: 1.0,
-                amount: 1.0, remaining: 0.0, order_type: "limit".into(),
-                status: "filled".into(), created_at: 0, fees_paid: 0.0, filled_price: 0.0,
+                id: 1,
+                pair: "test".into(),
+                side: "buy".into(),
+                price: 1.0,
+                amount: 1.0,
+                remaining: 0.0,
+                order_type: "limit".into(),
+                status: "filled".into(),
+                created_at: 0,
+                fees_paid: 0.0,
+                filled_price: 0.0,
                 total_spent: 0.0,
             }],
             next_order_id: 50,
@@ -1428,7 +1755,7 @@ mod tests {
             initial_balances: None,
             dirty: false,
         };
-        
+
         let output = paper_reset(&mut state).unwrap();
         assert_eq!(state.balances.get("idr"), Some(&100_000_000.0));
         assert_eq!(state.next_order_id, 1);
@@ -1440,7 +1767,7 @@ mod tests {
     fn test_paper_balance() {
         let mut state = PaperState::default();
         state.balances.insert("eth".into(), 5.0);
-        
+
         let output = paper_balance(&state).unwrap();
         let rendered = output.render();
         assert!(rendered.contains("IDR") || rendered.contains("BTC") || rendered.contains("ETH"));
@@ -1450,7 +1777,7 @@ mod tests {
     fn test_place_paper_order_buy() {
         let mut state = PaperState::default();
         let result = place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5);
-        
+
         assert!(result.is_ok());
         assert_eq!(state.balances.get("idr").unwrap(), &99950000.0);
         assert_eq!(state.balances.get("btc").unwrap(), &1.0);
@@ -1463,7 +1790,7 @@ mod tests {
     fn test_place_paper_order_sell() {
         let mut state = PaperState::default();
         let result = place_paper_order(&mut state, "btc_idr", "sell", Some(100_000_000.0), 0.5);
-        
+
         assert!(result.is_ok());
         assert_eq!(state.balances.get("btc").unwrap(), &0.5);
         assert_eq!(state.balances.get("idr").unwrap(), &100000000.0);
@@ -1475,7 +1802,7 @@ mod tests {
         let mut state = PaperState::default();
         // Try to buy with insufficient IDR
         let result = place_paper_order(&mut state, "btc_idr", "buy", Some(200_000_000.0), 1.0);
-        
+
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Insufficient"));
     }
@@ -1485,7 +1812,7 @@ mod tests {
         let mut state = PaperState::default();
         // Try to sell more BTC than we have
         let result = place_paper_order(&mut state, "btc_idr", "sell", Some(100_000_000.0), 2.0);
-        
+
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Insufficient"));
     }
@@ -1502,7 +1829,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "btc_idr", "sell", Some(110_000_000.0), 0.3).unwrap();
-        
+
         let output = paper_orders(&state, None, None, None).unwrap();
         let rendered = output.render();
         assert!(rendered.contains("btc_idr"));
@@ -1513,7 +1840,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "eth_idr", "buy", Some(10_000_000.0), 1.0).unwrap();
-        
+
         let output = paper_orders(&state, Some("btc_idr"), None, None).unwrap();
         let rendered = output.render();
         assert!(rendered.contains("btc_idr"));
@@ -1525,7 +1852,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
-        
+
         // Order is open, cancel should succeed and refund balance
         let output = paper_cancel(&mut state, order_id);
         assert!(output.is_ok());
@@ -1545,13 +1872,16 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
-        
+
         // First cancel should succeed (order is open)
         paper_cancel(&mut state, order_id).unwrap();
         // Second cancel should fail (already cancelled)
         let output = paper_cancel(&mut state, order_id);
         assert!(output.is_err());
-        assert!(output.unwrap_err().to_string().contains("already cancelled"));
+        assert!(output
+            .unwrap_err()
+            .to_string()
+            .contains("already cancelled"));
     }
 
     #[test]
@@ -1559,7 +1889,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "eth_idr", "buy", Some(10_000_000.0), 1.0).unwrap();
-        
+
         // Orders are open, cancel_all should cancel them
         let output = paper_cancel_all(&mut state);
         assert!(output.is_ok());
@@ -1578,7 +1908,7 @@ mod tests {
     fn test_paper_history() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
-        
+
         let output = paper_history(&state, None, None).unwrap();
         assert!(!output.render().is_empty());
     }
@@ -1587,10 +1917,14 @@ mod tests {
     fn test_paper_status() {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
-        
+
         let output = paper_status(&state).unwrap();
         let rendered = output.render();
-        assert!(rendered.contains("trade_count") || rendered.contains("Trade") || rendered.contains("BTC"));
+        assert!(
+            rendered.contains("trade_count")
+                || rendered.contains("Trade")
+                || rendered.contains("BTC")
+        );
     }
 
     #[tokio::test]
@@ -1598,7 +1932,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
-        
+
         let result = paper_fill(&mut state, Some(order_id), None, false, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
@@ -1610,7 +1944,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "sell", Some(100_000_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
-        
+
         let result = paper_fill(&mut state, Some(order_id), None, false, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
@@ -1628,8 +1962,10 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
-        
-        paper_fill(&mut state, Some(order_id), None, false, None, false).await.unwrap();
+
+        paper_fill(&mut state, Some(order_id), None, false, None, false)
+            .await
+            .unwrap();
         let result = paper_fill(&mut state, Some(order_id), None, false, None, false).await;
         assert!(result.is_err());
     }
@@ -1639,15 +1975,31 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
-        
+
         // Buy @ 100k, fill at 90k (better price) -> OK
-        let result = paper_fill(&mut state, Some(order_id), Some(90_000.0), false, None, false).await;
+        let result = paper_fill(
+            &mut state,
+            Some(order_id),
+            Some(90_000.0),
+            false,
+            None,
+            false,
+        )
+        .await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
         assert_eq!(state.orders[0].filled_price, 90_000.0);
 
         // Try to fill already filled order
-        let result2 = paper_fill(&mut state, Some(order_id), Some(80_000.0), false, None, false).await;
+        let result2 = paper_fill(
+            &mut state,
+            Some(order_id),
+            Some(80_000.0),
+            false,
+            None,
+            false,
+        )
+        .await;
         assert!(result2.is_err());
     }
 
@@ -1656,9 +2008,17 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         let order_id = state.orders[0].id;
-        
+
         // Buy @ 100k, try to fill at 110k (worse price) -> Error
-        let result = paper_fill(&mut state, Some(order_id), Some(110_000.0), false, None, false).await;
+        let result = paper_fill(
+            &mut state,
+            Some(order_id),
+            Some(110_000.0),
+            false,
+            None,
+            false,
+        )
+        .await;
         assert!(result.is_err());
         assert_eq!(state.orders[0].status, "open");
     }
@@ -1668,7 +2028,7 @@ mod tests {
         let mut state = PaperState::default();
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000.0), 0.5).unwrap();
         place_paper_order(&mut state, "btc_idr", "sell", Some(110_000_000.0), 0.3).unwrap();
-        
+
         let result = paper_fill(&mut state, None, None, true, None, false).await;
         assert!(result.is_ok());
         assert_eq!(state.orders[0].status, "filled");
@@ -1719,7 +2079,7 @@ mod tests {
         let mut state = PaperState::default();
         state.balances.insert("btc".into(), 0.0);
         state.balances.insert("idr".into(), 100_000_000.0);
-        
+
         let result = execute_fill(&mut state, 1, "btc", "idr", "buy", 100_000.0, 0.5);
         assert!(result.is_ok());
         assert_eq!(state.balances.get("btc").unwrap(), &0.5);
@@ -1730,7 +2090,7 @@ mod tests {
         let mut state = PaperState::default();
         state.balances.insert("btc".into(), 1.0);
         state.balances.insert("idr".into(), 0.0);
-        
+
         let result = execute_fill(&mut state, 1, "btc", "idr", "sell", 100_000_000.0, 0.5);
         assert!(result.is_ok());
         assert_eq!(state.balances.get("idr").unwrap(), &49870000.0);
@@ -1752,7 +2112,7 @@ mod tests {
             filled_price: 100_000.0,
             total_spent: 0.0,
         };
-        
+
         assert_eq!(order.id, 1);
         assert_eq!(order.pair, "btc_idr");
         assert_eq!(order.side, "buy");
@@ -1764,7 +2124,10 @@ mod tests {
         let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
         let mut config = IndodaxConfig::default();
-        let cmd = PaperCommand::Init { idr: None, btc: None };
+        let cmd = PaperCommand::Init {
+            idr: None,
+            btc: None,
+        };
         let result = dispatch_paper(&client, &mut state, &mut config, &cmd).await;
         assert!(result.is_ok());
     }
@@ -1854,7 +2217,8 @@ mod tests {
     async fn test_paper_check_fills_no_open_orders() {
         let client = IndodaxClient::new(None).unwrap();
         let mut state = PaperState::default();
-        let result = paper_check_fills(&client, &mut state, Some(r#"{"btc_idr": 90000000}"#), false).await;
+        let result =
+            paper_check_fills(&client, &mut state, Some(r#"{"btc_idr": 90000000}"#), false).await;
         assert!(result.is_ok());
     }
 
@@ -1865,9 +2229,19 @@ mod tests {
         place_paper_order(&mut state, "btc_idr", "buy", Some(100_000_000.0), 0.5).unwrap();
         // Empty prices map means no orders match — result should be Ok with no fills
         let result = paper_check_fills(&client, &mut state, Some(r#"{}"#), false).await;
-        assert!(result.is_ok(), "Should handle no matching prices: {:?}", result.err());
-        assert_eq!(state.orders[0].status, "open", "Order should remain open when prices unavailable");
-        assert_eq!(state.orders[0].remaining, 0.5, "Remaining amount should be unchanged");
+        assert!(
+            result.is_ok(),
+            "Should handle no matching prices: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            state.orders[0].status, "open",
+            "Order should remain open when prices unavailable"
+        );
+        assert_eq!(
+            state.orders[0].remaining, 0.5,
+            "Remaining amount should be unchanged"
+        );
     }
 
     #[tokio::test]

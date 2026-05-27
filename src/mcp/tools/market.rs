@@ -1,5 +1,5 @@
-use serde_json::Value;
 use rmcp::model::{CallToolResult, Tool};
+use serde_json::Value;
 
 use super::IndodaxMcp;
 use crate::commands::helpers;
@@ -80,11 +80,7 @@ pub fn market_tools() -> Vec<Tool> {
 
 impl IndodaxMcp {
     pub async fn handle_server_time(&self) -> CallToolResult {
-        match self
-            .client
-            .public_get::<Value>("/api/server_time")
-            .await
-        {
+        match self.client.public_get::<Value>("/api/server_time").await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_from_indodax(&e),
         }
@@ -99,11 +95,7 @@ impl IndodaxMcp {
     }
 
     pub async fn handle_ticker_all(&self) -> CallToolResult {
-        match self
-            .client
-            .public_get::<Value>("/api/ticker_all")
-            .await
-        {
+        match self.client.public_get::<Value>("/api/ticker_all").await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_from_indodax(&e),
         }
@@ -117,11 +109,7 @@ impl IndodaxMcp {
     }
 
     pub async fn handle_summaries(&self) -> CallToolResult {
-        match self
-            .client
-            .public_get::<Value>("/api/summaries")
-            .await
-        {
+        match self.client.public_get::<Value>("/api/summaries").await {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_from_indodax(&e),
         }

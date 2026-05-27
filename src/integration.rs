@@ -4,6 +4,7 @@
 pub use crate::client::IndodaxClient;
 pub use crate::config::{IndodaxConfig, ResolvedCredentials, SecretValue};
 pub use crate::errors::IndodaxError;
+#[cfg(feature = "cli")]
 pub use crate::output::{CommandOutput, OutputFormat};
 
 /// SDK-focused imports for application integrations.
@@ -14,7 +15,6 @@ pub mod sdk {
     pub use crate::client::IndodaxClient;
     pub use crate::config::{IndodaxConfig, ResolvedCredentials, SecretValue};
     pub use crate::errors::IndodaxError;
-    pub use crate::output::{CommandOutput, OutputFormat};
 
     /// Recommended imports for SDK consumers.
     pub mod prelude {

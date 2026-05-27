@@ -1,13 +1,13 @@
 use clap::Parser;
-use indodax_cli::{
-    client::IndodaxClient,
-    commands::utility::{UtilityCommand, execute as utility_execute},
-    config::IndodaxConfig,
-    dispatch, map_anyhow_error, Cli, Command,
-};
 use indodax_cli::errors::IndodaxError;
 use indodax_cli::mcp;
 use indodax_cli::output::{CommandOutput, OutputFormat};
+use indodax_cli::{
+    client::IndodaxClient,
+    commands::utility::{execute as utility_execute, UtilityCommand},
+    config::IndodaxConfig,
+    dispatch, map_anyhow_error, Cli, Command,
+};
 use std::io::BufRead;
 use std::process;
 
@@ -22,7 +22,10 @@ async fn main() {
         } else {
             "unexpected internal error".to_string()
         };
-        let location = info.location().map(|l| format!(" at {}:{}", l.file(), l.line())).unwrap_or_default();
+        let location = info
+            .location()
+            .map(|l| format!(" at {}:{}", l.file(), l.line()))
+            .unwrap_or_default();
         eprintln!("Internal error: {}{}", message, location);
         std::process::exit(1);
     }));
@@ -53,7 +56,10 @@ async fn main() {
     let api_secret = if cli.api_secret_stdin {
         let mut secret = String::new();
         if let Err(e) = std::io::stdin().lock().read_line(&mut secret) {
-            report_error(&IndodaxError::Other(format!("Failed to read API secret from stdin: {}", e)), output_format);
+            report_error(
+                &IndodaxError::Other(format!("Failed to read API secret from stdin: {}", e)),
+                output_format,
+            );
             process::exit(1);
         }
         let trimmed = secret.trim().to_string();
@@ -75,9 +81,9 @@ async fn main() {
         }
     };
 
-    let signer = creds.as_ref().map(|c| {
-        indodax_cli::auth::Signer::new(c.api_key.as_str(), c.api_secret.as_str())
-    });
+    let signer = creds
+        .as_ref()
+        .map(|c| indodax_cli::auth::Signer::new(c.api_key.as_str(), c.api_secret.as_str()));
 
     let client = match IndodaxClient::new(signer) {
         Ok(c) => c.with_ws_token(config.ws_token.as_ref().map(|t| t.as_str().to_string())),
@@ -88,7 +94,11 @@ async fn main() {
     };
 
     // Handle MCP server separately — it runs indefinitely on stdio
-    if let Command::Mcp { groups, allow_dangerous } = &cli.command {
+    if let Command::Mcp {
+        groups,
+        allow_dangerous,
+    } = &cli.command
+    {
         match mcp::run(groups, *allow_dangerous, client, config).await {
             Ok(()) => process::exit(0),
             Err(e) => {
@@ -99,14 +109,12 @@ async fn main() {
     }
 
     let result: Result<CommandOutput, IndodaxError> = match &cli.command {
-        Command::Setup => {
-            utility_execute(&client, &creds, &UtilityCommand::Setup).await
-                .map_err(map_anyhow_error)
-        }
-        Command::Shell => {
-            utility_execute(&client, &creds, &UtilityCommand::Shell).await
-                .map_err(map_anyhow_error)
-        }
+        Command::Setup => utility_execute(&client, &creds, &UtilityCommand::Setup)
+            .await
+            .map_err(map_anyhow_error),
+        Command::Shell => utility_execute(&client, &creds, &UtilityCommand::Shell)
+            .await
+            .map_err(map_anyhow_error),
         _ => dispatch(cli, &client, &mut config).await,
     };
 

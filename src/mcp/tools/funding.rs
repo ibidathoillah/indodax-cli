@@ -1,5 +1,5 @@
-use serde_json::Value;
 use rmcp::model::{CallToolResult, Tool};
+use serde_json::Value;
 use std::collections::HashMap;
 
 use super::IndodaxMcp;
@@ -82,12 +82,23 @@ impl IndodaxMcp {
             return Self::validation_error_result("Missing required parameter: currency".into());
         }
         if amount <= 0.0 || !amount.is_finite() {
-            return Self::validation_error_result(format!("Amount must be positive and finite, got {}", amount));
+            return Self::validation_error_result(format!(
+                "Amount must be positive and finite, got {}",
+                amount
+            ));
         }
         if address.is_empty() {
             return Self::validation_error_result("Missing required parameter: address".into());
         }
-        let params = crate::commands::helpers::build_withdraw_params(currency, amount, address, to_username, memo, network, callback_url);
+        let params = crate::commands::helpers::build_withdraw_params(
+            currency,
+            amount,
+            address,
+            to_username,
+            memo,
+            network,
+            callback_url,
+        );
 
         match self
             .client

@@ -123,7 +123,11 @@ mod tests {
         let groups = ServiceGroup::parse("market,trade,paper").unwrap();
         assert_eq!(
             groups,
-            vec![ServiceGroup::Market, ServiceGroup::Trade, ServiceGroup::Paper]
+            vec![
+                ServiceGroup::Market,
+                ServiceGroup::Trade,
+                ServiceGroup::Paper
+            ]
         );
     }
 
@@ -183,8 +187,14 @@ mod tests {
 
     #[test]
     fn test_from_str() {
-        assert_eq!("market".parse::<ServiceGroup>().unwrap(), ServiceGroup::Market);
-        assert_eq!("TRADE".parse::<ServiceGroup>().unwrap(), ServiceGroup::Trade);
+        assert_eq!(
+            "market".parse::<ServiceGroup>().unwrap(),
+            ServiceGroup::Market
+        );
+        assert_eq!(
+            "TRADE".parse::<ServiceGroup>().unwrap(),
+            ServiceGroup::Trade
+        );
         assert!("invalid".parse::<ServiceGroup>().is_err());
     }
 

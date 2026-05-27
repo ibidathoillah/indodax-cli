@@ -2,7 +2,7 @@ use crate::auth::Signer;
 use crate::errors::{ErrorCategory, IndodaxError};
 use reqwest::{Client, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use tokio::sync::Mutex;
 
 use web_time::{Duration, Instant};
@@ -12,7 +12,10 @@ async fn sleep(duration: Duration) {
     let mut cb = |resolve: js_sys::Function, _reject: js_sys::Function| {
         web_sys::window()
             .unwrap()
-            .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, duration.as_millis() as i32)
+            .set_timeout_with_callback_and_timeout_and_arguments_0(
+                &resolve,
+                duration.as_millis() as i32,
+            )
             .unwrap();
     };
     let p = js_sys::Promise::new(&mut cb);
@@ -174,7 +177,11 @@ impl IndodaxClient {
 
         #[cfg(not(target_arch = "wasm32"))]
         let builder = builder
-            .user_agent(format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")))
+            .user_agent(format!(
+                "{}/{}",
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION")
+            ))
             .timeout(Duration::from_secs(30))
             .pool_max_idle_per_host(2);
 
@@ -213,7 +220,7 @@ impl IndodaxClient {
         timeframe: &str,
         from: u64,
         to: u64,
-    ) -> Result<TvHistoryResponse, IndodaxError> {
+    ) -> Result<serde_json::Value, IndodaxError> {
         let from_str = from.to_string();
         let to_str = to.to_string();
         let params = [
@@ -234,7 +241,10 @@ impl IndodaxClient {
         self.public_get_v2("/api/v2/chatroom/history", &[]).await
     }
 
-    pub async fn get_pairs_v2(&self, pair: Option<&str>) -> Result<serde_json::Value, IndodaxError> {
+    pub async fn get_pairs_v2(
+        &self,
+        pair: Option<&str>,
+    ) -> Result<serde_json::Value, IndodaxError> {
         if let Some(p) = pair {
             self.public_get_v2("/api/pairs_v2", &[("pair", p)]).await
         } else {
@@ -251,17 +261,25 @@ impl IndodaxClient {
         self.public_get_v2(&path, &[]).await
     }
 
-    pub async fn get_terminal_market_data(&self, pair: &str) -> Result<serde_json::Value, IndodaxError> {
+    pub async fn get_terminal_market_data(
+        &self,
+        pair: &str,
+    ) -> Result<serde_json::Value, IndodaxError> {
         let path = format!("/terminal-trading/market/data?pair={}", pair);
         self.public_get_v2(&path, &[]).await
     }
 
     pub async fn get_terminal_market_category(&self) -> Result<serde_json::Value, IndodaxError> {
-        self.public_get_v2("/terminal-trading/market/category", &[]).await
+        self.public_get_v2("/terminal-trading/market/category", &[])
+            .await
     }
 
     pub async fn get_onramp_config(&self, pair: &str) -> Result<serde_json::Value, IndodaxError> {
-        let url = format!("{}/deposit-idr/v1/onramp/config?pair={}", api_base_url(), pair);
+        let url = format!(
+            "{}/deposit-idr/v1/onramp/config?pair={}",
+            api_base_url(),
+            pair
+        );
         let resp = self.retry_get(&url).await?;
         self.handle_response(resp).await
     }
@@ -272,10 +290,7 @@ impl IndodaxClient {
         Ok(resp.text().await?)
     }
 
-    pub async fn public_get<T: DeserializeOwned>(
-        &self,
-        path: &str,
-    ) -> Result<T, IndodaxError> {
+    pub async fn public_get<T: DeserializeOwned>(&self, path: &str) -> Result<T, IndodaxError> {
         let url = format!("{}{}", public_base_url(), path);
         let resp = self.retry_get(&url).await?;
         self.handle_response(resp).await
@@ -290,9 +305,7 @@ impl IndodaxClient {
             IndodaxError::Config("API credentials required for countdown cancel all".into())
         })?;
 
-        let mut body_parts: Vec<String> = vec![
-            format!("countdownTime={}", countdown_time),
-        ];
+        let mut body_parts: Vec<String> = vec![format!("countdownTime={}", countdown_time)];
         if let Some(p) = pair {
             body_parts.push(format!("pair={}", p));
         }
@@ -332,22 +345,43 @@ impl IndodaxClient {
         let body_text = resp.text().await?;
         let val: serde_json::Value = serde_json::from_str(&body_text)?;
 
-        let token = val.get("token")
+        let token = val
+            .get("token")
             .and_then(|t| t.as_str())
-            .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str()))
-            .or_else(|| val.get("return").and_then(|r| r.get("connToken")).and_then(|t| t.as_str()))
+            .or_else(|| {
+                val.get("data")
+                    .and_then(|d| d.get("token"))
+                    .and_then(|t| t.as_str())
+            })
+            .or_else(|| {
+                val.get("return")
+                    .and_then(|r| r.get("connToken"))
+                    .and_then(|t| t.as_str())
+            })
             .map(|t| t.to_string());
 
-        let channel = val.get("channel")
+        let channel = val
+            .get("channel")
             .and_then(|c| c.as_str())
-            .or_else(|| val.get("data").and_then(|d| d.get("channel")).and_then(|c| c.as_str()))
-            .or_else(|| val.get("return").and_then(|r| r.get("channel")).and_then(|c| c.as_str()))
+            .or_else(|| {
+                val.get("data")
+                    .and_then(|d| d.get("channel"))
+                    .and_then(|c| c.as_str())
+            })
+            .or_else(|| {
+                val.get("return")
+                    .and_then(|r| r.get("channel"))
+                    .and_then(|c| c.as_str())
+            })
             .map(|c| c.to_string());
 
         match (token, channel) {
             (Some(t), Some(c)) => Ok((t, c)),
             (Some(t), None) => Ok((t, "private:orders".to_string())), // Fallback channel
-            _ => Err(IndodaxError::WsToken(format!("No token or channel in response: {}", body_text))),
+            _ => Err(IndodaxError::WsToken(format!(
+                "No token or channel in response: {}",
+                body_text
+            ))),
         }
     }
 
@@ -400,11 +434,9 @@ impl IndodaxClient {
             IndodaxError::Config("API credentials required for private endpoints".into())
         })?;
 
-        let mut full_params: BTreeMap<String, String> = params
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        
+        let mut full_params: BTreeMap<String, String> =
+            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
         full_params.insert("method".into(), method.to_string());
         full_params.insert("nonce".into(), signer.next_nonce_str());
 
@@ -427,10 +459,8 @@ impl IndodaxClient {
             IndodaxError::Config("API credentials required for private endpoints".into())
         })?;
 
-        let mut qs_parts: Vec<String> = params
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect();
+        let mut qs_parts: Vec<String> =
+            params.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
         let timestamp = crate::now_millis();
         qs_parts.push(format!("timestamp={}", timestamp));
         qs_parts.push("recvWindow=5000".to_string());
@@ -497,10 +527,7 @@ impl IndodaxClient {
         self.send_with_retry(req).await
     }
 
-    async fn send_with_retry(
-        &self,
-        builder: RequestBuilder,
-    ) -> Result<Response, IndodaxError> {
+    async fn send_with_retry(&self, builder: RequestBuilder) -> Result<Response, IndodaxError> {
         self.rate_limiter.acquire().await;
         let mut last_err = None;
         let mut total_retries = 0u32;
@@ -522,12 +549,21 @@ impl IndodaxClient {
                         let retry_req = b.try_clone().map(|b| b.build());
                         match retry_req {
                             Some(Ok(r)) => r,
-                            _ => return Err(last_err.unwrap_or_else(|| IndodaxError::Other("Request not cloneable for retry".into()))),
+                            _ => {
+                                return Err(last_err.unwrap_or_else(|| {
+                                    IndodaxError::Other("Request not cloneable for retry".into())
+                                }))
+                            }
                         }
                     }
-                    None => return Err(last_err.unwrap_or_else(|| IndodaxError::Other("Request not cloneable for retry".into()))),
+                    None => {
+                        return Err(last_err.unwrap_or_else(|| {
+                            IndodaxError::Other("Request not cloneable for retry".into())
+                        }))
+                    }
                 })
-            }.map_err(|e| IndodaxError::Other(format!("Failed to build request: {}", e)))?;
+            }
+            .map_err(|e| IndodaxError::Other(format!("Failed to build request: {}", e)))?;
 
             match self.http.execute(req).await {
                 Ok(resp) => {
@@ -537,7 +573,8 @@ impl IndodaxClient {
                     }
 
                     if status == StatusCode::TOO_MANY_REQUESTS {
-                        let retry_after = resp.headers()
+                        let retry_after = resp
+                            .headers()
                             .get("Retry-After")
                             .and_then(|v| v.to_str().ok())
                             .and_then(|s| s.parse::<u64>().ok())
@@ -554,9 +591,9 @@ impl IndodaxClient {
                             ErrorCategory::RateLimit,
                             None,
                         ));
-                        
+
                         if current_builder.is_none() {
-                             return Err(last_err.unwrap());
+                            return Err(last_err.unwrap());
                         }
                         continue;
                     }
@@ -569,9 +606,9 @@ impl IndodaxClient {
                             ErrorCategory::Server,
                             None,
                         ));
-                        
+
                         if current_builder.is_none() {
-                             return Err(last_err.unwrap());
+                            return Err(last_err.unwrap());
                         }
                         continue;
                     }
@@ -586,27 +623,29 @@ impl IndodaxClient {
                 Err(e) => {
                     total_retries += 1;
                     backoff_count += 1;
-                    
+
                     let is_retryable = e.is_timeout() || {
                         #[cfg(not(target_arch = "wasm32"))]
-                        { e.is_connect() }
+                        {
+                            e.is_connect()
+                        }
                         #[cfg(target_arch = "wasm32")]
-                        { false }
+                        {
+                            false
+                        }
                     };
 
                     if is_retryable && current_builder.is_some() {
                         last_err = Some(IndodaxError::Http(e));
                         continue;
                     }
-                    
+
                     return Err(IndodaxError::Http(e));
                 }
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            IndodaxError::Other("Max retries exceeded".into())
-        }))
+        Err(last_err.unwrap_or_else(|| IndodaxError::Other("Max retries exceeded".into())))
     }
 
     async fn handle_response<T: DeserializeOwned>(
@@ -722,7 +761,7 @@ mod tests {
         let mut params = std::collections::BTreeMap::new();
         params.insert("method".into(), "getInfo".into());
         params.insert("nonce".into(), "12345".into());
-        
+
         let result = serde_urlencoded_str(&params);
         assert!(result.contains("method=getInfo"));
         assert!(result.contains("nonce=12345"));
@@ -739,7 +778,7 @@ mod tests {
     fn test_serde_urlencoded_str_special_chars() {
         let mut params = std::collections::BTreeMap::new();
         params.insert("key with space".into(), "value&more".into());
-        
+
         let result = serde_urlencoded_str(&params);
         // Should be URL encoded
         assert!(result.contains("%20") || result.contains("+"));

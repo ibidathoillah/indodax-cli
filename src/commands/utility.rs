@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use crate::client::IndodaxClient;
 use crate::config::ResolvedCredentials;
 use crate::output::CommandOutput;
 use anyhow::Result;
+use std::collections::HashMap;
 
 #[derive(Debug, clap::Subcommand)]
 pub enum UtilityCommand {
@@ -29,11 +29,23 @@ async fn test_credentials(api_key: &str, api_secret: &str) {
     let signer = Signer::new(api_key, api_secret);
     match IndodaxClient::new(Some(signer)) {
         Ok(client) => {
-            match client.private_post_v1::<serde_json::Value>("getInfo", &HashMap::new()).await {
+            match client
+                .private_post_v1::<serde_json::Value>("getInfo", &HashMap::new())
+                .await
+            {
                 Ok(info) => {
-                    let name = info.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let user_id = info.get("user_id").and_then(|v| v.as_str()).unwrap_or("unknown");
-                    eprintln!("  Credentials validated: logged in as '{}' (user ID: {})", name, user_id);
+                    let name = info
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let user_id = info
+                        .get("user_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    eprintln!(
+                        "  Credentials validated: logged in as '{}' (user ID: {})",
+                        name, user_id
+                    );
                 }
                 Err(e) => {
                     eprintln!("  Warning: Credentials saved but validation failed: {}", e);
@@ -78,7 +90,10 @@ async fn setup() -> Result<CommandOutput> {
             config.callback_url = Some(callback_url);
         }
         config.save()?;
-        eprintln!("\nConfiguration saved to {:?}", crate::config::IndodaxConfig::config_path());
+        eprintln!(
+            "\nConfiguration saved to {:?}",
+            crate::config::IndodaxConfig::config_path()
+        );
     }
 
     eprintln!("\nValidating credentials...");
@@ -91,7 +106,10 @@ async fn setup() -> Result<CommandOutput> {
     Ok(CommandOutput::json(data))
 }
 
-async fn shell(client: &IndodaxClient, _creds: &Option<ResolvedCredentials>) -> Result<CommandOutput> {
+async fn shell(
+    client: &IndodaxClient,
+    _creds: &Option<ResolvedCredentials>,
+) -> Result<CommandOutput> {
     use crate::Cli;
     use clap::Parser;
     use rustyline::DefaultEditor;
@@ -170,12 +188,16 @@ mod tests {
 
     #[test]
     fn test_shell_parse_with_quotes() {
-        let result =
-            shell_parse(r#"auth set --api-key "my key" --api-secret "my secret""#);
+        let result = shell_parse(r#"auth set --api-key "my key" --api-secret "my secret""#);
         assert_eq!(
             result,
             vec![
-                "auth", "set", "--api-key", "my key", "--api-secret", "my secret",
+                "auth",
+                "set",
+                "--api-key",
+                "my key",
+                "--api-secret",
+                "my secret",
             ]
         );
     }

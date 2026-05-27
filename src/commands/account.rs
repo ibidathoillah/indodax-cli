@@ -52,17 +52,19 @@ pub enum AccountCommand {
 
     #[command(name = "equity-history", about = "View equity snapshot history")]
     EquityHistory {
-        #[arg(short, long, default_value = "20", help = "Number of snapshots to show")]
+        #[arg(
+            short,
+            long,
+            default_value = "20",
+            help = "Number of snapshots to show"
+        )]
         limit: usize,
         #[arg(long, help = "Show all snapshots")]
         all: bool,
     },
 }
 
-pub async fn execute(
-    client: &IndodaxClient,
-    cmd: &AccountCommand,
-) -> Result<CommandOutput> {
+pub async fn execute(client: &IndodaxClient, cmd: &AccountCommand) -> Result<CommandOutput> {
     match cmd {
         AccountCommand::Info => info(client).await,
         AccountCommand::Balance => balance(client).await,
@@ -84,25 +86,38 @@ pub async fn execute(
             get_order(client, *order_id, &pair).await
         }
         AccountCommand::EquitySnap => equity_snap(client).await,
-        AccountCommand::EquityHistory { limit, all } => {
-            equity_history(*limit, *all)
-        }
+        AccountCommand::EquityHistory { limit, all } => equity_history(*limit, *all),
     }
 }
 
 async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
-    let data: serde_json::Value =
-        client.private_post_v1("getInfo", &HashMap::new()).await?;
+    let data: serde_json::Value = client.private_post_v1("getInfo", &HashMap::new()).await?;
 
-    let headers = vec![
-        "Field".into(), "Value".into(),
-    ];
+    let headers = vec!["Field".into(), "Value".into()];
     let mut rows: Vec<Vec<String>> = vec![
-        vec!["Name".into(), helpers::value_to_string(data.get("name").unwrap_or(&serde_json::Value::Null))],
-        vec!["User ID".into(), helpers::value_to_string(data.get("user_id").unwrap_or(&serde_json::Value::Null))],
-        vec!["Server Time".into(), helpers::format_timestamp(data["server_time"].as_u64().unwrap_or(0), false)],
-        vec!["Vip Level".into(), helpers::value_to_string(data.get("vip_level").unwrap_or(&serde_json::Value::Null))],
-        vec!["Verified".into(), helpers::value_to_string(data.get("verified_user").unwrap_or(&serde_json::Value::Null))],
+        vec![
+            "Name".into(),
+            helpers::value_to_string(data.get("name").unwrap_or(&serde_json::Value::Null)),
+        ],
+        vec![
+            "User ID".into(),
+            helpers::value_to_string(data.get("user_id").unwrap_or(&serde_json::Value::Null)),
+        ],
+        vec![
+            "Server Time".into(),
+            helpers::format_timestamp(data["server_time"].as_u64().unwrap_or(0), false),
+        ],
+        vec![
+            "Vip Level".into(),
+            helpers::value_to_string(data.get("vip_level").unwrap_or(&serde_json::Value::Null)),
+        ],
+        vec![
+            "Verified".into(),
+            helpers::value_to_string(
+                data.get("verified_user")
+                    .unwrap_or(&serde_json::Value::Null),
+            ),
+        ],
     ];
 
     let balance = &data["balance"];
@@ -110,7 +125,9 @@ async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
         let mut entries: Vec<(&String, f64)> = bal_map
             .iter()
             .map(|(k, v)| {
-                let val = v.as_str().and_then(|s| s.parse::<f64>().ok())
+                let val = v
+                    .as_str()
+                    .and_then(|s| s.parse::<f64>().ok())
                     .or_else(|| v.as_f64())
                     .unwrap_or(0.0);
                 (k, val)
@@ -127,8 +144,7 @@ async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
 }
 
 async fn balance(client: &IndodaxClient) -> Result<CommandOutput> {
-    let data: serde_json::Value =
-        client.private_post_v1("getInfo", &HashMap::new()).await?;
+    let data: serde_json::Value = client.private_post_v1("getInfo", &HashMap::new()).await?;
 
     let balance = &data["balance"];
     let headers = vec!["Currency".into(), "Balance".into()];
@@ -138,7 +154,9 @@ async fn balance(client: &IndodaxClient) -> Result<CommandOutput> {
         let mut entries: Vec<(String, f64)> = bal_map
             .iter()
             .map(|(k, v)| {
-                let val = v.as_str().and_then(|s| s.parse::<f64>().ok())
+                let val = v
+                    .as_str()
+                    .and_then(|s| s.parse::<f64>().ok())
                     .or_else(|| v.as_f64())
                     .unwrap_or(0.0);
                 (k.clone(), val)
@@ -154,33 +172,33 @@ async fn balance(client: &IndodaxClient) -> Result<CommandOutput> {
     Ok(CommandOutput::new(data, headers, rows))
 }
 
-async fn open_orders(
-    client: &IndodaxClient,
-    pair: Option<&str>,
-) -> Result<CommandOutput> {
+async fn open_orders(client: &IndodaxClient, pair: Option<&str>) -> Result<CommandOutput> {
     let mut params = HashMap::new();
     if let Some(p) = pair {
         params.insert("pair".into(), p.to_string());
     }
-    let data: serde_json::Value =
-        client.private_post_v1("openOrders", &params).await?;
+    let data: serde_json::Value = client.private_post_v1("openOrders", &params).await?;
 
     let orders = &data["orders"];
     let headers = vec![
-        "Order ID".into(), "Pair".into(), "Order Type".into(), "Side".into(),
-        "Price".into(), "Amount".into(), "Remaining".into(), "Time".into(),
+        "Order ID".into(),
+        "Pair".into(),
+        "Order Type".into(),
+        "Side".into(),
+        "Price".into(),
+        "Amount".into(),
+        "Remaining".into(),
+        "Time".into(),
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
     if let serde_json::Value::Object(orders_map) = orders {
         for (order_id, order_val) in orders_map {
-            let pair = helpers::value_to_string(
-                priv_get(order_val, &["pair", "market", "symbol"]),
-            );
-            let order_type = helpers::value_to_string(
-                priv_get(order_val, &["type", "order_type"]),
-            );
-            let raw_side = priv_get(order_val, &["side", "order_side"]).as_str().map(|s| s.to_lowercase());
+            let pair = helpers::value_to_string(priv_get(order_val, &["pair", "market", "symbol"]));
+            let order_type = helpers::value_to_string(priv_get(order_val, &["type", "order_type"]));
+            let raw_side = priv_get(order_val, &["side", "order_side"])
+                .as_str()
+                .map(|s| s.to_lowercase());
             let side = match raw_side.as_deref() {
                 Some("sell") => "SELL",
                 Some("buy") => "BUY",
@@ -193,16 +211,19 @@ async fn open_orders(
                 }
             };
 
-            let remaining = helpers::value_to_string(
-                priv_get(order_val, &["remaining", "remain_volume", "remaining_volume"]),
-            );
-            let base_amount = order_val.get("order_btc")
+            let remaining = helpers::value_to_string(priv_get(
+                order_val,
+                &["remaining", "remain_volume", "remaining_volume"],
+            ));
+            let base_amount = order_val
+                .get("order_btc")
                 .or_else(|| order_val.get("order_base"))
                 .or_else(|| order_val.get("amount"))
                 .map(helpers::value_to_string)
                 .unwrap_or_default();
 
-            let time_val = order_val.get("submit_time")
+            let time_val = order_val
+                .get("submit_time")
                 .or_else(|| order_val.get("created_at"))
                 .or_else(|| order_val.get("time"))
                 .map(|v| {
@@ -215,9 +236,8 @@ async fn open_orders(
                 })
                 .unwrap_or_default();
 
-            let price_str = helpers::value_to_string(
-                priv_get(order_val, &["price", "order_price"]),
-            );
+            let price_str =
+                helpers::value_to_string(priv_get(order_val, &["price", "order_price"]));
             let order_type_label = if price_str.parse::<f64>().unwrap_or(0.0) > 0.0 {
                 "limit"
             } else {
@@ -237,28 +257,26 @@ async fn open_orders(
         }
     }
 
-    rows.sort_by(|a, b| {
-        match (b[0].parse::<u64>().ok(), a[0].parse::<u64>().ok()) {
+    rows.sort_by(
+        |a, b| match (b[0].parse::<u64>().ok(), a[0].parse::<u64>().ok()) {
             (Some(bv), Some(av)) => bv.cmp(&av),
             _ => b[0].cmp(&a[0]),
-        }
-    });
+        },
+    );
     let count = rows.len();
-    Ok(CommandOutput::new(data, headers, rows)
-        .with_addendum(format!("{} open orders", count)))
+    Ok(CommandOutput::new(data, headers, rows).with_addendum(format!("{} open orders", count)))
 }
 
-async fn order_history(
-    client: &IndodaxClient,
-    symbol: &str,
-    limit: u32,
-) -> Result<CommandOutput> {
+async fn order_history(client: &IndodaxClient, symbol: &str, limit: u32) -> Result<CommandOutput> {
     let now = helpers::now_millis();
     let start = now - helpers::ONE_DAY_MS;
 
     let effective_limit = limit.max(10);
     let limit_warning = if limit < 10 {
-        Some(format!("[ACCOUNT] Warning: Order history minimum limit is 10. Using 10 instead of {}.", limit))
+        Some(format!(
+            "[ACCOUNT] Warning: Order history minimum limit is 10. Using 10 instead of {}.",
+            limit
+        ))
     } else {
         None
     };
@@ -268,12 +286,19 @@ async fn order_history(
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
 
-    let data: serde_json::Value =
-        client.private_get_v2("/api/v2/order/histories", &params).await?;
+    let data: serde_json::Value = client
+        .private_get_v2("/api/v2/order/histories", &params)
+        .await?;
 
     let headers = vec![
-        "Order ID".into(), "Symbol".into(), "Side".into(), "Type".into(),
-        "Price".into(), "Qty".into(), "Status".into(), "Time".into(),
+        "Order ID".into(),
+        "Symbol".into(),
+        "Side".into(),
+        "Type".into(),
+        "Price".into(),
+        "Qty".into(),
+        "Status".into(),
+        "Time".into(),
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
@@ -299,17 +324,16 @@ async fn order_history(
     Ok(output)
 }
 
-async fn trade_history(
-    client: &IndodaxClient,
-    symbol: &str,
-    limit: u32,
-) -> Result<CommandOutput> {
+async fn trade_history(client: &IndodaxClient, symbol: &str, limit: u32) -> Result<CommandOutput> {
     let now = helpers::now_millis();
     let start = now - helpers::ONE_DAY_MS;
 
     let effective_limit = limit.max(10);
     let limit_warning = if limit < 10 {
-        Some(format!("[ACCOUNT] Warning: Trade history minimum limit is 10. Using 10 instead of {}.", limit))
+        Some(format!(
+            "[ACCOUNT] Warning: Trade history minimum limit is 10. Using 10 instead of {}.",
+            limit
+        ))
     } else {
         None
     };
@@ -319,12 +343,17 @@ async fn trade_history(
     params.insert("startTime".into(), start.to_string());
     params.insert("endTime".into(), now.to_string());
 
-    let data: serde_json::Value =
-        client.private_get_v2("/api/v2/myTrades", &params).await?;
+    let data: serde_json::Value = client.private_get_v2("/api/v2/myTrades", &params).await?;
 
     let headers = vec![
-        "Trade ID".into(), "Order ID".into(), "Symbol".into(), "Side".into(),
-        "Price".into(), "Qty".into(), "Fee".into(), "Time".into(),
+        "Trade ID".into(),
+        "Order ID".into(),
+        "Symbol".into(),
+        "Side".into(),
+        "Price".into(),
+        "Qty".into(),
+        "Fee".into(),
+        "Time".into(),
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
@@ -351,17 +380,23 @@ async fn trade_history(
 }
 
 async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
-    let data: serde_json::Value =
-        client.private_post_v1("transHistory", &HashMap::new()).await?;
+    let data: serde_json::Value = client
+        .private_post_v1("transHistory", &HashMap::new())
+        .await?;
 
     let headers = vec![
-        "ID".into(), "Type".into(), "Currency".into(), "Amount".into(),
-        "Fee".into(), "Status".into(), "Time".into(),
+        "ID".into(),
+        "Type".into(),
+        "Currency".into(),
+        "Amount".into(),
+        "Fee".into(),
+        "Status".into(),
+        "Time".into(),
     ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
     let mut all_trans = Vec::new();
-    
+
     if let Some(obj) = data.get("withdraw").and_then(|v| v.as_object()) {
         for (id, val) in obj {
             all_trans.push((id, "WITHDRAW", val));
@@ -389,21 +424,14 @@ async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
         rows.push(vec![
             id.clone(),
             tx_type.into(),
-            helpers::value_to_string(
-                priv_get(entry, &["currency", "asset", "coin"]),
-            ),
-            helpers::value_to_string(
-                priv_get(entry, &["amount", "value"]),
-            ),
-            helpers::value_to_string(
-                priv_get(entry, &["fee", "withdraw_fee"]),
-            ),
-            helpers::value_to_string(
-                priv_get(entry, &["status", "state"]),
-            ),
-            helpers::value_to_string(
-                priv_get(entry, &["submit_time", "timestamp", "time", "submitted"]),
-            ),
+            helpers::value_to_string(priv_get(entry, &["currency", "asset", "coin"])),
+            helpers::value_to_string(priv_get(entry, &["amount", "value"])),
+            helpers::value_to_string(priv_get(entry, &["fee", "withdraw_fee"])),
+            helpers::value_to_string(priv_get(entry, &["status", "state"])),
+            helpers::value_to_string(priv_get(
+                entry,
+                &["submit_time", "timestamp", "time", "submitted"],
+            )),
         ]);
     }
 
@@ -411,17 +439,12 @@ async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
     Ok(CommandOutput::new(data, headers, rows))
 }
 
-async fn get_order(
-    client: &IndodaxClient,
-    order_id: u64,
-    pair: &str,
-) -> Result<CommandOutput> {
+async fn get_order(client: &IndodaxClient, order_id: u64, pair: &str) -> Result<CommandOutput> {
     let mut params = HashMap::new();
     params.insert("order_id".into(), order_id.to_string());
     params.insert("pair".into(), pair.to_string());
 
-    let data: serde_json::Value =
-        client.private_post_v1("getOrder", &params).await?;
+    let data: serde_json::Value = client.private_post_v1("getOrder", &params).await?;
 
     let (headers, rows) = helpers::flatten_json_to_table(&data);
     Ok(CommandOutput::new(data, headers, rows))
@@ -454,21 +477,32 @@ fn load_equity_history() -> EquityHistoryData {
     let path = equity_history_path();
     if path.exists() {
         match std::fs::read_to_string(&path) {
-            Ok(content) => match serde_json::from_str::<EquityHistoryData>(&content) {
-                Ok(data) => data,
-                Err(e) => {
-                    eprintln!("[EQUITY] Warning: Corrupt equity history file ({}), attempting backup...", e);
-                    let backup_path = path.with_extension("json.bak");
-                    if let Err(copy_err) = std::fs::copy(&path, &backup_path) {
-                        eprintln!("[EQUITY] Warning: Could not backup corrupt file: {}", copy_err);
-                    } else {
-                        eprintln!("[EQUITY] Backed up corrupt file to {:?}. Starting fresh.", backup_path);
+            Ok(content) => {
+                match serde_json::from_str::<EquityHistoryData>(&content) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        eprintln!("[EQUITY] Warning: Corrupt equity history file ({}), attempting backup...", e);
+                        let backup_path = path.with_extension("json.bak");
+                        if let Err(copy_err) = std::fs::copy(&path, &backup_path) {
+                            eprintln!(
+                                "[EQUITY] Warning: Could not backup corrupt file: {}",
+                                copy_err
+                            );
+                        } else {
+                            eprintln!(
+                                "[EQUITY] Backed up corrupt file to {:?}. Starting fresh.",
+                                backup_path
+                            );
+                        }
+                        EquityHistoryData { snapshots: vec![] }
                     }
-                    EquityHistoryData { snapshots: vec![] }
                 }
-            },
+            }
             Err(e) => {
-                eprintln!("[EQUITY] Warning: Failed to read equity history: {}. Starting fresh.", e);
+                eprintln!(
+                    "[EQUITY] Warning: Failed to read equity history: {}. Starting fresh.",
+                    e
+                );
                 EquityHistoryData { snapshots: vec![] }
             }
         }
@@ -531,8 +565,11 @@ async fn calculate_equity(client: &IndodaxClient) -> Result<f64> {
     }
 
     let mut total = 0.0;
-    let known_quotes = ["idr", "btc", "usdt", "eth", "usdc", "sol", "bnb", "xrp", "ada"];
-    let mut quote_idr_prices: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+    let known_quotes = [
+        "idr", "btc", "usdt", "eth", "usdc", "sol", "bnb", "xrp", "ada",
+    ];
+    let mut quote_idr_prices: std::collections::HashMap<&str, f64> =
+        std::collections::HashMap::new();
     for quote in &known_quotes {
         let pair = format!("{}_{}", quote, "idr");
         let price = prices.get(&pair).copied().unwrap_or(0.0);
@@ -587,11 +624,27 @@ async fn equity_snap(client: &IndodaxClient) -> Result<CommandOutput> {
     save_equity_history(&history)?;
 
     let count = history.snapshots.len();
-    let first_equity = history.snapshots.first().map(|s| s.equity).unwrap_or(equity);
-    let peak = history.snapshots.iter().map(|s| s.equity).fold(0.0_f64, f64::max);
+    let first_equity = history
+        .snapshots
+        .first()
+        .map(|s| s.equity)
+        .unwrap_or(equity);
+    let peak = history
+        .snapshots
+        .iter()
+        .map(|s| s.equity)
+        .fold(0.0_f64, f64::max);
     let change = equity - first_equity;
-    let change_pct = if first_equity > 0.0 { (change / first_equity) * 100.0 } else { 0.0 };
-    let dd_pct = if peak > 0.0 { ((equity / peak) - 1.0) * 100.0 } else { 0.0 };
+    let change_pct = if first_equity > 0.0 {
+        (change / first_equity) * 100.0
+    } else {
+        0.0
+    };
+    let dd_pct = if peak > 0.0 {
+        ((equity / peak) - 1.0) * 100.0
+    } else {
+        0.0
+    };
 
     let headers = vec!["Metric".into(), "Value".into()];
     let formatted_time = helpers::format_timestamp(timestamp, true);
@@ -777,13 +830,27 @@ mod tests {
     fn test_account_command_variants() {
         let _cmd1 = AccountCommand::Info;
         let _cmd2 = AccountCommand::Balance;
-        let _cmd3 = AccountCommand::OpenOrders { pair: Some("btc_idr".into()) };
-        let _cmd4 = AccountCommand::OrderHistory { symbol: "btc_idr".into(), limit: 100 };
-        let _cmd5 = AccountCommand::TradeHistory { symbol: "btc_idr".into(), limit: 100 };
+        let _cmd3 = AccountCommand::OpenOrders {
+            pair: Some("btc_idr".into()),
+        };
+        let _cmd4 = AccountCommand::OrderHistory {
+            symbol: "btc_idr".into(),
+            limit: 100,
+        };
+        let _cmd5 = AccountCommand::TradeHistory {
+            symbol: "btc_idr".into(),
+            limit: 100,
+        };
         let _cmd6 = AccountCommand::TransHistory;
-        let _cmd7 = AccountCommand::GetOrder { order_id: 123, pair: "btc_idr".into() };
+        let _cmd7 = AccountCommand::GetOrder {
+            order_id: 123,
+            pair: "btc_idr".into(),
+        };
         let _cmd8 = AccountCommand::EquitySnap;
-        let _cmd9 = AccountCommand::EquityHistory { limit: 10, all: false };
+        let _cmd9 = AccountCommand::EquityHistory {
+            limit: 10,
+            all: false,
+        };
     }
 
     #[test]

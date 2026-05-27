@@ -1,7 +1,7 @@
-use chrono::DateTime;
-use serde_json::Value;
 use crate::client::IndodaxClient;
 use crate::errors::IndodaxError;
+use chrono::DateTime;
+use serde_json::Value;
 
 pub const PUBLIC_WS_TOKEN_URL: &str = "https://indodax.com/api/ws/v1/generate_token";
 
@@ -16,8 +16,11 @@ pub async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String, any
     if let Ok(resp) = resp_res {
         if let Ok(text) = resp.text().await {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(token) = val.get("token").and_then(|t| t.as_str())
-                    .or_else(|| val.get("data").and_then(|d| d.get("token")).and_then(|t| t.as_str())) {
+                if let Some(token) = val.get("token").and_then(|t| t.as_str()).or_else(|| {
+                    val.get("data")
+                        .and_then(|d| d.get("token"))
+                        .and_then(|t| t.as_str())
+                }) {
                     return Ok(token.to_string());
                 }
             }
@@ -28,7 +31,7 @@ pub async fn fetch_public_ws_token(client: &IndodaxClient) -> Result<String, any
     if let Some(token) = client.ws_token() {
         return Ok(token.to_string());
     }
-    
+
     // 3. Try INDODAX_WS_TOKEN env var
     if let Ok(token) = std::env::var("INDODAX_WS_TOKEN") {
         if !token.is_empty() {
@@ -84,15 +87,13 @@ pub fn flatten_json_to_table(json: &serde_json::Value) -> (Vec<String>, Vec<Vec<
         serde_json::Value::Object(map) => {
             let mut headers: Vec<String> = map.keys().cloned().collect();
             headers.sort();
-            let row: Vec<String> = headers
-                .iter()
-                .map(|k| value_to_string(&map[k]))
-                .collect();
+            let row: Vec<String> = headers.iter().map(|k| value_to_string(&map[k])).collect();
             (headers, vec![row])
         }
         serde_json::Value::Array(arr) if !arr.is_empty() => {
             // Collect all unique keys from all array elements
-            let mut all_keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut all_keys: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
             let mut is_obj = false;
             for item in arr {
                 if let serde_json::Value::Object(map) = item {
@@ -106,16 +107,14 @@ pub fn flatten_json_to_table(json: &serde_json::Value) -> (Vec<String>, Vec<Vec<
                 let headers: Vec<String> = all_keys.into_iter().collect();
                 let rows: Vec<Vec<String>> = arr
                     .iter()
-                    .map(|item| {
-                        headers
-                            .iter()
-                            .map(|k| value_to_string(&item[k]))
-                            .collect()
-                    })
+                    .map(|item| headers.iter().map(|k| value_to_string(&item[k])).collect())
                     .collect();
                 (headers, rows)
             } else {
-                (vec!["Value".into()], arr.iter().map(|v| vec![value_to_string(v)]).collect())
+                (
+                    vec!["Value".into()],
+                    arr.iter().map(|v| vec![value_to_string(v)]).collect(),
+                )
             }
         }
         _ => (vec!["Value".into()], vec![vec![value_to_string(json)]]),
@@ -132,7 +131,9 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
             let items: Vec<String> = arr.iter().map(value_to_string).collect();
             items.join(", ")
         }
-        serde_json::Value::Object(_) => serde_json::to_string(v).unwrap_or_else(|_| "<serialization_error>".to_string()),
+        serde_json::Value::Object(_) => {
+            serde_json::to_string(v).unwrap_or_else(|_| "<serialization_error>".to_string())
+        }
     }
 }
 
@@ -150,7 +151,9 @@ pub fn normalize_pair(pair: &str) -> String {
     if pair.contains('_') || pair.is_empty() {
         return pair;
     }
-    let quote_currencies = ["usdt", "idr", "btc", "usdc", "eth", "sol", "bnb", "xrp", "ada"];
+    let quote_currencies = [
+        "usdt", "idr", "btc", "usdc", "eth", "sol", "bnb", "xrp", "ada",
+    ];
     for quote in &quote_currencies {
         if let Some(base) = pair.strip_suffix(quote) {
             if !base.is_empty() {
@@ -251,21 +254,23 @@ pub fn build_withdraw_params(
 
 /// Validate a price against the price increment (tick size) for a pair.
 /// Returns a warning string if validation fails, or None if the price is valid or can't be checked.
-pub async fn validate_tick_size(
-    client: &IndodaxClient,
-    pair: &str,
-    price: f64,
-) -> Option<String> {
-    let Ok(data) = client.public_get::<serde_json::Value>("/api/price_increments").await else {
+pub async fn validate_tick_size(client: &IndodaxClient, pair: &str, price: f64) -> Option<String> {
+    let Ok(data) = client
+        .public_get::<serde_json::Value>("/api/price_increments")
+        .await
+    else {
         return None;
     };
     let increments = data.get("increments").and_then(|v| v.as_object())?;
     let normalized_pair = pair.to_lowercase().replace('-', "_");
-    let inc_entry = increments.get(&normalized_pair)
+    let inc_entry = increments
+        .get(&normalized_pair)
         .or_else(|| increments.get(&normalized_pair.replace('_', "")))
         .or_else(|| {
             let alt = normalized_pair.replace('_', "");
-            increments.keys().find(|k| k.replace('_', "") == alt)
+            increments
+                .keys()
+                .find(|k| k.replace('_', "") == alt)
                 .and_then(|k| increments.get(k))
         })?;
     let inc_str = inc_entry.as_str()?;
@@ -337,31 +342,47 @@ pub fn extract_pairs(data: &serde_json::Value) -> Vec<(String, String)> {
     if let serde_json::Value::Object(map) = data {
         for (key, value) in map {
             if let Some(obj) = value.as_object() {
-                let base = obj.get("traded_currency")
+                let base = obj
+                    .get("traded_currency")
                     .or_else(|| obj.get("tradedCurrency"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let quote = obj.get("base_currency")
+                let quote = obj
+                    .get("base_currency")
                     .or_else(|| obj.get("baseCurrency"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let symbol = obj.get("symbol").or_else(|| obj.get("ticker_id")).and_then(|v| v.as_str()).unwrap_or("");
+                let symbol = obj
+                    .get("symbol")
+                    .or_else(|| obj.get("ticker_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 pairs.push((key.clone(), format!("{}/{} ({})", base, quote, symbol)));
             }
         }
     } else if let serde_json::Value::Array(arr) = data {
         for item in arr {
             if let Some(obj) = item.as_object() {
-                let id = obj.get("id").or_else(|| obj.get("ticker_id")).and_then(|v| v.as_str()).unwrap_or("");
-                let base = obj.get("traded_currency")
+                let id = obj
+                    .get("id")
+                    .or_else(|| obj.get("ticker_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let base = obj
+                    .get("traded_currency")
                     .or_else(|| obj.get("tradedCurrency"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let quote = obj.get("base_currency")
+                let quote = obj
+                    .get("base_currency")
                     .or_else(|| obj.get("baseCurrency"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let symbol = obj.get("symbol").or_else(|| obj.get("ticker_id")).and_then(|v| v.as_str()).unwrap_or("");
+                let symbol = obj
+                    .get("symbol")
+                    .or_else(|| obj.get("ticker_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if !id.is_empty() {
                     pairs.push((id.to_string(), format!("{}/{} ({})", base, quote, symbol)));
                 }
@@ -449,7 +470,7 @@ mod tests {
     fn test_flatten_json_to_table_object() {
         let json = json!({"name": "Alice", "age": 30, "city": "NYC"});
         let (headers, rows) = flatten_json_to_table(&json);
-        
+
         assert_eq!(headers.len(), 3);
         assert_eq!(rows.len(), 1);
         assert!(headers.contains(&"name".into()));
@@ -464,7 +485,7 @@ mod tests {
             {"id": 2, "val": 200}
         ]);
         let (headers, rows) = flatten_json_to_table(&json);
-        
+
         assert_eq!(headers.len(), 2);
         assert_eq!(rows.len(), 2);
         assert!(headers.contains(&"id".into()));
@@ -475,7 +496,7 @@ mod tests {
     fn test_flatten_json_to_table_empty_array() {
         let json = json!([]);
         let (headers, rows) = flatten_json_to_table(&json);
-        
+
         // For empty array, returns single "Value" header and one row
         assert_eq!(headers.len(), 1);
         assert_eq!(rows.len(), 1);
@@ -485,7 +506,7 @@ mod tests {
     fn test_flatten_json_to_table_primitive() {
         let json = json!("hello");
         let (headers, rows) = flatten_json_to_table(&json);
-        
+
         assert_eq!(headers.len(), 1);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0][0], "hello");
@@ -495,7 +516,7 @@ mod tests {
     fn test_flatten_json_to_table_number() {
         let json = json!(42);
         let (_headers, rows) = flatten_json_to_table(&json);
-        
+
         assert_eq!(rows[0][0], "42");
     }
 
@@ -503,7 +524,7 @@ mod tests {
     fn test_flatten_json_to_table_bool() {
         let json = json!(true);
         let (_headers, rows) = flatten_json_to_table(&json);
-        
+
         assert_eq!(rows[0][0], "true");
     }
 
@@ -541,7 +562,7 @@ mod tests {
     fn test_flatten_json_to_table_null() {
         let json = json!(null);
         let (_headers, rows) = flatten_json_to_table(&json);
-        
+
         assert_eq!(rows[0][0], "");
     }
 
@@ -623,7 +644,7 @@ mod tests {
                 "symbol": "ETH/IDR"
             }
         });
-        
+
         let pairs_obj = extract_pairs(&data_obj);
         assert_eq!(pairs_obj.len(), 2);
         assert!(pairs_obj.iter().any(|(k, _)| k == "btcidr"));
@@ -658,7 +679,7 @@ mod tests {
                 "baseCurrency": "idr"
             }
         });
-        
+
         let pairs = extract_pairs(&data);
         assert_eq!(pairs.len(), 1);
         assert!(pairs[0].1.contains("btc"));

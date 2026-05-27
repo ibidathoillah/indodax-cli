@@ -1,7 +1,7 @@
+use crate::alerts::{self, load_alerts, save_alerts, AlertCondition, AlertStatus, PriceAlert};
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::output::CommandOutput;
-use crate::alerts::{PriceAlert, AlertCondition, AlertStatus, load_alerts, save_alerts};
 use anyhow::Result;
 use colored::*;
 use futures_util::{SinkExt, StreamExt};
@@ -53,7 +53,11 @@ pub enum AlertCommand {
         id: Option<u64>,
         #[arg(short = 'p', long, help = "Filter by pair (e.g. btc_idr)")]
         pair: Option<String>,
-        #[arg(long, default_value = "60", help = "Price change threshold (%) to trigger")]
+        #[arg(
+            long,
+            default_value = "60",
+            help = "Price change threshold (%) to trigger"
+        )]
         threshold: f64,
     },
 
@@ -67,9 +71,25 @@ pub async fn execute(
     cmd: &AlertCommand,
 ) -> Result<CommandOutput> {
     match cmd {
-        AlertCommand::Add { pair, above, below, percent_up, percent_down, note } => {
+        AlertCommand::Add {
+            pair,
+            above,
+            below,
+            percent_up,
+            percent_down,
+            note,
+        } => {
             let pair = helpers::normalize_pair(pair);
-            alert_add(&pair, *above, *below, *percent_up, *percent_down, note.clone(), client).await
+            alert_add(
+                &pair,
+                *above,
+                *below,
+                *percent_up,
+                *percent_down,
+                note.clone(),
+                client,
+            )
+            .await
         }
         AlertCommand::List { history } => alert_list(*history),
         AlertCommand::Cancel { id, all } => alert_cancel(*id, *all),
@@ -77,7 +97,11 @@ pub async fn execute(
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
             alert_check(client, *id, pair.as_deref()).await
         }
-        AlertCommand::Watch { id, pair, threshold } => {
+        AlertCommand::Watch {
+            id,
+            pair,
+            threshold,
+        } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
             alert_watch(client, *id, pair.as_deref(), *threshold).await
         }
@@ -110,16 +134,28 @@ pub async fn alert_add(
         AlertCondition::Below { price }
     } else if let Some(percent) = percent_up {
         if percent <= 0.0 || percent > 1000.0 {
-            return Err(anyhow::anyhow!("Percent must be between 0 and 1000, got {}", percent));
+            return Err(anyhow::anyhow!(
+                "Percent must be between 0 and 1000, got {}",
+                percent
+            ));
         }
         let from_price = fetch_price(client, pair).await?;
-        AlertCondition::ChangeUp { percent, from_price }
+        AlertCondition::ChangeUp {
+            percent,
+            from_price,
+        }
     } else if let Some(percent) = percent_down {
         if percent <= 0.0 || percent > 1000.0 {
-            return Err(anyhow::anyhow!("Percent must be between 0 and 1000, got {}", percent));
+            return Err(anyhow::anyhow!(
+                "Percent must be between 0 and 1000, got {}",
+                percent
+            ));
         }
         let from_price = fetch_price(client, pair).await?;
-        AlertCondition::ChangeDown { percent, from_price }
+        AlertCondition::ChangeDown {
+            percent,
+            from_price,
+        }
     } else {
         return Err(anyhow::anyhow!(
             "Must specify one of: --above, --below, --percent-up, or --percent-down"
@@ -144,8 +180,14 @@ pub async fn alert_add(
     let condition_str = match &alert.condition {
         AlertCondition::Above { price } => format!("above {}", format_number(*price)),
         AlertCondition::Below { price } => format!("below {}", format_number(*price)),
-        AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
-        AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
+        AlertCondition::ChangeUp {
+            percent,
+            from_price,
+        } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+        AlertCondition::ChangeDown {
+            percent,
+            from_price,
+        } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
     };
 
     let data = serde_json::json!({
@@ -161,13 +203,20 @@ pub async fn alert_add(
         vec!["Alert ID".into(), id.to_string()],
         vec!["Pair".into(), pair.to_string()],
         vec!["Condition".into(), condition_str.clone()],
-        vec!["Created".into(), chrono::DateTime::from_timestamp_millis(alert.created_at.min(i64::MAX as u64) as i64)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-            .unwrap_or_default()],
+        vec![
+            "Created".into(),
+            chrono::DateTime::from_timestamp_millis(alert.created_at.min(i64::MAX as u64) as i64)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_default(),
+        ],
     ];
 
-    Ok(CommandOutput::new(data, headers, rows)
-        .with_addendum(format!("[ALERT] Created {} alert for {} @ {}", id, pair, condition_str)))
+    Ok(
+        CommandOutput::new(data, headers, rows).with_addendum(format!(
+            "[ALERT] Created {} alert for {} @ {}",
+            id, pair, condition_str
+        )),
+    )
 }
 
 pub fn alert_list(include_history: bool) -> Result<CommandOutput> {
@@ -176,7 +225,10 @@ pub fn alert_list(include_history: bool) -> Result<CommandOutput> {
     let filtered: Vec<&PriceAlert> = if include_history {
         alerts.iter().collect()
     } else {
-        alerts.iter().filter(|a| a.status == AlertStatus::Active).collect()
+        alerts
+            .iter()
+            .filter(|a| a.status == AlertStatus::Active)
+            .collect()
     };
 
     if filtered.is_empty() {
@@ -187,7 +239,13 @@ pub fn alert_list(include_history: bool) -> Result<CommandOutput> {
         })));
     }
 
-    let mut headers = vec!["ID".into(), "Pair".into(), "Condition".into(), "Status".into(), "Created".into()];
+    let mut headers = vec![
+        "ID".into(),
+        "Pair".into(),
+        "Condition".into(),
+        "Status".into(),
+        "Created".into(),
+    ];
     if include_history {
         headers.push("Triggered".into());
     }
@@ -197,8 +255,14 @@ pub fn alert_list(include_history: bool) -> Result<CommandOutput> {
         let condition_str = match &alert.condition {
             AlertCondition::Above { price } => format!("> {}", format_number(*price)),
             AlertCondition::Below { price } => format!("< {}", format_number(*price)),
-            AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
-            AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeUp {
+                percent,
+                from_price,
+            } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeDown {
+                percent,
+                from_price,
+            } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
         };
 
         let mut row = vec![
@@ -212,11 +276,14 @@ pub fn alert_list(include_history: bool) -> Result<CommandOutput> {
         ];
 
         if include_history {
-            let triggered = alert.triggered_at.map(|t| {
-                chrono::DateTime::from_timestamp_millis(t.min(i64::MAX as u64) as i64)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                    .unwrap_or_default()
-            }).unwrap_or_else(|| "-".to_string());
+            let triggered = alert
+                .triggered_at
+                .map(|t| {
+                    chrono::DateTime::from_timestamp_millis(t.min(i64::MAX as u64) as i64)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_else(|| "-".to_string());
             row.push(triggered);
         }
 
@@ -236,7 +303,10 @@ pub fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> 
     let mut alerts = load_alerts()?;
 
     if cancel_all {
-        let count = alerts.iter().filter(|a| a.status == AlertStatus::Active).count();
+        let count = alerts
+            .iter()
+            .filter(|a| a.status == AlertStatus::Active)
+            .count();
         for alert in alerts.iter_mut() {
             if alert.status == AlertStatus::Active {
                 alert.status = AlertStatus::Cancelled;
@@ -248,7 +318,8 @@ pub fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> 
             "status": "ok",
             "message": format!("Cancelled {} alert(s)", count),
             "cancelled": count,
-        })).with_addendum(format!("[ALERT] Cancelled {} alert(s)", count)));
+        }))
+        .with_addendum(format!("[ALERT] Cancelled {} alert(s)", count)));
     }
 
     if let Some(target_id) = id {
@@ -262,9 +333,13 @@ pub fn alert_cancel(id: Option<u64>, cancel_all: bool) -> Result<CommandOutput> 
                     "status": "ok",
                     "message": format!("Cancelled alert {}", target_id),
                     "id": target_id,
-                })).with_addendum(format!("[ALERT] Cancelled alert {}", target_id)))
+                }))
+                .with_addendum(format!("[ALERT] Cancelled alert {}", target_id)))
             }
-            Some(_) => Err(anyhow::anyhow!("Alert {} is already cancelled or triggered", target_id)),
+            Some(_) => Err(anyhow::anyhow!(
+                "Alert {} is already cancelled or triggered",
+                target_id
+            )),
             None => Err(anyhow::anyhow!("Alert {} not found", target_id)),
         }
     } else {
@@ -280,10 +355,14 @@ pub async fn alert_check(
     let mut alerts = load_alerts()?;
 
     let to_check: Vec<&mut PriceAlert> = if let Some(target_id) = id {
-        alerts.iter_mut().filter(|a| a.id == target_id && a.status == AlertStatus::Active).collect()
+        alerts
+            .iter_mut()
+            .filter(|a| a.id == target_id && a.status == AlertStatus::Active)
+            .collect()
     } else {
         let filter = pair_filter.unwrap_or("*");
-        alerts.iter_mut()
+        alerts
+            .iter_mut()
             .filter(|a| a.status == AlertStatus::Active && (filter == "*" || a.pair == filter))
             .collect()
     };
@@ -307,11 +386,17 @@ pub async fn alert_check(
         let should_trigger = match &alert.condition {
             AlertCondition::Above { price: threshold } => price >= *threshold,
             AlertCondition::Below { price: threshold } => price <= *threshold,
-            AlertCondition::ChangeUp { percent, from_price } => {
+            AlertCondition::ChangeUp {
+                percent,
+                from_price,
+            } => {
                 let change = ((price - from_price) / from_price) * 100.0;
                 change >= *percent
             }
-            AlertCondition::ChangeDown { percent, from_price } => {
+            AlertCondition::ChangeDown {
+                percent,
+                from_price,
+            } => {
                 let change = ((from_price - price) / from_price) * 100.0;
                 change >= *percent
             }
@@ -331,10 +416,17 @@ pub async fn alert_check(
             "status": "ok",
             "message": "No alerts triggered",
             "triggered": [],
-        })).with_addendum("[ALERT] No alerts triggered"));
+        }))
+        .with_addendum("[ALERT] No alerts triggered"));
     }
 
-    let headers = vec!["ID".into(), "Pair".into(), "Condition".into(), "Price".into(), "Triggered At".into()];
+    let headers = vec![
+        "ID".into(),
+        "Pair".into(),
+        "Condition".into(),
+        "Price".into(),
+        "Triggered At".into(),
+    ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
     for alert in &triggered_alerts {
@@ -342,8 +434,14 @@ pub async fn alert_check(
         let condition_str = match &alert.condition {
             AlertCondition::Above { price } => format!("> {}", format_number(*price)),
             AlertCondition::Below { price } => format!("< {}", format_number(*price)),
-            AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
-            AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeUp {
+                percent,
+                from_price,
+            } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeDown {
+                percent,
+                from_price,
+            } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
         };
 
         rows.push(vec![
@@ -351,9 +449,11 @@ pub async fn alert_check(
             alert.pair.clone(),
             condition_str.clone(),
             format_number(current_price),
-            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap_or(0).min(i64::MAX as u64) as i64)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                .unwrap_or_default(),
+            chrono::DateTime::from_timestamp_millis(
+                alert.triggered_at.unwrap_or(0).min(i64::MAX as u64) as i64,
+            )
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_default(),
         ]);
     }
 
@@ -363,8 +463,12 @@ pub async fn alert_check(
         "count": triggered_alerts.len(),
     });
 
-    Ok(CommandOutput::new(data, headers, rows)
-        .with_addendum(format!("[ALERT] {} alert(s) triggered!", triggered_alerts.len())))
+    Ok(
+        CommandOutput::new(data, headers, rows).with_addendum(format!(
+            "[ALERT] {} alert(s) triggered!",
+            triggered_alerts.len()
+        )),
+    )
 }
 
 fn alert_triggered() -> Result<CommandOutput> {
@@ -381,24 +485,37 @@ fn alert_triggered() -> Result<CommandOutput> {
         })));
     }
 
-    let headers = vec!["ID".into(), "Pair".into(), "Condition".into(), "Triggered At".into()];
+    let headers = vec![
+        "ID".into(),
+        "Pair".into(),
+        "Condition".into(),
+        "Triggered At".into(),
+    ];
     let mut rows: Vec<Vec<String>> = Vec::new();
 
     for alert in &triggered {
         let condition_str = match &alert.condition {
             AlertCondition::Above { price } => format!("> {}", format_number(*price)),
             AlertCondition::Below { price } => format!("< {}", format_number(*price)),
-            AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
-            AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeUp {
+                percent,
+                from_price,
+            } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
+            AlertCondition::ChangeDown {
+                percent,
+                from_price,
+            } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
         };
 
         rows.push(vec![
             alert.id.to_string(),
             alert.pair.clone(),
             condition_str.clone(),
-            chrono::DateTime::from_timestamp_millis(alert.triggered_at.unwrap_or(0).min(i64::MAX as u64) as i64)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                .unwrap_or_default(),
+            chrono::DateTime::from_timestamp_millis(
+                alert.triggered_at.unwrap_or(0).min(i64::MAX as u64) as i64,
+            )
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_default(),
         ]);
     }
 
@@ -406,18 +523,21 @@ fn alert_triggered() -> Result<CommandOutput> {
         serde_json::json!({"status": "ok", "count": triggered.len()}),
         headers,
         rows,
-    ).with_addendum(format!("[ALERT] {} triggered alert(s)", triggered.len())))
+    )
+    .with_addendum(format!("[ALERT] {} triggered alert(s)", triggered.len())))
 }
 
 async fn fetch_price(client: &IndodaxClient, pair: &str) -> Result<f64> {
     let response: serde_json::Value = client.public_get(&format!("/api/ticker/{}", pair)).await?;
 
-    let price = response.get("ticker")
+    let price = response
+        .get("ticker")
         .and_then(|t| t.get("last"))
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse::<f64>().ok())
         .or_else(|| {
-            response.get("ticker")
+            response
+                .get("ticker")
                 .and_then(|t| t.get("last"))
                 .and_then(|v| v.as_f64())
         })
@@ -433,12 +553,20 @@ async fn alert_watch(
     threshold: f64,
 ) -> Result<CommandOutput> {
     let mut alerts = load_alerts()?;
+    fn ws_pair(pair: &str) -> String {
+        helpers::normalize_pair_v2(pair)
+    }
 
     let target_ids: std::collections::HashSet<u64> = if let Some(target_id) = id {
-        alerts.iter().filter(|a| a.id == target_id && a.status == AlertStatus::Active).map(|a| a.id).collect()
+        alerts
+            .iter()
+            .filter(|a| a.id == target_id && a.status == AlertStatus::Active)
+            .map(|a| a.id)
+            .collect()
     } else {
         let filter = pair_filter.unwrap_or("*");
-        alerts.iter()
+        alerts
+            .iter()
             .filter(|a| a.status == AlertStatus::Active && (filter == "*" || a.pair == filter))
             .map(|a| a.id)
             .collect()
@@ -452,14 +580,20 @@ async fn alert_watch(
         })));
     }
 
-    let pairs: Vec<String> = alerts.iter()
+    let pairs: Vec<String> = alerts
+        .iter()
         .filter(|a| target_ids.contains(&a.id))
         .map(|a| a.pair.clone())
         .collect();
-    let pair_set: std::collections::HashSet<String> = pairs.iter().cloned().collect();
+    let pair_set: std::collections::HashSet<String> = pairs.iter().map(|p| ws_pair(p)).collect();
     let watching = pair_set.len();
 
-    eprintln!("[ALERT] Watching {} alerts for {} pair(s): {}", target_ids.len(), watching, pairs.join(", "));
+    eprintln!(
+        "[ALERT] Watching {} alerts for {} pair(s): {}",
+        target_ids.len(),
+        watching,
+        pairs.join(", ")
+    );
     eprintln!("[ALERT] Press Ctrl+C to stop monitoring");
     eprintln!();
 
@@ -467,9 +601,13 @@ async fn alert_watch(
 
     let token = helpers::fetch_public_ws_token(client).await?;
 
-    let (ws_stream, _) = tokio::time::timeout(std::time::Duration::from_secs(10), connect_async(PUBLIC_WS_URL)).await
-        .map_err(|_| anyhow::anyhow!("WebSocket connection timed out after 10s"))?
-        .map_err(|e| anyhow::anyhow!("Failed to connect to WebSocket: {}", e))?;
+    let (ws_stream, _) = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        connect_async(PUBLIC_WS_URL),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("WebSocket connection timed out after 10s"))?
+    .map_err(|e| anyhow::anyhow!("Failed to connect to WebSocket: {}", e))?;
 
     let (mut write, mut read) = ws_stream.split();
 
@@ -477,7 +615,9 @@ async fn alert_watch(
         "params": { "token": token },
         "id": 1
     });
-    write.send(Message::Text(auth_msg.to_string())).await
+    write
+        .send(Message::Text(auth_msg.to_string()))
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to authenticate: {}", e))?;
 
     let mut authed = false;
@@ -509,10 +649,23 @@ async fn alert_watch(
                     }
 
                     if let Some(result) = data.get("result").or(data.get("data")) {
-                        let pair = result.get("pair").or(data.get("pair")).and_then(|v| v.as_str()).unwrap_or("");
-                        let price = result.get("price").or(result.get("c")).or(result.get("close"))
+                        let pair = result
+                            .get("pair")
+                            .or(data.get("pair"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let pair = ws_pair(pair);
+                        let price = result
+                            .get("price")
+                            .or(result.get("c"))
+                            .or(result.get("close"))
                             .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok()))
-                            .or_else(|| result.get("price").or(result.get("c")).and_then(|v| v.as_f64()));
+                            .or_else(|| {
+                                result
+                                    .get("price")
+                                    .or(result.get("c"))
+                                    .and_then(|v| v.as_f64())
+                            });
 
                         if let Some(price) = price {
                             let prev_price = last_prices.get(pair).copied();
@@ -521,22 +674,38 @@ async fn alert_watch(
                             if let Some(prev) = prev_price {
                                 let change_pct = ((price - prev) / prev * 100.0).abs();
                                 if change_pct > threshold {
-                                    eprintln!("[PRICE] {} {} (change: {:.2}%)",
+                                    eprintln!(
+                                        "[PRICE] {} {} (change: {:.2}%)",
                                         pair,
                                         format_number(price),
-                                        if price > prev { '+' } else { '-' });
+                                        if price > prev { '+' } else { '-' }
+                                    );
                                 }
                             }
 
-                            for alert in alerts.iter_mut().filter(|a| a.pair == pair && target_ids.contains(&a.id) && a.status == AlertStatus::Active) {
+                            for alert in alerts.iter_mut().filter(|a| {
+                                ws_pair(&a.pair) == pair
+                                    && target_ids.contains(&a.id)
+                                    && a.status == AlertStatus::Active
+                            }) {
                                 let should_trigger = match &alert.condition {
-                                    AlertCondition::Above { price: threshold } => price >= *threshold,
-                                    AlertCondition::Below { price: threshold } => price <= *threshold,
-                                    AlertCondition::ChangeUp { percent, from_price } => {
+                                    AlertCondition::Above { price: threshold } => {
+                                        price >= *threshold
+                                    }
+                                    AlertCondition::Below { price: threshold } => {
+                                        price <= *threshold
+                                    }
+                                    AlertCondition::ChangeUp {
+                                        percent,
+                                        from_price,
+                                    } => {
                                         let change = ((price - from_price) / from_price) * 100.0;
                                         change >= *percent
                                     }
-                                    AlertCondition::ChangeDown { percent, from_price } => {
+                                    AlertCondition::ChangeDown {
+                                        percent,
+                                        from_price,
+                                    } => {
                                         let change = ((from_price - price) / from_price) * 100.0;
                                         change >= *percent
                                     }
@@ -548,14 +717,37 @@ async fn alert_watch(
                                     triggered_ids.insert(alert.id);
                                     triggered_count += 1;
                                     let condition_str = match &alert.condition {
-                                        AlertCondition::Above { price } => format!("> {}", format_number(*price)),
-                                        AlertCondition::Below { price } => format!("< {}", format_number(*price)),
-                                        AlertCondition::ChangeUp { percent, from_price } => format!("+{:.1}% from {}", percent, format_number(*from_price)),
-                                        AlertCondition::ChangeDown { percent, from_price } => format!("-{:.1}% from {}", percent, format_number(*from_price)),
+                                        AlertCondition::Above { price } => {
+                                            format!("> {}", format_number(*price))
+                                        }
+                                        AlertCondition::Below { price } => {
+                                            format!("< {}", format_number(*price))
+                                        }
+                                        AlertCondition::ChangeUp {
+                                            percent,
+                                            from_price,
+                                        } => format!(
+                                            "+{:.1}% from {}",
+                                            percent,
+                                            format_number(*from_price)
+                                        ),
+                                        AlertCondition::ChangeDown {
+                                            percent,
+                                            from_price,
+                                        } => format!(
+                                            "-{:.1}% from {}",
+                                            percent,
+                                            format_number(*from_price)
+                                        ),
                                     };
                                     eprintln!();
                                     eprintln!("{}", "=".repeat(60).yellow());
-                                    eprintln!("{} TRIGGERED {} {}", "[ALERT]".bold().green(), format!("#{}", alert.id).bold(), "!".green().bold());
+                                    eprintln!(
+                                        "{} TRIGGERED {} {}",
+                                        "[ALERT]".bold().green(),
+                                        format!("#{}", alert.id).bold(),
+                                        "!".green().bold()
+                                    );
                                     eprintln!("  Pair:      {}", pair);
                                     eprintln!("  Condition: {}", condition_str);
                                     eprintln!("  Price:     {} (triggered)", format_number(price));
@@ -584,7 +776,10 @@ async fn alert_watch(
         }
     }
 
-    eprintln!("\n[ALERT] Monitoring stopped. {} alert(s) triggered.", triggered_count);
+    eprintln!(
+        "\n[ALERT] Monitoring stopped. {} alert(s) triggered.",
+        triggered_count
+    );
 
     if triggered_count > 0 {
         save_alerts(&alerts)?;
@@ -597,10 +792,14 @@ async fn alert_watch(
         "triggered": triggered_count,
     });
 
-    Ok(CommandOutput::new(data, vec![], vec![]).with_addendum(format!(
-        "[ALERT] Watched {} alert(s) for {} pair(s). {} triggered.",
-        target_ids.len(), watching, triggered_count
-    )))
+    Ok(
+        CommandOutput::new(data, vec![], vec![]).with_addendum(format!(
+            "[ALERT] Watched {} alert(s) for {} pair(s). {} triggered.",
+            target_ids.len(),
+            watching,
+            triggered_count
+        )),
+    )
 }
 
 fn format_number(n: f64) -> String {
@@ -641,12 +840,18 @@ mod tests {
         let json = serde_json::to_string(&below).unwrap();
         assert!(json.contains("\"type\":\"below\""));
 
-        let change_up = AlertCondition::ChangeUp { percent: 5.0, from_price: 100000000.0 };
+        let change_up = AlertCondition::ChangeUp {
+            percent: 5.0,
+            from_price: 100000000.0,
+        };
         let json = serde_json::to_string(&change_up).unwrap();
         assert!(json.contains("\"type\":\"change_up\""));
         assert!(json.contains("5.0"));
 
-        let change_down = AlertCondition::ChangeDown { percent: 10.0, from_price: 150000000.0 };
+        let change_down = AlertCondition::ChangeDown {
+            percent: 10.0,
+            from_price: 150000000.0,
+        };
         let json = serde_json::to_string(&change_down).unwrap();
         assert!(json.contains("\"type\":\"change_down\""));
     }
