@@ -1,8 +1,8 @@
-## 🚀 Welcome to Indodax CLI v0.1.38
+## 🚀 Welcome to Indodax CLI v0.1.39
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### 🆕 What's New in v0.1.38
+### 🆕 What's New in v0.1.39
 
 - **🤖 MCP Server Overhaul**:
   - **New Tools**: Added support for price alerts, deposit addresses, and credential management directly via MCP.
