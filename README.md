@@ -1,5 +1,8 @@
 # indodax-cli
 
+[![indodax-cli MCP server](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli/badges/card.svg)](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli)
+[![indodax-cli MCP server](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli/badges/score.svg)](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli)
+
 Unofficial Rust CLI for Indodax. Use it to inspect markets, manage account data, place spot orders, stream live WebSocket events, run paper trading and price alerts, and expose the same command surface to agents through MCP.
 
 [![Rust](https://img.shields.io/badge/Rust-2021-000000?logo=rust)](https://www.rust-lang.org/)
