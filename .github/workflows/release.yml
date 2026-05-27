@@ -27,10 +27,6 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact_name: indodax-linux-aarch64
             binary_extension: ""
-          - os: ubuntu-latest
-            target: aarch64-linux-android
-            artifact_name: indodax-android-aarch64
-            binary_extension: ""
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: indodax-macos-x86_64
@@ -59,36 +55,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Setup Java
-        if: matrix.target == 'aarch64-linux-android'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Android SDK
-        if: matrix.target == 'aarch64-linux-android'
-        uses: android-actions/setup-android@v3
-
-      - name: Setup Android NDK
-        if: matrix.target == 'aarch64-linux-android'
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r26d
-
       - name: Build
         shell: bash
         run: |
           if [ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]; then
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-          elif [ "${{ matrix.target }}" == "aarch64-linux-android" ]; then
-            export ANDROID_NDK_HOME="${{ steps.setup-ndk.outputs.ndk-path }}"
-            export ANDROID_TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_TOOLCHAIN/aarch64-linux-android21-clang"
-            export CC_aarch64_linux_android="$ANDROID_TOOLCHAIN/aarch64-linux-android21-clang"
-            export CXX_aarch64_linux_android="$ANDROID_TOOLCHAIN/aarch64-linux-android21-clang++"
-            export AR_aarch64_linux_android="$ANDROID_TOOLCHAIN/llvm-ar"
           fi
           
           cargo build --release --target ${{ matrix.target }}
@@ -247,7 +218,6 @@ jobs:
           files: |
             indodax-linux-x86_64
             indodax-linux-aarch64
-            indodax-android-aarch64
             indodax-macos-x86_64
             indodax-macos-aarch64
             indodax-windows-x86_64.exe
@@ -255,3 +225,14 @@ jobs:
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-glama:
+    name: Notify Glama
+    needs: github-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Glama Refresh
+        run: |
+          curl -i -X POST \
+            -H "Authorization: Bearer ${{ secrets.GLAMA_API_KEY }}" \
+            https://glama.ai/api/mcp/v1/servers/ibidathoillah/indodax-cli/refresh || echo "Refresh triggered"
