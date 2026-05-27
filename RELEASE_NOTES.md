@@ -1,29 +1,28 @@
-## 🚀 Welcome to Indodax CLI v0.1.26
+## 🚀 Welcome to Indodax CLI v0.1.30
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### 🆕 What's New in v0.1.26
+### 🆕 What's New in v0.1.30
 
-- **🔒 SSL/TLS Fix**: Switched to `rustls-tls-native-roots` for both HTTP and WebSocket connections. This resolves `UnknownIssuer` errors by correctly loading the system's root certificates from the OS trust store.
+- **🤖 MCP Server Overhaul**:
+  - **New Tools**: Added support for price alerts, deposit addresses, and credential management directly via MCP.
+  - **WebSocket Snapshots**: Added tools to fetch real-time snapshots of market data.
+  - **Resources & Prompts**: Implemented MCP Resources (config, pairs, paper state) and Prompts (order creation, portfolio check) for better AI agent guidance.
+  - **Security**: Refined dangerous operation guards for trade and funding tools.
 
-### 🆕 What's New in v0.1.26
+- **📊 Expanded Market Data**:
+  - Added support for several new public endpoints: `webdata`, `chatroom`, `pairs_v2`, `search`, `terminal`, `onramp`, and `news`.
+  - **TradingView History V2**: Enhanced OHLCV data fetching with better interval handling.
 
-- **🔥 WebSocket Reliability Overhaul**:
-  - **Connection Stability**: Added application-level Ping (method 7) every 30 seconds and automatic reconnection with exponential backoff for all WebSocket streams.
-  - **Private WebSocket (PWS)**: Fully rewritten to support the correct `connect` (authenticate) and `subscribe` flow. Now streams both **Order Updates** and **Balance Updates** in real-time.
-  - **Robust Parsing**: Enhanced public WebSocket handlers to support multiple Indodax API response formats (array-based and object-based), ensuring compatibility with all trading pairs.
-  - **Flexible Auth**: Introduced `ws_token` configuration. Prioritizes dynamic fetching, followed by user-defined tokens in `config.toml`, with a reliable hardcoded default fallback.
-- **🐛 Bug Fixes**:
-  - **Market Pairs**: Fixed an issue where `indodax market pairs` returned an empty table due to an unhandled API response format (JSON array).
-  - **Market Trades**: Resolved empty output by correcting the trading pair format (no underscore) required by the trades API.
-  - **Market OHLC**: Refactored parser to support the modern array-of-objects response format, ensuring historical candle data is correctly displayed.
-  - **WS Token Fetching**: Centralized public WebSocket token logic with robust error handling. Fixes "API method not found" errors by gracefully falling back to the documented static token when dynamic generation is unavailable.
-- **🛡️ Security & Configuration**:
-  - Added `ws_token` field to `IndodaxConfig` for custom WebSocket authentication tokens.
-  - Improved credential resolution priority to ensure consistency across CLI, ENV, and Config file.
-- **🧪 Enhanced Testing**:
-  - Added comprehensive unit tests for WebSocket message parsing and event handling.
-  - Introduced `scripts/e2e_websocket_mock.sh` for automated connectivity verification.
+- **🚀 Glama & Cloud Ready**:
+  - **Optimized Dockerfile**: Added default `mcp` command for seamless one-click deployment as an MCP server.
+  - **License Compliance**: Added official MIT LICENSE file for registry compliance.
+  - **Environment Documentation**: Added `.env.example` for easier configuration in hosted environments.
+
+- **🔧 Platform & CI/CD**:
+  - Improved WASM support for web-based integrations.
+  - Added Android release build support for Termux users.
+  - Streamlined NPM publishing for unscoped packages.
 
 ### ✨ Core Features
 

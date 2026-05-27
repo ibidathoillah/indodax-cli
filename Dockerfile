@@ -15,3 +15,4 @@ RUN apt-get update && apt-get install -y ca-certificates libssl1.1 && rm -rf /va
 COPY --from=builder /app/target/release/indodax /usr/local/bin/indodax
 
 ENTRYPOINT ["indodax"]
+CMD ["mcp"]

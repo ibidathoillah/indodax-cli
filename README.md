@@ -284,7 +284,15 @@ Pre-built prompt templates for common workflows:
 | `check_portfolio` | (none) | Account balance and open orders overview |
 | `analyze_market` | `pair` | Market analysis with ticker, order book, and trades |
 
-Example MCP client configuration:
+### Glama Deployment
+
+This server is optimized for deployment on [Glama](https://glama.ai/mcp).
+
+- **Manifest**: `glama.json` defines the required environment variables for the build spec.
+- **Docker**: The included `Dockerfile` defaults to MCP mode.
+- **Environment Variables**: Configure `INDODAX_API_KEY` and `INDODAX_API_SECRET` in the Glama admin panel.
+
+Example configuration for manual setup:
 
 ```json
 {

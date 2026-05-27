@@ -1,0 +1,42 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "name": "indodax-cli",
+  "mcpName": "io.github.ibidathoillah/indodax-cli",
+  "description": "Professional CLI and MCP server for the Indodax cryptocurrency exchange. Supports market data, private account management, spot trading, paper trading, and real-time WebSocket streams.",
+  "environmentVariables": [
+    {
+      "name": "INDODAX_API_KEY",
+      "description": "Your Indodax API Key. Required for private operations like account info and trading.",
+      "required": true,
+      "isSecret": true
+    },
+    {
+      "name": "INDODAX_API_SECRET",
+      "description": "Your Indodax API Secret. Required for signing private requests.",
+      "required": true,
+      "isSecret": true
+    },
+    {
+      "name": "INDODAX_RATE_LIMIT",
+      "description": "Optional: Requests per second limit (e.g. 5).",
+      "required": false,
+      "default": "5"
+    },
+    {
+      "name": "INDODAX_WS_TOKEN",
+      "description": "Optional: Custom WebSocket token for private streams.",
+      "required": false
+    }
+  ],
+  "env": {
+    "RUST_LOG": "info"
+  },
+  "keywords": [
+    "indodax",
+    "crypto",
+    "trading",
+    "exchange",
+    "mcp",
+    "rust"
+  ]
+}
