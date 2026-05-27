@@ -1,0 +1,7 @@
+target/
+paper-wasm/target/
+.git/
+.agents/
+.codex/
+node_modules/
+npm-debug.log*

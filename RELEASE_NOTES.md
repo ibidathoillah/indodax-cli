@@ -1,8 +1,15 @@
-## 🚀 Welcome to Indodax CLI v0.1.44
+## 🚀 Welcome to Indodax CLI v0.1.45
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### 🆕 What's New in v0.1.44
+### 🆕 What's New in v0.1.45
+
+- **🚀 Glama Deploy Fixes**:
+  - Updated the Docker image to Debian Trixie and removed unnecessary OpenSSL runtime dependencies.
+  - Limited hosted builds to the CLI, MCP, and callback-server features needed for deployment.
+  - Added an `indodax` command alias alongside the `indodax-cli` binary for MCP clients.
+  - Added `.dockerignore` to keep hosted Docker build contexts small and predictable.
+  - Documented the exact Glama build spec and the transient `ECONNRESET` metadata-fetch failure mode.
 
 - **🛠️ Dependency & API Fixes**:
   - **rmcp 1.7.0 Alignment**: Adapted MCP server code to the latest `rmcp` API changes (model renames and constructor updates). Fixed non-exhaustive struct creation errors.

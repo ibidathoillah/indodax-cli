@@ -289,8 +289,32 @@ Pre-built prompt templates for common workflows:
 This server is optimized for deployment on [Glama](https://glama.ai/mcp).
 
 - **Manifest**: `glama.json` defines the required environment variables for the build spec.
-- **Docker**: The included `Dockerfile` defaults to MCP mode.
+- **Docker**: The included `Dockerfile` builds only the CLI, MCP, and callback-server features, installs the `indodax-cli` binary, and also exposes an `indodax` alias for clients that use the shorter command name.
 - **Environment Variables**: Configure `INDODAX_API_KEY` and `INDODAX_API_SECRET` in the Glama admin panel.
+
+Use this Glama build spec:
+
+```json
+{
+  "baseImage": "debian:trixie-slim",
+  "buildSteps": [
+    "apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git pkg-config build-essential && rm -rf /var/lib/apt/lists/*",
+    "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
+    ". $HOME/.cargo/env && cargo build --release --features cli,mcp,server",
+    "cp target/release/indodax-cli /usr/local/bin/indodax-cli && ln -s /usr/local/bin/indodax-cli /usr/local/bin/indodax"
+  ],
+  "cmdArguments": [
+    "mcp-proxy",
+    "--",
+    "indodax-cli",
+    "mcp"
+  ],
+  "nodeVersion": "26",
+  "pythonVersion": "3.14"
+}
+```
+
+If Glama fails while loading Docker metadata, such as `ECONNRESET` during `load metadata for docker.io/library/debian:trixie-slim`, retry the build. That failure happens before this project is cloned or compiled.
 
 Example configuration for manual setup:
 
