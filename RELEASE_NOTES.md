@@ -10,9 +10,14 @@ The unofficial, fast, and feature-rich command-line interface for **Indodax**, I
   - Added an `indodax` command alias alongside the `indodax-cli` binary for MCP clients.
   - Added `.dockerignore` to keep hosted Docker build contexts small and predictable.
   - Documented the exact Glama build spec and the transient `ECONNRESET` metadata-fetch failure mode.
+### 🆕 What's New in v0.1.44
+
+- **🛠️ Glama & RMCP Fixes (Critical)**:
+  - **RMCP 1.7.0 Compatibility**: Resolved "non-exhaustive struct" compilation errors that caused v0.1.43 to fail in CI and Glama.
+  - **Optimized Glama Build**: Added documentation for the high-speed binary download method to bypass 15-minute compilation timeouts.
+  - **Lifetime Fixes**: Corrected `'static` lifetime requirements for MCP tool definitions.
 
 - **🛠️ Dependency & API Fixes**:
-  - **rmcp 1.7.0 Alignment**: Adapted MCP server code to the latest `rmcp` API changes (model renames and constructor updates). Fixed non-exhaustive struct creation errors.
   - **rustyline 12 Support**: Fixed `DefaultEditor` import issues in the interactive shell.
   - **WASM Compatibility**: Improved target-specific builds for shell command parsing.
   - **Feature Gating**: Refined MCP feature dependencies in `Cargo.toml`.
