@@ -1,14 +1,14 @@
-## 🚀 Welcome to Indodax CLI v0.1.42
+## 🚀 Welcome to Indodax CLI v0.1.43
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### 🆕 What's New in v0.1.42
+### 🆕 What's New in v0.1.43
 
-- **🤖 MCP Server Overhaul**:
-  - **New Tools**: Added support for price alerts, deposit addresses, and credential management directly via MCP.
-  - **WebSocket Snapshots**: Added tools to fetch real-time snapshots of market data.
-  - **Resources & Prompts**: Implemented MCP Resources (config, pairs, paper state) and Prompts (order creation, portfolio check) for better AI agent guidance.
-  - **Security**: Refined dangerous operation guards for trade and funding tools.
+- **🛠️ Dependency & API Fixes**:
+  - **rmcp 1.7.0 Alignment**: Adapted MCP server code to the latest `rmcp` API changes (model renames and constructor updates).
+  - **rustyline 12 Support**: Fixed `DefaultEditor` import issues in the interactive shell.
+  - **WASM Compatibility**: Improved target-specific builds for shell command parsing.
+  - **Feature Gating**: Refined MCP feature dependencies in `Cargo.toml`.
 
 - **📊 Expanded Market Data**:
   - Added support for several new public endpoints: `webdata`, `chatroom`, `pairs_v2`, `search`, `terminal`, `onramp`, and `news`.
