@@ -1,11 +1,11 @@
-## 🚀 Welcome to Indodax CLI v0.1.43
+## 🚀 Welcome to Indodax CLI v0.1.44
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### 🆕 What's New in v0.1.43
+### 🆕 What's New in v0.1.44
 
 - **🛠️ Dependency & API Fixes**:
-  - **rmcp 1.7.0 Alignment**: Adapted MCP server code to the latest `rmcp` API changes (model renames and constructor updates).
+  - **rmcp 1.7.0 Alignment**: Adapted MCP server code to the latest `rmcp` API changes (model renames and constructor updates). Fixed non-exhaustive struct creation errors.
   - **rustyline 12 Support**: Fixed `DefaultEditor` import issues in the interactive shell.
   - **WASM Compatibility**: Improved target-specific builds for shell command parsing.
   - **Feature Gating**: Refined MCP feature dependencies in `Cargo.toml`.
