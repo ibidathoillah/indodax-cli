@@ -1,85 +1,96 @@
 # 🤖 Indodax MCP Server: Full Feature Guide
 
-Server ini adalah jembatan antara AI Agent (ChatGPT/Claude) dengan bursa Indodax menggunakan **Model Context Protocol (MCP)**. Dengan server ini, AI Anda bukan sekadar "ngobrol", tapi bisa memantau pasar, mengelola saldo, hingga melakukan trading otomatis.
+Server ini adalah jembatan antara AI Agent (ChatGPT/Claude) dengan bursa Indodax menggunakan **Model Context Protocol (MCP)**. Dengan server ini, AI Anda bisa memantau pasar, mengelola saldo, hingga melakukan trading otomatis.
 
 ---
 
-## 🛠 Fitur Berdasarkan Kategori (Service Groups)
+## 🚀 Quick Start (Cara Menjalankan)
 
-Server ini dibagi menjadi beberapa grup layanan. Anda bisa mengaktifkan grup tertentu menggunakan flag `--groups`.
+### 1. Mode Standar (Claude Desktop / IDE)
+Gunakan mode ini jika Anda ingin menghubungkan MCP ke aplikasi desktop.
+```bash
+# Build binary terlebih dahulu
+cargo build --release --features "mcp cli"
+
+# Jalankan via STDIO
+./target/release/indodax-cli mcp serve --groups all
+```
+
+### 2. Mode HTTP Bridge (ChatGPT Mobile / Glama)
+Gunakan mode ini untuk akses via HP atau layanan cloud.
+```bash
+# Build dengan fitur server
+cargo build --release --features "mcp server cli"
+
+# Jalankan server HTTP di port 8000
+./target/release/indodax-cli mcp --http --port 8000 --groups all --allow-dangerous
+```
+
+---
+
+## 🛠 Fitur Berdasarkan Kategori
 
 ### 1. 📈 Market Data (Public)
-Digunakan oleh AI untuk menganalisis pasar tanpa perlu API Key.
-- `ticker`: Ambil harga terkini & statistik 24 jam untuk pair tertentu (misal: `btc_idr`).
-- `orderbook`: Lihat kedalaman pasar (antrian beli & jual).
-- `trades`: Lihat histori perdagangan terbaru di pasar.
-- `ohlc`: Ambil data candlestick untuk analisis teknikal (Interval 1m hingga 1w).
-- `summaries`: Ringkasan statistik seluruh koin dalam 24 jam terakhir.
-- `price_increments`: Cek fraksi harga (tick size) agar order tidak ditolak.
+- `ticker`: Harga terkini & statistik 24 jam.
+- `orderbook`: Antrian beli & jual (market depth).
+- `trades`: Histori perdagangan terbaru.
+- `ohlc`: Data candlestick (1m, 5m, 1h, dst).
+- `summaries`: Ringkasan seluruh pasar.
 
 ### 2. 💰 Account & Balance (Private)
-Membantu AI mengetahui kondisi keuangan Anda.
-- `account_info`: Informasi profil akun dan izin API Key.
-- `balance`: Cek saldo seluruh aset (hanya menampilkan yang saldonya > 0).
-- `open_orders`: List antrian order yang belum selesai (pending).
+- `account_info`: Profil akun & izin API.
+- `balance`: Saldo aset (hanya aset aktif).
+- `open_orders`: Daftar antrian order pending.
 - `order_history`: Riwayat order masa lalu.
-- `trans_history`: Riwayat deposit dan penarikan (IDR & Crypto).
 
-### 3. ⚡ Trading (Private - Dangerous)
-Memberikan kemampuan AI untuk bertransaksi.
-- `buy_order`: Pasang order beli (Limit atau Market).
-- `sell_order`: Pasang order jual (Limit atau Market).
-- `cancel_order`: Membatalkan order spesifik berdasarkan ID.
-- `cancel_all_orders`: Membersihkan semua antrian order (bisa difilter per pair).
+### 3. ⚡ Trading (Dangerous Operations)
+*Catatan: Membutuhkan flag `--allow-dangerous` atau parameter `acknowledged: true`.*
+- `buy_order`: Eksekusi beli (Limit/Market).
+- `sell_order`: Eksekusi jual (Limit/Market).
+- `cancel_order`: Batalkan order tertentu.
+- `cancel_all_orders`: Bersihkan semua antrian order.
 
 ### 4. 📝 Paper Trading (Simulasi)
-Fitur unggulan untuk testing AI tanpa risiko kehilangan uang asli.
-- `paper_init`: Memulai akun simulasi dengan saldo IDR & BTC awal.
+- `paper_init`: Buat akun virtual dengan saldo simulasi.
 - `paper_balance`: Cek saldo virtual.
-- `paper_buy` / `paper_sell`: Simulasi trading menggunakan harga real-time tapi saldo virtual.
-- `paper_status`: Cek performa trading simulasi (Profit/Loss).
-
-### 5. 🔔 Alert & Automation
-- `alert_add`: AI bisa memasang pengingat harga (misal: "Beri tahu saya jika BTC tembus 1 Milyar").
-- `alert_list`: Lihat daftar alert yang sedang aktif.
+- `paper_buy` / `paper_sell`: Trading simulasi tanpa risiko.
 
 ---
 
-## 💡 Prompts (Alur Kerja Otomatis)
-Server ini menyediakan **Prompts**, yaitu template instruksi yang memudahkan Anda memerintah AI:
+## ⚙️ Konfigurasi Claude Desktop
 
-1. **`check_portfolio`**: AI akan otomatis mengecek saldo, merangkum aset terbesar, dan melaporkan antrian order Anda.
-   - *Cara pakai:* "Check my portfolio summary."
-2. **`analyze_market`**: AI akan mengambil data ticker, orderbook, dan trade history lalu memberikan opini teknikal.
-   - *Cara pakai:* "Analyze the BTC market for me."
-3. **`create_order`**: Membantu AI membuat parameter order yang valid sebelum dieksekusi.
+Tambahkan ini ke file `claude_desktop_config.json` Anda:
+
+```json
+{
+  "mcpServers": {
+    "indodax": {
+      "command": "/path/to/indodax-cli",
+      "args": ["mcp", "serve", "--groups", "all"],
+      "env": {
+        "INDODAX_API_KEY": "YOUR_KEY",
+        "INDODAX_API_SECRET": "YOUR_SECRET"
+      }
+    }
+  }
+}
+```
 
 ---
 
-## 📂 Resources (Data Mentah)
-AI memiliki akses langsung ke data berikut untuk referensi konteks:
-- `config://current`: Konfigurasi API yang sedang digunakan.
-- `pairs://list`: Daftar lengkap seluruh koin yang ada di Indodax.
-- `paper://state`: Kondisi terkini dari akun simulasi.
+## 🔐 Keamanan & Isolasi
+
+1. **Safety First**: Fitur trading dinonaktifkan secara default. Gunakan `--allow-dangerous` untuk mengizinkan AI melakukan transaksi.
+2. **Multi-User Isolation**: Jika dijalankan dalam mode HTTP, server mengisolasi data (seperti paper trading state) berdasarkan `x-api-key` yang dikirim di header. Setiap user memiliki sandbox yang berbeda.
+3. **Logs**: Semua log sistem dikirim ke `stderr`, sehingga tidak mengganggu jalur komunikasi data `stdout` (JSON-RPC).
 
 ---
 
 ## 🎮 Contoh Perintah ke AI
-Setelah terhubung, Anda bisa mencoba bertanya seperti ini:
-
-> *"Berapa harga Bitcoin sekarang? Tolong buatkan analisis singkat apakah layak beli berdasarkan orderbook."*
-
-> *"Tampilkan saldo saya yang paling banyak nilainya dalam IDR."*
-
-> *"Buka akun paper trading dengan saldo 100 juta IDR, lalu beli ETH pakai semua saldo itu di harga pasar."*
-
-> *"Cek semua order terbuka saya, jika ada yang sudah lebih dari 2 hari, batalkan semuanya."*
+- *"Berapa harga BTC sekarang? Apakah market sedang bullish?"*
+- *"Tampilkan saldo Indodax saya dalam bentuk tabel."*
+- *"Gunakan akun paper trading untuk simulasi beli ETH senilai 10 juta IDR."*
+- *"Batalkan semua open order saya di pair btc_idr."*
 
 ---
-
-## 🔐 Keamanan (Isolasi)
-- **Flag `--allow-dangerous`**: Secara default, AI tidak bisa melakukan `buy`/`sell` kecuali Anda menjalankan server dengan flag ini.
-- **Isolasi Multi-user**: Jika dideploy di cloud, setiap user yang memasukkan API Key berbeda akan memiliki sandbox yang terpisah total.
-
----
-*Dokumentasi ini dibuat otomatis untuk Indodax CLI MCP Server.*
+*Dokumentasi ini adalah bagian dari proyek [Indodax CLI](https://github.com/ibidathoillah/indodax-cli).*
