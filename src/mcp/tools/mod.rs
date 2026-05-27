@@ -13,13 +13,12 @@ use serde_json::{Map, Value};
 use tokio::sync::Mutex;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, Implementation, InitializeResult,
-    ListToolsResult, PaginatedRequestParams, ServerCapabilities, Tool,
-    ListResourcesResult, Resource, ReadResourceResult, ListPromptsResult,
-    GetPromptRequestParams,
+    CallToolRequestParam, CallToolResult, Content, ErrorData as McpError, Implementation,
+    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequestParam, ReadResourceResult, Resource, ServerCapabilities, Tool,
+    GetPromptRequestParam,
 };
 use rmcp::service::{RequestContext, RoleServer};
-use rmcp::ErrorData as McpError;
 
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
@@ -135,7 +134,11 @@ impl IndodaxMcp {
             schema.insert("required".to_string(), Value::Array(req_values));
         }
 
-        Tool::new(name.to_string(), description.to_string(), Arc::new(schema))
+        Tool {
+            name: name.to_string(),
+            description: Some(description.to_string()),
+            input_schema: Arc::new(schema),
+        }
     }
 
     pub fn get_str(args: &Map<String, Value>, name: &str) -> Option<String> {
@@ -213,44 +216,65 @@ impl IndodaxMcp {
 
 impl rmcp::handler::server::ServerHandler for IndodaxMcp {
     fn get_info(&self) -> InitializeResult {
-        InitializeResult::new(
-            ServerCapabilities::builder()
+        InitializeResult {
+            capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
                 .enable_prompts()
                 .build(),
-        )
-        .with_server_info(Implementation::new(
-            "indodax-cli",
-            env!("CARGO_PKG_VERSION"),
-        ))
+            server_info: Implementation {
+                name: "indodax-cli".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            instructions: None,
+            meta: None,
+        }
     }
 
     async fn list_resources(
         &self,
-        _request: Option<PaginatedRequestParams>,
+        _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         let resources = vec![
-            Resource::new(
-                rmcp::model::RawResource::new("config://current", "Current API config"),
-                None,
-            ),
-            Resource::new(
-                rmcp::model::RawResource::new("pairs://list", "Available trading pairs"),
-                None,
-            ),
-            Resource::new(
-                rmcp::model::RawResource::new("paper://state", "Paper trading state"),
-                None,
-            ),
+            Resource {
+                raw: rmcp::model::RawResource {
+                    uri: "config://current".to_string(),
+                    name: "Current API config".to_string(),
+                    description: None,
+                    mime_type: None,
+                },
+                annotations: None,
+            },
+            Resource {
+                raw: rmcp::model::RawResource {
+                    uri: "pairs://list".to_string(),
+                    name: "Available trading pairs".to_string(),
+                    description: None,
+                    mime_type: None,
+                },
+                annotations: None,
+            },
+            Resource {
+                raw: rmcp::model::RawResource {
+                    uri: "paper://state".to_string(),
+                    name: "Paper trading state".to_string(),
+                    description: None,
+                    mime_type: None,
+                },
+                annotations: None,
+            },
         ];
-        Ok(ListResourcesResult::with_all_items(resources))
+        Ok(ListResourcesResult {
+            resources,
+            next_cursor: None,
+            meta: None,
+        })
     }
 
     async fn read_resource(
         &self,
-        request: rmcp::model::ReadResourceRequestParams,
+        request: rmcp::model::ReadResourceRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         let uri = request.uri.as_str();
@@ -290,47 +314,77 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             uri: request.uri,
             mime_type: Some("application/json".to_string()),
             text,
-            meta: None,
         };
-        Ok(ReadResourceResult::new(vec![text_content]))
+        Ok(ReadResourceResult {
+            contents: vec![text_content],
+            meta: None,
+        })
     }
 
     async fn list_prompts(
         &self,
-        _request: Option<PaginatedRequestParams>,
+        _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, McpError> {
         let prompts = vec![
-            rmcp::model::Prompt::new(
-                "create_order",
-                Some("Generate a buy or sell order with proper parameters and safety checks".to_string()),
-                Some(vec![
-                    rmcp::model::PromptArgument::new("side"),
-                    rmcp::model::PromptArgument::new("pair"),
-                    rmcp::model::PromptArgument::new("price"),
-                    rmcp::model::PromptArgument::new("amount"),
-                    rmcp::model::PromptArgument::new("idr"),
+            rmcp::model::Prompt {
+                name: "create_order".to_string(),
+                description: Some("Generate a buy or sell order with proper parameters and safety checks".to_string()),
+                arguments: Some(vec![
+                    rmcp::model::PromptArgument {
+                        name: "side".to_string(),
+                        description: None,
+                        required: None,
+                    },
+                    rmcp::model::PromptArgument {
+                        name: "pair".to_string(),
+                        description: None,
+                        required: None,
+                    },
+                    rmcp::model::PromptArgument {
+                        name: "price".to_string(),
+                        description: None,
+                        required: None,
+                    },
+                    rmcp::model::PromptArgument {
+                        name: "amount".to_string(),
+                        description: None,
+                        required: None,
+                    },
+                    rmcp::model::PromptArgument {
+                        name: "idr".to_string(),
+                        description: None,
+                        required: None,
+                    },
                 ]),
-            ),
-            rmcp::model::Prompt::new(
-                "check_portfolio",
-                Some("Get account balance and open orders summary".to_string()),
-                None,
-            ),
-            rmcp::model::Prompt::new(
-                "analyze_market",
-                Some("Analyze market conditions for a trading pair".to_string()),
-                Some(vec![
-                    rmcp::model::PromptArgument::new("pair"),
+            },
+            rmcp::model::Prompt {
+                name: "check_portfolio".to_string(),
+                description: Some("Get account balance and open orders summary".to_string()),
+                arguments: None,
+            },
+            rmcp::model::Prompt {
+                name: "analyze_market".to_string(),
+                description: Some("Analyze market conditions for a trading pair".to_string()),
+                arguments: Some(vec![
+                    rmcp::model::PromptArgument {
+                        name: "pair".to_string(),
+                        description: None,
+                        required: None,
+                    },
                 ]),
-            ),
+            },
         ];
-        Ok(ListPromptsResult::with_all_items(prompts))
+        Ok(ListPromptsResult {
+            prompts,
+            next_cursor: None,
+            meta: None,
+        })
     }
 
     async fn get_prompt(
         &self,
-        request: GetPromptRequestParams,
+        request: GetPromptRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::GetPromptResult, McpError> {
         let name = request.name.as_str();
@@ -394,25 +448,36 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             }
         };
 
-        let messages = vec![rmcp::model::PromptMessage::new_text(
-            rmcp::model::PromptMessageRole::User,
-            description,
-        )];
-        Ok(rmcp::model::GetPromptResult::new(messages))
+        let messages = vec![rmcp::model::PromptMessage {
+            role: rmcp::model::PromptMessageRole::User,
+            content: rmcp::model::Content::TextContent {
+                text: description,
+                annotations: None,
+            },
+        }];
+        Ok(rmcp::model::GetPromptResult {
+            description: None,
+            messages,
+            meta: None,
+        })
     }
 
     async fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParams>,
+        _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let tools = self.all_tools();
-        Ok(ListToolsResult::with_all_items(tools))
+        Ok(ListToolsResult {
+            tools,
+            next_cursor: None,
+            meta: None,
+        })
     }
 
     async fn call_tool(
         &self,
-        request: CallToolRequestParams,
+        request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let name = request.name.to_string();

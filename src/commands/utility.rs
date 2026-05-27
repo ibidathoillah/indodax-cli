@@ -112,13 +112,12 @@ async fn shell(
 ) -> Result<CommandOutput> {
     use crate::Cli;
     use clap::Parser;
-    use rustyline::DefaultEditor;
 
     println!("Indodax CLI interactive shell");
     println!("Type commands without 'indodax' prefix (e.g. 'ticker btc/idr')");
     println!("Type 'help' for available commands, 'exit' to quit\n");
 
-    let mut rl = DefaultEditor::new()?;
+    let mut rl = rustyline::Editor::<(), rustyline::history::DefaultHistory>::new()?;
     let mut config = crate::config::IndodaxConfig::load()?;
     let client_ref = client;
 
@@ -159,9 +158,17 @@ async fn shell(
     Ok(CommandOutput::json(data))
 }
 
-/// Splits a shell-style command line into argv-like tokens using shlex.
+/// Splits a shell-style command line into argv-like tokens.
 fn shell_parse(input: &str) -> Vec<String> {
-    shlex::split(input).unwrap_or_default()
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        shlex::split(input).unwrap_or_default()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        input.split_whitespace().map(|s| s.to_string()).collect()
+    }
 }
 
 #[cfg(test)]
