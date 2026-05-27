@@ -1,4 +1,4 @@
-use crate::alerts::{self, load_alerts, save_alerts, AlertCondition, AlertStatus, PriceAlert};
+use crate::alerts::{load_alerts, save_alerts, AlertCondition, AlertStatus, PriceAlert};
 use crate::client::IndodaxClient;
 use crate::commands::helpers;
 use crate::output::CommandOutput;
@@ -668,7 +668,7 @@ async fn alert_watch(
                             });
 
                         if let Some(price) = price {
-                            let prev_price = last_prices.get(pair).copied();
+                            let prev_price = last_prices.get(&pair).copied();
                             last_prices.insert(pair.to_string(), price);
 
                             if let Some(prev) = prev_price {
