@@ -9,49 +9,49 @@ pub fn trade_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "buy_order",
-            "[DANGEROUS: requires acknowledged=true] Place a buy order on Indodax",
+            "Place a new buy order on the Indodax exchange. This tool supports both Limit orders (where you specify the maximum price) and Market orders (executed at the best available current price). It is a 'dangerous' operation that requires the 'acknowledged' parameter to be set to true. Always verify your available IDR balance before execution to avoid insufficient funds errors.",
             serde_json::json!({
-                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
-                "idr": IndodaxMcp::num_param("Total IDR amount to spend", true),
-                "price": IndodaxMcp::num_param("Limit price (omit for market order)", false),
+                "pair": IndodaxMcp::str_param("The trading pair you wish to buy (e.g., 'btc_idr', 'eth_idr'). The format is typically base_quote in lowercase.", true, None),
+                "idr": IndodaxMcp::num_param("The total amount of Indonesian Rupiah (IDR) you want to spend on this purchase, including fees.", true),
+                "price": IndodaxMcp::num_param("Optional: The maximum price per unit you are willing to pay (Limit Order). If omitted, the exchange will execute a Market Order using the best available price in the order book.", false),
                 "acknowledged":
-                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+                    IndodaxMcp::bool_param("Security confirmation: This must be explicitly set to true to acknowledge that you are performing a real-money trade operation."),
             }),
             vec!["pair", "idr", "acknowledged"],
         ),
         IndodaxMcp::tool_def(
             "sell_order",
-            "[DANGEROUS: requires acknowledged=true] Place a sell order on Indodax",
+            "Place a new sell order on the Indodax exchange. Supports Limit orders for target prices and Market orders for immediate liquidation. This tool requires the 'acknowledged' parameter for safety. Ensure you have the required quantity of the base asset (e.g., BTC) available in your account before attempting a sell.",
             serde_json::json!({
-                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
-                "price": IndodaxMcp::num_param("Limit price (omit for market order)", false),
-                "amount": IndodaxMcp::num_param("Amount in base currency (e.g. BTC)", true),
+                "pair": IndodaxMcp::str_param("The trading pair you wish to sell (e.g., 'btc_idr').", true, None),
+                "price": IndodaxMcp::num_param("Optional: The minimum price per unit you want to receive (required if order_type is 'limit').", false),
+                "amount": IndodaxMcp::num_param("The exact quantity of the base asset (e.g., 0.005 for BTC) you wish to sell.", true),
                 "order_type":
-                    IndodaxMcp::str_param("Order type: limit or market", false, Some("limit")),
+                    IndodaxMcp::str_param("The execution strategy: 'limit' (fixed price) or 'market' (execute immediately at current price). Default is 'limit'.", false, Some("limit")),
                 "acknowledged":
-                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+                    IndodaxMcp::bool_param("Security confirmation: This must be set to true to acknowledge that you are performing a real-money trade operation."),
             }),
             vec!["pair", "amount", "acknowledged"],
         ),
         IndodaxMcp::tool_def(
             "cancel_order",
-            "[DANGEROUS: requires acknowledged=true] Cancel an existing order by ID",
+            "Cancel an existing open order on the Indodax exchange. This tool requires the specific Order ID, the trading pair it was placed on, and the order side (buy or sell). Once an order is successfully cancelled, any remaining locked funds will be returned to your available balance.",
             serde_json::json!({
-                "order_id": IndodaxMcp::num_param("Order ID to cancel", true),
-                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
-                "order_type": IndodaxMcp::str_param("Order type: buy or sell", true, None),
+                "order_id": IndodaxMcp::num_param("The unique numerical identifier for the order you wish to cancel.", true),
+                "pair": IndodaxMcp::str_param("The trading pair associated with the order (e.g., 'btc_idr').", true, None),
+                "order_type": IndodaxMcp::str_param("The side of the order you are cancelling: 'buy' or 'sell'.", true, None),
                 "acknowledged":
-                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+                    IndodaxMcp::bool_param("Security confirmation: Must be set to true to authorize the cancellation of an active order."),
             }),
             vec!["order_id", "pair", "order_type", "acknowledged"],
         ),
         IndodaxMcp::tool_def(
             "cancel_all_orders",
-            "[DANGEROUS: requires acknowledged=true] Cancel all open orders, optionally filtered by pair",
+            "Bulk cancel all currently open orders for your account. You can optionally restrict this operation to a specific trading pair. This is a high-impact operation used for quickly clearing your order book or resetting your trading positions.",
             serde_json::json!({
-                "pair": IndodaxMcp::str_param("Only cancel orders for this trading pair (e.g. btc_idr)", false, None),
+                "pair": IndodaxMcp::str_param("Optional: Only cancel orders for this specific pair (e.g., 'btc_idr'). If omitted, ALL open orders across ALL pairs will be cancelled.", false, None),
                 "acknowledged":
-                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+                    IndodaxMcp::bool_param("Security confirmation: Must be set to true to authorize the bulk cancellation of all open orders."),
             }),
             vec!["acknowledged"],
         ),

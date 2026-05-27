@@ -10,62 +10,62 @@ pub fn account_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "account_info",
-            "[REQUIRES AUTH] Get account information including balances",
+            "Retrieve comprehensive information about your Indodax account. This tool provides a complete snapshot of your identity verification status, transaction permissions, and all asset balances, including both available funds and those currently locked in open orders. Use this to get a high-level overview of your account state.",
             serde_json::json!({}),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "balance",
-            "[REQUIRES AUTH] Get wallet balances (non-zero only)",
+            "Get a clean list of all non-zero asset balances for your authenticated Indodax account. This tool simplifies portfolio tracking by filtering out inactive assets, showing you exactly what you hold and in what quantities (e.g., IDR, BTC, ETH).",
             serde_json::json!({}),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "open_orders",
-            "[REQUIRES AUTH] List open orders",
+            "Fetch a real-time list of all currently active and unfilled orders for your account. This is essential for monitoring your active market commitments. You can optionally filter by a specific trading pair (e.g., 'btc_idr') to focus on a particular market segment.",
             serde_json::json!({
-                "pair": IndodaxMcp::str_param("Filter by trading pair (optional)", false, None)
+                "pair": IndodaxMcp::str_param("Optional: The trading pair to filter results by (e.g., 'btc_idr', 'eth_idr'). If omitted, all open orders across all pairs are returned.", false, None)
             }),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "order_history",
-            "[REQUIRES AUTH] Get order history",
+            "Retrieve a detailed historical record of all orders (both filled and cancelled) placed on a specific trading pair. This tool is vital for auditing your trading performance, calculating cost basis, and reconciling trade activity over time.",
             serde_json::json!({
                 "symbol": IndodaxMcp::str_param(
-                    "Trading pair symbol, e.g. btc_idr",
+                    "The trading pair symbol to query (e.g., 'btc_idr', 'eth_idr'). Supports both underscore and compact formats.",
                     false,
                     Some("btc_idr"),
                 ),
-                "limit": IndodaxMcp::num_param("Maximum number of orders to return", false),
+                "limit": IndodaxMcp::num_param("The maximum number of historical records to return. Default is 100. Use this to control the data volume for high-frequency accounts.", false),
             }),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "trade_history",
-            "[REQUIRES AUTH] Get trade fill history",
+            "Get a precise history of executed trade fills for your account. Unlike order history, this tool focuses on actual transactions, providing specific execution prices, quantities, and the trading fees paid for each fill on a given pair.",
             serde_json::json!({
                 "symbol": IndodaxMcp::str_param(
-                    "Trading pair symbol, e.g. btc_idr",
+                    "The trading pair symbol to query (e.g., 'btc_idr', 'eth_idr').",
                     false,
                     Some("btc_idr"),
                 ),
-                "limit": IndodaxMcp::num_param("Maximum number of trades to return", false),
+                "limit": IndodaxMcp::num_param("The maximum number of execution records to return. Default is 100.", false),
             }),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "get_order",
-            "[REQUIRES AUTH] Get order details by order ID",
+            "Retrieve detailed, granular information for a specific order using its unique Order ID. This is the preferred tool for checking the final status of a recently placed order or investigating a specific historical transaction.",
             serde_json::json!({
-                "order_id": IndodaxMcp::num_param("Order ID", true),
-                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
+                "order_id": IndodaxMcp::num_param("The unique numerical ID assigned to the order by the exchange.", true),
+                "pair": IndodaxMcp::str_param("The trading pair the order was placed on (e.g., 'btc_idr'). This is required for efficient lookup.", true, None),
             }),
             vec!["order_id", "pair"],
         ),
         IndodaxMcp::tool_def(
             "trans_history",
-            "[REQUIRES AUTH] Get deposit and withdrawal transaction history",
+            "Retrieve the complete history of all deposit and withdrawal transactions (both fiat IDR and cryptocurrency) for your account. Includes transaction IDs, destination addresses, fees, and current processing status.",
             serde_json::json!({}),
             vec![],
         ),

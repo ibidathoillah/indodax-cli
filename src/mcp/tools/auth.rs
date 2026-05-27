@@ -7,24 +7,24 @@ pub fn auth_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "auth_show",
-            "Show current API configuration status",
+            "Display the current authentication status of the Indodax CLI. This tool indicates whether an API Key and API Secret have been configured, and shows the active callback URL if one is set. For security, the actual secret values are never displayed.",
             serde_json::json!({}),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "auth_test",
-            "Test if current API credentials are valid",
+            "Perform a live authentication test by sending a signed request to the Indodax API. This tool verifies that your configured API Key and Secret are valid, have not expired, and possess the necessary permissions to access private account data. It returns the account name and user ID upon success.",
             serde_json::json!({}),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "auth_set",
-            "Configure API credentials and callback URL",
+            "Configure and save your Indodax API credentials. These credentials are required for all private operations, including trading, funding, and account inspection. The information is saved locally in a secure configuration file with restricted file permissions. You can also use this tool to set a callback URL for exchange notifications.",
             serde_json::json!({
-                "api_key": IndodaxMcp::str_param("Indodax API key", true, None),
-                "api_secret": IndodaxMcp::str_param("Indodax API secret", true, None),
-                "callback_url": IndodaxMcp::str_param("Callback URL for WebSocket notifications (optional)", false, None),
-                "test": IndodaxMcp::bool_param("Test credentials after saving"),
+                "api_key": IndodaxMcp::str_param("The API Key generated from your Indodax account settings page.", true, None),
+                "api_secret": IndodaxMcp::str_param("The corresponding API Secret. This value is used for cryptographic signing and must be kept strictly confidential.", true, None),
+                "callback_url": IndodaxMcp::str_param("Optional: A public endpoint URL that Indodax will notify for specific account events.", false, None),
+                "test": IndodaxMcp::bool_param("Set to true to automatically perform an authentication test immediately after saving the new credentials."),
             }),
             vec!["api_key", "api_secret"],
         ),

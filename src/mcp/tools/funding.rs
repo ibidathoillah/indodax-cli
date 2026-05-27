@@ -8,37 +8,37 @@ pub fn funding_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "withdraw_fee",
-            "[REQUIRES AUTH] Check withdrawal fee for a currency",
+            "Calculate the precise withdrawal fee for a specific cryptocurrency and blockchain network. Fees can vary significantly between networks (e.g., ERC20 vs. BEP20). It is highly recommended to call this tool before initiating a withdrawal to ensure you understand the final net amount that will be received at the destination.",
             serde_json::json!({
-                "currency": IndodaxMcp::str_param("Currency to check, e.g. btc", true, None),
-                "network": IndodaxMcp::str_param("Blockchain network (optional)", false, None),
+                "currency": IndodaxMcp::str_param("The ticker symbol of the cryptocurrency to check (e.g., 'btc', 'eth', 'usdt').", true, None),
+                "network": IndodaxMcp::str_param("Optional: The specific blockchain network for the withdrawal (e.g., 'TRC20', 'ERC20'). If omitted, the tool uses the default network for that asset.", false, None),
             }),
             vec!["currency"],
         ),
         IndodaxMcp::tool_def(
             "withdraw",
-            "[DANGEROUS: requires acknowledged=true] Withdraw cryptocurrency from Indodax",
+            "Initiate a cryptocurrency withdrawal from your Indodax account. This tool supports transfers to external blockchain addresses as well as internal transfers to other Indodax usernames. This is a high-security operation that requires the 'acknowledged' parameter. Note that the exchange fee returned by 'withdraw_fee' will be deducted from the 'amount' you specify.",
             serde_json::json!({
-                "currency": IndodaxMcp::str_param("Currency to withdraw, e.g. btc", true, None),
-                "amount": IndodaxMcp::num_param("Amount to withdraw", true),
+                "currency": IndodaxMcp::str_param("The cryptocurrency asset to withdraw (e.g., 'btc').", true, None),
+                "amount": IndodaxMcp::num_param("The total gross amount of the asset you wish to withdraw.", true),
                 "address":
-                    IndodaxMcp::str_param("Destination address or Indodax username", true, None),
+                    IndodaxMcp::str_param("The target destination: either a valid blockchain address OR an Indodax username if 'to_username' is true.", true, None),
                 "to_username":
-                    IndodaxMcp::bool_param("Withdraw to Indodax username instead of blockchain address"),
-                "memo": IndodaxMcp::str_param("Memo/tag for currencies that require it", false, None),
-                "network": IndodaxMcp::str_param("Blockchain network", false, None),
-                "callback_url": IndodaxMcp::str_param("Callback URL for withdrawal notification", false, None),
+                    IndodaxMcp::bool_param("Set to true if you are performing an internal transfer to another Indodax user using their username instead of a blockchain address."),
+                "memo": IndodaxMcp::str_param("Optional: A memo, tag, or payment ID required by certain assets (e.g., XRP, XLM) for correct routing to the destination wallet.", false, None),
+                "network": IndodaxMcp::str_param("Optional: The specific blockchain network to use for the transfer (e.g., 'ERC20'). Ensure the destination address is compatible with the selected network.", false, None),
+                "callback_url": IndodaxMcp::str_param("Optional: A webhook URL that Indodax will notify via a POST request once the withdrawal transaction is broadcast or completed.", false, None),
                 "acknowledged":
-                    IndodaxMcp::bool_param("Must be true to confirm this dangerous operation"),
+                    IndodaxMcp::bool_param("Security confirmation: This must be explicitly set to true to authorize the withdrawal of funds from your account."),
             }),
             vec!["currency", "amount", "address", "acknowledged"],
         ),
         IndodaxMcp::tool_def(
             "deposit_address",
-            "[REQUIRES AUTH] Generate a deposit address for a currency",
+            "Retrieve or generate your personal deposit address for a specific cryptocurrency. This address is used to send funds from an external wallet or another exchange into your Indodax account. Always double-check the network and asset compatibility to avoid loss of funds.",
             serde_json::json!({
-                "currency": IndodaxMcp::str_param("Currency to deposit, e.g. btc", true, None),
-                "network": IndodaxMcp::str_param("Blockchain network (optional)", false, None),
+                "currency": IndodaxMcp::str_param("The cryptocurrency you intend to deposit (e.g., 'btc').", true, None),
+                "network": IndodaxMcp::str_param("Optional: The specific blockchain network you will use for the deposit (e.g., 'BEP20').", false, None),
             }),
             vec!["currency"],
         ),

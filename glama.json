@@ -2,29 +2,29 @@
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "name": "indodax-cli",
   "mcpName": "io.github.ibidathoillah/indodax-cli",
-  "description": "Professional CLI and MCP server for the Indodax cryptocurrency exchange. Supports market data, private account management, spot trading, paper trading, and real-time WebSocket streams.",
+  "description": "Professional-grade Model Context Protocol (MCP) server and CLI for the Indodax cryptocurrency exchange. Provides comprehensive access to real-time market data, secure account management, high-performance spot trading, risk-free paper trading, and live WebSocket event streams. Optimized for LLM agents with detailed tool descriptions, safety guards for dangerous operations, and structured JSON output.",
   "environmentVariables": [
     {
       "name": "INDODAX_API_KEY",
-      "description": "Your Indodax API Key. Required for private operations like account info and trading.",
+      "description": "Your Indodax API Key. Required for private operations like account info, trading, and funding.",
       "required": true,
       "isSecret": true
     },
     {
       "name": "INDODAX_API_SECRET",
-      "description": "Your Indodax API Secret. Required for signing private requests.",
+      "description": "Your Indodax API Secret. Used to sign private API requests securely.",
       "required": true,
       "isSecret": true
     },
     {
       "name": "INDODAX_RATE_LIMIT",
-      "description": "Optional: Requests per second limit (e.g. 5).",
+      "description": "Optional: Global rate limit for API requests (e.g., 5 requests per second).",
       "required": false,
       "default": "5"
     },
     {
       "name": "INDODAX_WS_TOKEN",
-      "description": "Optional: Custom WebSocket token for private streams.",
+      "description": "Optional: Custom authentication token for private WebSocket streams.",
       "required": false
     }
   ],
@@ -37,6 +37,13 @@
     "trading",
     "exchange",
     "mcp",
-    "rust"
+    "rust",
+    "bitcoin",
+    "ethereum",
+    "market-data",
+    "automated-trading",
+    "paper-trading",
+    "websocket",
+    "finance"
   ]
 }

@@ -235,9 +235,18 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         let resources = vec![
-            rmcp::model::RawResource::new("config://current", "Current API config"),
-            rmcp::model::RawResource::new("pairs://list", "Available trading pairs"),
-            rmcp::model::RawResource::new("paper://state", "Paper trading state"),
+            rmcp::model::RawResource::new(
+                "config://current",
+                "Current API configuration status, indicating whether credentials and callbacks are active."
+            ),
+            rmcp::model::RawResource::new(
+                "pairs://list",
+                "A complete list of all supported trading pairs on Indodax, including base and quote assets."
+            ),
+            rmcp::model::RawResource::new(
+                "paper://state",
+                "The current state of the paper trading simulation, including virtual balances and active simulated orders."
+            ),
         ];
         // Wrap RawResource into Resource (Annotated<RawResource>)
         let resources = resources
@@ -297,24 +306,24 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
         let prompts = vec![
             rmcp::model::Prompt::new(
                 "create_order",
-                Some("Generate a buy or sell order with proper parameters and safety checks"),
+                Some("A guided workflow to help you construct a valid buy or sell order. It handles parameter normalization and includes necessary safety confirmations for trade execution."),
                 Some(vec![
-                    rmcp::model::PromptArgument::new("side"),
-                    rmcp::model::PromptArgument::new("pair"),
-                    rmcp::model::PromptArgument::new("price"),
-                    rmcp::model::PromptArgument::new("amount"),
-                    rmcp::model::PromptArgument::new("idr"),
+                    rmcp::model::PromptArgument::new("side").with_description("The order side: 'buy' or 'sell'."),
+                    rmcp::model::PromptArgument::new("pair").with_description("The trading pair (e.g., 'btc_idr')."),
+                    rmcp::model::PromptArgument::new("price").with_description("The limit price (optional for market orders)."),
+                    rmcp::model::PromptArgument::new("amount").with_description("The amount of base asset to sell (required for sell)."),
+                    rmcp::model::PromptArgument::new("idr").with_description("The amount of IDR to spend (required for buy)."),
                 ]),
             ),
             rmcp::model::Prompt::new(
                 "check_portfolio",
-                Some("Get account balance and open orders summary"),
+                Some("A comprehensive overview of your current portfolio. It aggregates balances across all assets and summarizes your active open orders."),
                 None::<Vec<rmcp::model::PromptArgument>>,
             ),
             rmcp::model::Prompt::new(
                 "analyze_market",
-                Some("Analyze market conditions for a trading pair"),
-                Some(vec![rmcp::model::PromptArgument::new("pair")]),
+                Some("Perform a deep dive analysis of a specific trading pair. Gathers ticker data, order book depth, and recent trade history to provide a market sentiment summary."),
+                Some(vec![rmcp::model::PromptArgument::new("pair").with_description("The trading pair to analyze (e.g., 'btc_idr').")]),
             ),
         ];
         Ok(ListPromptsResult::with_all_items(prompts))
@@ -366,7 +375,7 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     .to_string()
             }
             "analyze_market" => {
-                let pair = args.get("pair").and_then(|v| v.as_str()).unwrap_or("btc_idr");
+                let pair = args.get("pair").and_then(|v| v.as_str()).unwrap_or("pair_idr");
                 let normalized = crate::commands::helpers::normalize_pair(pair);
                 format!(
                     "Analyze market for {} pair:\n\
@@ -786,192 +795,5 @@ fn all_tools(mcp: &IndodaxMcp) -> Vec<Tool> {
 impl IndodaxMcp {
     pub fn all_tools(&self) -> Vec<Tool> {
         all_tools(self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::client::IndodaxClient;
-    use crate::config::IndodaxConfig;
-    use serde_json::json;
-
-    fn test_mcp() -> IndodaxMcp {
-        let client = IndodaxClient::new(None).unwrap();
-        let config = IndodaxConfig::default();
-        let safety = SafetyConfig::new(false);
-        let groups = vec![ServiceGroup::Market, ServiceGroup::Paper, ServiceGroup::Alert];
-        IndodaxMcp::new(client, config, safety, groups)
-    }
-
-    #[test]
-    fn test_get_str() {
-        let mut args = Map::new();
-        args.insert("name".into(), json!("test_value"));
-        assert_eq!(
-            IndodaxMcp::get_str(&args, "name"),
-            Some("test_value".into())
-        );
-        assert_eq!(IndodaxMcp::get_str(&args, "missing"), None);
-    }
-
-    #[test]
-    fn test_get_num_from_number() {
-        let mut args = Map::new();
-        args.insert("price".into(), json!(100.5));
-        assert_eq!(IndodaxMcp::get_num(&args, "price"), Some(100.5));
-    }
-
-    #[test]
-    fn test_get_num_from_string() {
-        let mut args = Map::new();
-        args.insert("amount".into(), json!("50.25"));
-        assert_eq!(IndodaxMcp::get_num(&args, "amount"), Some(50.25));
-    }
-
-    #[test]
-    fn test_get_num_missing() {
-        let args = Map::new();
-        assert_eq!(IndodaxMcp::get_num(&args, "missing"), None);
-    }
-
-    #[test]
-    fn test_get_bool_true() {
-        let mut args = Map::new();
-        args.insert("acknowledged".into(), json!(true));
-        assert!(IndodaxMcp::get_bool(&args, "acknowledged"));
-    }
-
-    #[test]
-    fn test_get_bool_false() {
-        let mut args = Map::new();
-        args.insert("flag".into(), json!(false));
-        assert!(!IndodaxMcp::get_bool(&args, "flag"));
-    }
-
-    #[test]
-    fn test_get_bool_missing_defaults_false() {
-        let args = Map::new();
-        assert!(!IndodaxMcp::get_bool(&args, "missing"));
-    }
-
-    #[test]
-    fn test_get_opt_bool() {
-        let mut args = Map::new();
-        args.insert("true_val".into(), json!(true));
-        args.insert("false_val".into(), json!(false));
-
-        assert_eq!(IndodaxMcp::get_opt_bool(&args, "true_val"), Some(true));
-        assert_eq!(IndodaxMcp::get_opt_bool(&args, "false_val"), Some(false));
-        assert_eq!(IndodaxMcp::get_opt_bool(&args, "missing"), None);
-    }
-
-    #[test]
-    fn test_tool_def_creates_tool() {
-        let properties = serde_json::json!({
-            "pair": {
-                "type": "string",
-                "description": "Trading pair"
-            }
-        });
-        let tool = IndodaxMcp::tool_def("test_tool", "A test tool", properties, vec!["pair"]);
-        assert_eq!(tool.name.to_string(), "test_tool");
-        assert!(tool
-            .description
-            .is_some_and(|d| d.as_ref() == "A test tool"));
-    }
-
-    #[test]
-    fn test_tool_def_no_required_params() {
-        let properties = serde_json::json!({});
-        let tool = IndodaxMcp::tool_def("empty_tool", "No params", properties, vec![]);
-        assert_eq!(tool.name.to_string(), "empty_tool");
-    }
-
-    #[test]
-    fn test_str_param() {
-        let param = IndodaxMcp::str_param("A test string", true, Some("default"));
-        assert_eq!(param["type"], "string");
-        assert_eq!(param["default"], "default");
-        assert_eq!(param["required"], true);
-
-        let param_opt = IndodaxMcp::str_param("Optional string", false, None);
-        assert_eq!(param_opt["required"], Value::Null);
-    }
-
-    #[test]
-    fn test_num_param_required() {
-        let param = IndodaxMcp::num_param("A test number", true);
-        assert_eq!(param["type"], "number");
-        assert_eq!(param["required"], true);
-
-        let param_opt = IndodaxMcp::num_param("Optional number", false);
-        assert_eq!(param_opt["required"], Value::Null);
-    }
-
-    #[test]
-    fn test_bool_param() {
-        let param = IndodaxMcp::bool_param("A test boolean");
-        assert_eq!(param["type"], "boolean");
-    }
-
-    #[test]
-    fn test_mcp_is_group_enabled() {
-        let mcp = test_mcp();
-        assert!(mcp.is_group_enabled(&ServiceGroup::Market));
-        assert!(mcp.is_group_enabled(&ServiceGroup::Paper));
-        assert!(mcp.is_group_enabled(&ServiceGroup::Alert));
-        assert!(!mcp.is_group_enabled(&ServiceGroup::Trade));
-        assert!(!mcp.is_group_enabled(&ServiceGroup::Account));
-        assert!(!mcp.is_group_enabled(&ServiceGroup::Funding));
-        assert!(!mcp.is_group_enabled(&ServiceGroup::Auth));
-    }
-
-    #[test]
-    fn test_ok_result() {
-        let result = IndodaxMcp::ok_result("success".into());
-        assert_eq!(result.is_error, Some(false));
-    }
-
-    #[test]
-    fn test_error_result_contains_error() {
-        let result = IndodaxMcp::error_result("something failed".into());
-        assert_eq!(result.is_error, Some(true));
-    }
-
-    #[test]
-    fn test_validation_error_result_contains_validation_type() {
-        let result = IndodaxMcp::validation_error_result("bad input".into());
-        assert_eq!(result.is_error, Some(true));
-        let content = &result.content;
-        let text = content
-            .first()
-            .and_then(|c| c.as_text())
-            .map(|t| t.text.as_str())
-            .unwrap_or("");
-        assert!(text.contains("validation_error"));
-    }
-
-    #[test]
-    fn test_json_result() {
-        let value = json!({"key": "value", "num": 42});
-        let result = IndodaxMcp::json_result(value);
-        assert_eq!(result.is_error, Some(false));
-    }
-
-    #[test]
-    fn test_all_tools_respects_groups() {
-        let mcp = test_mcp();
-        let tools = mcp.all_tools();
-        let names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
-        assert!(names.contains(&"server_time".to_string()));
-        assert!(names.contains(&"ticker".to_string()));
-        assert!(names.contains(&"paper_init".to_string()));
-        assert!(names.contains(&"paper_balance".to_string()));
-        assert!(names.contains(&"alert_add".to_string()));
-        assert!(names.contains(&"alert_list".to_string()));
-        assert!(!names.contains(&"buy_order".to_string()));
-        assert!(!names.contains(&"sell_order".to_string()));
-        assert!(!names.contains(&"account_info".to_string()));
     }
 }

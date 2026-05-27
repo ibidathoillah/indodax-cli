@@ -74,15 +74,11 @@ pub async fn run_http(
 
 #[cfg(feature = "server")]
 async fn handle_http_call(
-    state: State<AppState>,
-    path: Path<String>,
+    State(state): State<AppState>,
+    Path(tool_name): Path<String>,
     headers: HeaderMap,
     Json(arguments): Json<Value>,
 ) -> Json<Value> {
-    use rmcp::handler::server::ServerHandler;
-    let Path(tool_name) = path;
-    let State(state) = state;
-    
     let api_key = headers.get("x-api-key").and_then(|h| h.to_str().ok());
     let api_secret = headers.get("x-api-secret").and_then(|h| h.to_str().ok());
 
@@ -97,27 +93,29 @@ async fn handle_http_call(
     let safety = safety::SafetyConfig::new(state.allow_dangerous);
     let mcp = tools::IndodaxMcp::new(client, config, safety, enabled_groups);
 
-    let req = rmcp::model::CallToolRequestParams {
-        name: tool_name.into(),
-        arguments: arguments.as_object().cloned(),
+    // Direct Tool Dispatching
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    
+    let result = match tool_name.as_str() {
+        "ticker" => {
+            let pair = crate::commands::helpers::normalize_pair(
+                &IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+            );
+            mcp.handle_ticker(&pair).await
+        },
+        "balance" => mcp.handle_balance().await,
+        "account_info" => mcp.handle_account_info().await,
+        "pairs" => mcp.handle_pairs().await,
+        "server_time" => mcp.handle_server_time().await,
+        "summaries" => mcp.handle_summaries().await,
+        "open_orders" => {
+            let pair = IndodaxMcp::get_str(&args, "pair").map(|p| crate::commands::helpers::normalize_pair(&p));
+            mcp.handle_open_orders(pair.as_deref()).await
+        },
+        _ => rmcp::model::CallToolResult::error(vec![
+            rmcp::model::Content::text(format!("Tool '{}' is not yet implemented in HTTP bridge or is unknown.", tool_name))
+        ]),
     };
 
-    // We use a dummy context as we are bypassing the JSON-RPC layer
-    // but IndodaxMcp::call_tool is public and accessible.
-    // To make it easy, we try to fulfill the type requirements.
-    
-    // Fallback: If RMCP types are too hard to construct manually here,
-    // we could directly call mcp.handle_ticker etc, but call_tool is cleaner if it works.
-    
-    // Attempt to call call_tool with minimal possible context
-    // Given the previous errors, let's use a simpler approach if this fails.
-    
-    let res = mcp.call_tool(req, unsafe { std::mem::zeroed() }).await; 
-    // ^ Caution: zeroed() is dangerous, but RequestContext is often just a wrapper.
-    // Better: let's just return a placeholder for now to ensure BUILD SUCCESS first.
-    
-    match res {
-        Ok(r) => Json(serde_json::to_value(r).unwrap()),
-        Err(_) => Json(serde_json::json!({"error": true, "message": "Execution failed"})),
-    }
+    Json(serde_json::to_value(result).unwrap())
 }

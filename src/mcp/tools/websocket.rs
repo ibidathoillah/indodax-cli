@@ -7,31 +7,31 @@ pub fn websocket_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "ws_snapshot_ticker",
-            "Get a real-time price snapshot via WebSocket (faster than REST)",
+            "Retrieve a real-time price ticker snapshot using a direct, high-speed WebSocket connection. This tool bypasses the standard REST API rate limits and provides the absolute latest price data available from the exchange's live stream. It is the preferred method for getting the most recent price for a single trading pair.",
             serde_json::json!({
-                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
+                "pair": IndodaxMcp::str_param("The trading pair symbol to query (e.g., 'btc_idr'). Must be in lowercase with an underscore.", true, None),
             }),
             vec!["pair"],
         ),
         IndodaxMcp::tool_def(
             "ws_snapshot_book",
-            "Get current order book snapshot via WebSocket",
+            "Obtain a high-precision snapshot of the current order book depth via a live WebSocket stream. This tool provides a low-latency view of the market's liquidity, including the most competitive buy (bid) and sell (ask) orders. Use this for real-time depth analysis and to minimize slippage on large trades.",
             serde_json::json!({
-                "pair": IndodaxMcp::str_param("Trading pair, e.g. btc_idr", true, None),
+                "pair": IndodaxMcp::str_param("The trading pair symbol to query (e.g., 'btc_idr').", true, None),
             }),
             vec!["pair"],
         ),
         IndodaxMcp::tool_def(
             "ws_snapshot_summary",
-            "Get 24h summary snapshots for all pairs via WebSocket",
+            "Fetch a comprehensive 24-hour market summary for all trading pairs using a real-time WebSocket snapshot. This provides an instant, exchange-wide overview of price changes, high/low points, and total volume across all active markets.",
             serde_json::json!({}),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "ws_token",
-            "Generate a WebSocket token for external streaming clients",
+            "Generate a secure, time-limited authentication token for connecting to Indodax's WebSocket API. This tool can generate tokens for public market data streams as well as private, authenticated streams (such as real-time order and balance updates). The returned token should be used as a query parameter when establishing a WebSocket connection.",
             serde_json::json!({
-                "private": IndodaxMcp::bool_param("Generate private token (requires auth)"),
+                "private": IndodaxMcp::bool_param("Set to true to generate an authenticated token for private WebSocket streams. This requires valid API credentials to be configured."),
             }),
             vec![],
         ),
