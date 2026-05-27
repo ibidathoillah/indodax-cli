@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, Content, ErrorData as McpError, Implementation,
     InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult, Resource,
+    PaginatedRequestParams, ReadResourceResult,
     ServerCapabilities, Tool, GetPromptRequestParams,
 };
 use rmcp::service::{RequestContext, RoleServer};
@@ -134,7 +134,11 @@ impl IndodaxMcp {
             schema.insert("required".to_string(), Value::Array(req_values));
         }
 
-        Tool::new(name, description, Arc::new(schema))
+        Tool::new(
+            name.to_string(),
+            description.to_string(),
+            Arc::new(schema),
+        )
     }
 
     pub fn get_str(args: &Map<String, Value>, name: &str) -> Option<String> {
@@ -219,10 +223,10 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 .enable_prompts()
                 .build(),
         )
-        .with_server_info(Implementation {
-            name: "indodax-cli".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        })
+        .with_server_info(Implementation::new(
+            "indodax-cli",
+            env!("CARGO_PKG_VERSION"),
+        ))
     }
 
     async fn list_resources(
