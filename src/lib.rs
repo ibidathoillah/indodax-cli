@@ -320,6 +320,10 @@ pub enum Command {
             help = "Allow dangerous operations (trade, funding) without acknowledged flag"
         )]
         allow_dangerous: bool,
+        #[arg(long, default_value = "8000", help = "Port for HTTP server")]
+        port: u16,
+        #[arg(long, help = "Start as HTTP server instead of stdio")]
+        http: bool,
     },
 }
 

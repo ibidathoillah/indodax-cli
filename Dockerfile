@@ -1,22 +1,27 @@
-FROM rust:1-slim-trixie AS builder
+# Stage 1: Build
+FROM rust:1.95-slim-bookworm AS builder
 
-WORKDIR /app
+WORKDIR /usr/src/app
 COPY . .
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends pkg-config build-essential ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install dependencies untuk build
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
-RUN cargo build --release --features cli,mcp,server
+# Build binary dengan fitur server & mcp
+RUN cargo build --release --features "mcp server cli"
 
-FROM debian:trixie-slim
+# Stage 2: Runtime
+FROM debian:bookworm-slim
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies (OpenSSL)
+RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/indodax-cli /usr/local/bin/indodax-cli
-RUN ln -s /usr/local/bin/indodax-cli /usr/local/bin/indodax
+WORKDIR /app
+COPY --from=builder /usr/src/app/target/release/indodax-cli /usr/local/bin/indodax-cli
 
-ENTRYPOINT ["indodax-cli"]
-CMD ["mcp"]
+# Port default untuk HTTP Bridge
+EXPOSE 8000
+
+# Jalankan server MCP mode HTTP secara default
+# Kita gunakan 0.0.0.0 agar bisa diakses dari luar container
+ENTRYPOINT ["indodax-cli", "mcp", "--http", "--port", "8000", "--groups", "all", "--allow-dangerous"]
