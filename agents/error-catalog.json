@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "categories": [
+    {"name": "authentication", "retryable": false, "agent_action": "Check API key and secret configuration before retrying."},
+    {"name": "authorization", "retryable": false, "agent_action": "Check API permissions, account status, and whether the feature is partner-only."},
+    {"name": "validation", "retryable": false, "agent_action": "Fix request parameters such as pair, amount, price, client_order_id, or time range."},
+    {"name": "not_found", "retryable": false, "agent_action": "Verify the order ID, client order ID, pair, or resource identifier."},
+    {"name": "rate_limit", "retryable": true, "agent_action": "Back off before retrying and reduce concurrent requests."},
+    {"name": "server", "retryable": true, "agent_action": "Retry with exponential backoff; stop after repeated failures."},
+    {"name": "connection", "retryable": true, "agent_action": "Check network connectivity and retry with backoff."},
+    {"name": "config", "retryable": false, "agent_action": "Set missing local configuration or credentials."},
+    {"name": "unknown", "retryable": false, "agent_action": "Inspect the raw error and avoid repeated retries until classified."}
+  ]
+}

@@ -6,7 +6,7 @@ use indodax_cli::{
     client::IndodaxClient,
     commands::utility::{execute as utility_execute, UtilityCommand},
     config::IndodaxConfig,
-    dispatch, map_anyhow_error, Cli, Command,
+    dispatch, map_anyhow_error, Cli, Command, Language,
 };
 use std::io::BufRead;
 use std::process;
@@ -43,11 +43,12 @@ async fn main() {
 
     // Capture output format before cli is consumed by dispatch
     let output_format = cli.output;
+    let language = cli.lang;
 
     let mut config = match IndodaxConfig::load() {
         Ok(c) => c,
         Err(e) => {
-            report_error(&IndodaxError::Other(e.to_string()), output_format);
+            report_error(&IndodaxError::Other(e.to_string()), output_format, language);
             process::exit(1);
         }
     };
@@ -59,6 +60,7 @@ async fn main() {
             report_error(
                 &IndodaxError::Other(format!("Failed to read API secret from stdin: {}", e)),
                 output_format,
+                language,
             );
             process::exit(1);
         }
@@ -76,7 +78,7 @@ async fn main() {
     let creds = match config.resolve_credentials(cli.api_key.clone(), api_secret) {
         Ok(c) => c,
         Err(e) => {
-            report_error(&IndodaxError::Other(e.to_string()), output_format);
+            report_error(&IndodaxError::Other(e.to_string()), output_format, language);
             process::exit(1);
         }
     };
@@ -88,7 +90,7 @@ async fn main() {
     let client = match IndodaxClient::new(signer) {
         Ok(c) => c.with_ws_token(config.ws_token.as_ref().map(|t| t.as_str().to_string())),
         Err(e) => {
-            report_error(&e, output_format);
+            report_error(&e, output_format, language);
             process::exit(1);
         }
     };
@@ -109,7 +111,7 @@ async fn main() {
                     match mcp::run_http(*port, groups, *allow_dangerous).await {
                         Ok(()) => process::exit(0),
                         Err(e) => {
-                            report_error(&e, output_format);
+                            report_error(&e, output_format, language);
                             process::exit(1);
                         }
                     }
@@ -117,8 +119,12 @@ async fn main() {
                 #[cfg(not(feature = "server"))]
                 {
                     report_error(
-                        &IndodaxError::Other("HTTP server feature not enabled. Rebuild with --features server".into()),
+                        &IndodaxError::Other(
+                            "HTTP server feature not enabled. Rebuild with --features server"
+                                .into(),
+                        ),
                         output_format,
+                        language,
                     );
                     process::exit(1);
                 }
@@ -126,7 +132,7 @@ async fn main() {
                 match mcp::run(groups, *allow_dangerous, client, config).await {
                     Ok(()) => process::exit(0),
                     Err(e) => {
-                        report_error(&e, output_format);
+                        report_error(&e, output_format, language);
                         process::exit(1);
                     }
                 }
@@ -138,6 +144,7 @@ async fn main() {
             report_error(
                 &IndodaxError::Other("MCP feature not enabled".into()),
                 output_format,
+                language,
             );
             process::exit(1);
         }
@@ -160,7 +167,7 @@ async fn main() {
             }
         }
         Err(e) => {
-            report_error(&e, output_format);
+            report_error(&e, output_format, language);
             process::exit(1);
         }
     }
@@ -170,21 +177,45 @@ async fn main() {
 ///
 /// In JSON mode, prints a parseable error envelope to stdout.
 /// In table mode, prints human-readable error to stderr.
-fn report_error(err: &IndodaxError, format: OutputFormat) {
+fn report_error(err: &IndodaxError, format: OutputFormat, language: Language) {
+    let message = localized_error_message(err, language);
     if format == OutputFormat::Json {
         let envelope = serde_json::json!({
             "success": false,
             "data": null,
             "error": true,
-            "message": err.to_string(),
+            "message": message,
             "error_type": err.category(),
             "retryable": err.is_retryable(),
+            "language": match language { Language::En => "en", Language::Id => "id" },
         });
         match serde_json::to_string_pretty(&envelope) {
             Ok(s) => println!("{}", s),
-            Err(_) => eprintln!("Error: {}", err),
+            Err(_) => eprintln!("Error: {}", message),
         }
     } else {
-        eprintln!("Error: {}", err);
+        let label = match language {
+            Language::En => "Error",
+            Language::Id => "Kesalahan",
+        };
+        eprintln!("{}: {}", label, message);
+    }
+}
+
+fn localized_error_message(err: &IndodaxError, language: Language) -> String {
+    if language == Language::En {
+        return err.to_string();
+    }
+
+    match err.category().as_str() {
+        "authentication" => format!("Autentikasi gagal: {}", err),
+        "authorization" => format!("Akses ditolak: {}", err),
+        "validation" => format!("Parameter tidak valid: {}", err),
+        "not_found" => format!("Data tidak ditemukan: {}", err),
+        "rate_limit" => format!("Batas permintaan tercapai, coba lagi nanti: {}", err),
+        "server" => format!("Server Indodax bermasalah sementara: {}", err),
+        "connection" => format!("Koneksi gagal: {}", err),
+        "config" => format!("Konfigurasi belum lengkap: {}", err),
+        _ => format!("Terjadi kesalahan: {}", err),
     }
 }

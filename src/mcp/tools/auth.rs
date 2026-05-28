@@ -104,7 +104,9 @@ impl IndodaxMcp {
                 let signer = crate::auth::Signer::new(&api_key, &api_secret);
                 match crate::client::IndodaxClient::new(Some(signer)) {
                     Ok(c) => c,
-                    Err(e) => return Self::error_result(format!("Failed to create test client: {}", e)),
+                    Err(e) => {
+                        return Self::error_result(format!("Failed to create test client: {}", e))
+                    }
                 }
             };
 

@@ -5,6 +5,8 @@
 
 Unofficial Rust CLI for Indodax. Use it to inspect markets, manage account data, place spot orders, stream live WebSocket events, run paper trading and price alerts, and expose the same command surface to agents through MCP.
 
+![Indodax CLI demo](docs/demo.svg)
+
 [![Rust](https://img.shields.io/badge/Rust-2021-000000?logo=rust)](https://www.rust-lang.org/)
 [![CLI](https://img.shields.io/badge/interface-terminal-2f855a)](#quick-start)
 [![WebSocket](https://img.shields.io/badge/websocket-live-2563eb)](#websocket-streaming)
@@ -52,6 +54,12 @@ Install from npm:
 
 ```bash
 npm install -g indodax-cli
+```
+
+Install with Homebrew from this repository checkout:
+
+```bash
+brew install --build-from-source ./Formula/indodax-cli.rb
 ```
 
 On Android/Termux, `npm install -g indodax-cli` downloads the Android release binary when available. If the release asset is missing, it falls back to a local `cargo build`, so `cargo` still needs to be installed in Termux for that fallback path.
@@ -116,6 +124,7 @@ Options:
       --api-key <API_KEY>        API key override
       --api-secret <API_SECRET>  API secret override
       --api-secret-stdin         Read API secret from stdin
+      --lang <en|id>             Output language [default: en]
   -v, --verbose                  Enable verbose logs
       --yes, --force             Skip confirmation prompts
 ```

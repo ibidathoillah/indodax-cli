@@ -12,9 +12,9 @@ use tools::IndodaxMcp;
 #[cfg(feature = "server")]
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     routing::{get, post},
     Json, Router,
-    http::HeaderMap,
 };
 #[cfg(feature = "server")]
 use serde_json::Value;
@@ -34,8 +34,15 @@ pub async fn run(
         .serve(rmcp::transport::io::stdio())
         .await
         .map_err(|e| IndodaxError::Other(format!("MCP server error: {}", e)))?;
-    tracing::info!("MCP server started with groups: {}, allow_dangerous: {}", groups_str, allow_dangerous);
-    service.waiting().await.map_err(|e| IndodaxError::Other(format!("MCP server error: {}", e)))?;
+    tracing::info!(
+        "MCP server started with groups: {}, allow_dangerous: {}",
+        groups_str,
+        allow_dangerous
+    );
+    service
+        .waiting()
+        .await
+        .map_err(|e| IndodaxError::Other(format!("MCP server error: {}", e)))?;
     Ok(())
 }
 
@@ -63,11 +70,13 @@ pub async fn run_http(
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
         .map_err(|e| IndodaxError::Other(format!("Failed to bind port: {}", e)))?;
-    
+
     tracing::info!("MCP HTTP Server started on http://{}", addr);
-    axum::serve(listener, app).await
+    axum::serve(listener, app)
+        .await
         .map_err(|e| IndodaxError::Other(format!("Server error: {}", e)))?;
     Ok(())
 }
@@ -95,26 +104,28 @@ async fn handle_http_call(
 
     // Direct Tool Dispatching
     let args = arguments.as_object().cloned().unwrap_or_default();
-    
+
     let result = match tool_name.as_str() {
         "ticker" => {
             let pair = crate::commands::helpers::normalize_pair(
-                &IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+                &IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()),
             );
             mcp.handle_ticker(&pair).await
-        },
+        }
         "balance" => mcp.handle_balance().await,
         "account_info" => mcp.handle_account_info().await,
         "pairs" => mcp.handle_pairs().await,
         "server_time" => mcp.handle_server_time().await,
         "summaries" => mcp.handle_summaries().await,
         "open_orders" => {
-            let pair = IndodaxMcp::get_str(&args, "pair").map(|p| crate::commands::helpers::normalize_pair(&p));
+            let pair = IndodaxMcp::get_str(&args, "pair")
+                .map(|p| crate::commands::helpers::normalize_pair(&p));
             mcp.handle_open_orders(pair.as_deref()).await
-        },
-        _ => rmcp::model::CallToolResult::error(vec![
-            rmcp::model::Content::text(format!("Tool '{}' is not yet implemented in HTTP bridge or is unknown.", tool_name))
-        ]),
+        }
+        _ => rmcp::model::CallToolResult::error(vec![rmcp::model::Content::text(format!(
+            "Tool '{}' is not yet implemented in HTTP bridge or is unknown.",
+            tool_name
+        ))]),
     };
 
     Json(serde_json::to_value(result).unwrap())

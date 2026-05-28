@@ -37,7 +37,15 @@ pub enum AccountCommand {
     },
 
     #[command(name = "trans-history", about = "Get deposit and withdrawal history")]
-    TransHistory,
+    TransHistory {
+        #[arg(
+            long,
+            help = "Start date or timestamp accepted by Indodax transHistory"
+        )]
+        start: Option<String>,
+        #[arg(long, help = "End date or timestamp accepted by Indodax transHistory")]
+        end: Option<String>,
+    },
 
     #[command(name = "get-order", about = "Get order details by order ID")]
     GetOrder {
@@ -46,6 +54,29 @@ pub enum AccountCommand {
         #[arg(long)]
         pair: String,
     },
+
+    #[command(
+        name = "get-order-by-client-id",
+        about = "Get order details by client order ID"
+    )]
+    GetOrderByClientId {
+        #[arg(long)]
+        client_order_id: String,
+    },
+
+    #[command(name = "list-downline", about = "List affiliate downline users")]
+    ListDownline {
+        #[arg(long, default_value = "1")]
+        page: u32,
+        #[arg(long, default_value = "10")]
+        limit: u32,
+    },
+
+    #[command(
+        name = "check-downline",
+        about = "Check if an email is in your downline"
+    )]
+    CheckDownline { email: String },
 
     #[command(name = "equity-snap", about = "Record a portfolio equity snapshot")]
     EquitySnap,
@@ -80,11 +111,18 @@ pub async fn execute(client: &IndodaxClient, cmd: &AccountCommand) -> Result<Com
             let symbol = helpers::normalize_pair(symbol);
             trade_history(client, &symbol, *limit).await
         }
-        AccountCommand::TransHistory => trans_history(client).await,
+        AccountCommand::TransHistory { start, end } => {
+            trans_history(client, start.as_deref(), end.as_deref()).await
+        }
         AccountCommand::GetOrder { order_id, pair } => {
             let pair = helpers::normalize_pair(pair);
             get_order(client, *order_id, &pair).await
         }
+        AccountCommand::GetOrderByClientId { client_order_id } => {
+            get_order_by_client_id(client, client_order_id).await
+        }
+        AccountCommand::ListDownline { page, limit } => list_downline(client, *page, *limit).await,
+        AccountCommand::CheckDownline { email } => check_downline(client, email).await,
         AccountCommand::EquitySnap => equity_snap(client).await,
         AccountCommand::EquityHistory { limit, all } => equity_history(*limit, *all),
     }
@@ -379,10 +417,19 @@ async fn trade_history(client: &IndodaxClient, symbol: &str, limit: u32) -> Resu
     Ok(output)
 }
 
-async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
-    let data: serde_json::Value = client
-        .private_post_v1("transHistory", &HashMap::new())
-        .await?;
+async fn trans_history(
+    client: &IndodaxClient,
+    start: Option<&str>,
+    end: Option<&str>,
+) -> Result<CommandOutput> {
+    let mut params = HashMap::new();
+    if let Some(start) = start {
+        params.insert("start".into(), start.to_string());
+    }
+    if let Some(end) = end {
+        params.insert("end".into(), end.to_string());
+    }
+    let data: serde_json::Value = client.private_post_v1("transHistory", &params).await?;
 
     let headers = vec![
         "ID".into(),
@@ -446,6 +493,50 @@ async fn get_order(client: &IndodaxClient, order_id: u64, pair: &str) -> Result<
 
     let data: serde_json::Value = client.private_post_v1("getOrder", &params).await?;
 
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn get_order_by_client_id(
+    client: &IndodaxClient,
+    client_order_id: &str,
+) -> Result<CommandOutput> {
+    let mut params = HashMap::new();
+    params.insert("client_order_id".into(), client_order_id.to_string());
+
+    let data: serde_json::Value = client
+        .private_post_v1("getOrderByClientOrderId", &params)
+        .await?;
+
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn list_downline(client: &IndodaxClient, page: u32, limit: u32) -> Result<CommandOutput> {
+    if page == 0 {
+        return Err(anyhow::anyhow!("page must be at least 1"));
+    }
+    if limit == 0 || limit > 200 {
+        return Err(anyhow::anyhow!("limit must be between 1 and 200"));
+    }
+
+    let mut params = HashMap::new();
+    params.insert("page".into(), page.to_string());
+    params.insert("limit".into(), limit.to_string());
+
+    let data: serde_json::Value = client.private_post_v1("listDownline", &params).await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn check_downline(client: &IndodaxClient, email: &str) -> Result<CommandOutput> {
+    if email.trim().is_empty() {
+        return Err(anyhow::anyhow!("email cannot be empty"));
+    }
+    let mut params = HashMap::new();
+    params.insert("email".into(), email.to_string());
+
+    let data: serde_json::Value = client.private_post_v1("checkDownline", &params).await?;
     let (headers, rows) = helpers::flatten_json_to_table(&data);
     Ok(CommandOutput::new(data, headers, rows))
 }
@@ -841,13 +932,23 @@ mod tests {
             symbol: "btc_idr".into(),
             limit: 100,
         };
-        let _cmd6 = AccountCommand::TransHistory;
+        let _cmd6 = AccountCommand::TransHistory {
+            start: None,
+            end: None,
+        };
         let _cmd7 = AccountCommand::GetOrder {
             order_id: 123,
             pair: "btc_idr".into(),
         };
-        let _cmd8 = AccountCommand::EquitySnap;
-        let _cmd9 = AccountCommand::EquityHistory {
+        let _cmd8 = AccountCommand::GetOrderByClientId {
+            client_order_id: "client_123".into(),
+        };
+        let _cmd9 = AccountCommand::ListDownline { page: 1, limit: 10 };
+        let _cmd10 = AccountCommand::CheckDownline {
+            email: "user@example.com".into(),
+        };
+        let _cmd11 = AccountCommand::EquitySnap;
+        let _cmd12 = AccountCommand::EquityHistory {
             limit: 10,
             all: false,
         };

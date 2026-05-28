@@ -35,16 +35,19 @@ pub fn websocket_tools() -> Vec<Tool> {
             }),
             vec![],
         ),
+        IndodaxMcp::tool_def(
+            "generate_ws_token",
+            "Generate an authenticated private WebSocket token and channel for live order streams.",
+            serde_json::json!({}),
+            vec![],
+        ),
     ]
 }
 
 const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
 
 impl IndodaxMcp {
-    async fn fetch_ws_snapshot(
-        &self,
-        channel: &str,
-    ) -> CallToolResult {
+    async fn fetch_ws_snapshot(&self, channel: &str) -> CallToolResult {
         let token = match helpers::fetch_public_ws_token(&self.client).await {
             Ok(t) => t,
             Err(e) => return Self::error_result(format!("Failed to fetch WS token: {}", e)),
@@ -62,11 +65,7 @@ impl IndodaxMcp {
         }
     }
 
-    async fn ws_single_request(
-        &self,
-        url: &str,
-        channel: &str,
-    ) -> CallToolResult {
+    async fn ws_single_request(&self, url: &str, channel: &str) -> CallToolResult {
         use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::connect_async;
         use tokio_tungstenite::tungstenite::Message;
@@ -165,19 +164,19 @@ impl IndodaxMcp {
     pub async fn handle_ws_token(&self, private: bool) -> CallToolResult {
         if private {
             match self.client.signer() {
-                Some(_) => {
-                    match self.client.generate_ws_token().await {
-                        Ok((token, channel)) => Self::json_result(serde_json::json!({
-                            "token": token,
-                            "channel": channel,
-                            "url": "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true",
-                            "type": "private",
-                        })),
-                        Err(e) => Self::error_result(format!("Failed to generate private token: {}", e)),
+                Some(_) => match self.client.generate_ws_token().await {
+                    Ok((token, channel)) => Self::json_result(serde_json::json!({
+                        "token": token,
+                        "channel": channel,
+                        "url": "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true",
+                        "type": "private",
+                    })),
+                    Err(e) => {
+                        Self::error_result(format!("Failed to generate private token: {}", e))
                     }
-                }
+                },
                 None => Self::error_result(
-                    "Private WebSocket token requires API credentials. Use auth_set first.".into()
+                    "Private WebSocket token requires API credentials. Use auth_set first.".into(),
                 ),
             }
         } else {

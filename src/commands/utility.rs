@@ -112,12 +112,103 @@ async fn shell(
 ) -> Result<CommandOutput> {
     use crate::Cli;
     use clap::Parser;
+    use rustyline::completion::{Completer, Pair};
+    use rustyline::error::ReadlineError;
+    use rustyline::highlight::Highlighter;
+    use rustyline::hint::Hinter;
+    use rustyline::validate::Validator;
+    use rustyline::{Context, Helper};
 
     println!("Indodax CLI interactive shell");
     println!("Type commands without 'indodax' prefix (e.g. 'ticker btc/idr')");
     println!("Type 'help' for available commands, 'exit' to quit\n");
 
-    let mut rl = rustyline::Editor::<(), rustyline::history::DefaultHistory>::new()?;
+    #[derive(Clone)]
+    struct ShellHelper {
+        words: Vec<String>,
+    }
+
+    impl Helper for ShellHelper {}
+    impl Hinter for ShellHelper {
+        type Hint = String;
+    }
+    impl Highlighter for ShellHelper {}
+    impl Validator for ShellHelper {}
+    impl Completer for ShellHelper {
+        type Candidate = Pair;
+
+        fn complete(
+            &self,
+            line: &str,
+            pos: usize,
+            _ctx: &Context<'_>,
+        ) -> Result<(usize, Vec<Pair>), ReadlineError> {
+            let prefix_start = line[..pos]
+                .rfind(char::is_whitespace)
+                .map(|idx| idx + 1)
+                .unwrap_or(0);
+            let prefix = &line[prefix_start..pos].to_ascii_lowercase();
+            let matches = self
+                .words
+                .iter()
+                .filter(|word| word.starts_with(prefix))
+                .map(|word| Pair {
+                    display: word.clone(),
+                    replacement: word.clone(),
+                })
+                .collect();
+            Ok((prefix_start, matches))
+        }
+    }
+
+    let mut words = vec![
+        "ticker",
+        "ticker-all",
+        "pairs",
+        "summaries",
+        "orderbook",
+        "trades",
+        "history",
+        "ohlc",
+        "account",
+        "account-info",
+        "balance",
+        "transactions",
+        "order",
+        "buy",
+        "sell",
+        "cancel",
+        "get-by-client-id",
+        "get-order-by-client-id",
+        "list-downline",
+        "check-downline",
+        "withdrawal",
+        "withdraw",
+        "create-voucher",
+        "ws",
+        "generate-token",
+        "orders",
+        "paper",
+        "auth",
+        "alert",
+        "setup",
+        "exit",
+        "quit",
+        "help",
+        "btc_idr",
+        "eth_idr",
+        "usdt_idr",
+        "xrp_idr",
+        "sol_idr",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+    words.sort();
+    words.dedup();
+
+    let mut rl = rustyline::Editor::<ShellHelper, rustyline::history::DefaultHistory>::new()?;
+    rl.set_helper(Some(ShellHelper { words }));
     let mut config = crate::config::IndodaxConfig::load()?;
     let client_ref = client;
 

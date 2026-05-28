@@ -42,6 +42,16 @@ pub fn funding_tools() -> Vec<Tool> {
             }),
             vec!["currency"],
         ),
+        IndodaxMcp::tool_def(
+            "create_voucher",
+            "Create an IDR voucher for a registered Indodax email. Partner-only dangerous operation that requires formal Indodax approval.",
+            serde_json::json!({
+                "amount": IndodaxMcp::num_param("Voucher value in IDR, minimum 1000.", true),
+                "to_email": IndodaxMcp::str_param("Registered Indodax recipient email.", true, None),
+                "acknowledged": IndodaxMcp::bool_param("Security confirmation: must be true to authorize voucher creation."),
+            }),
+            vec!["amount", "to_email", "acknowledged"],
+        ),
     ]
 }
 
@@ -127,6 +137,31 @@ impl IndodaxMcp {
         match self
             .client
             .private_post_v1::<Value>("depositAddress", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_create_voucher(&self, amount: f64, to_email: &str) -> CallToolResult {
+        if amount < 1000.0 || !amount.is_finite() {
+            return Self::validation_error_result(format!(
+                "amount must be at least 1000 IDR, got {}",
+                amount
+            ));
+        }
+        if to_email.trim().is_empty() {
+            return Self::validation_error_result("Missing required parameter: to_email".into());
+        }
+
+        let mut params = HashMap::new();
+        params.insert("amount".to_string(), amount.to_string());
+        params.insert("to_email".to_string(), to_email.to_string());
+
+        match self
+            .client
+            .private_post_v1::<Value>("createVoucher", &params)
             .await
         {
             Ok(data) => Self::json_result(data),

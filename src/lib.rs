@@ -91,12 +91,27 @@ pub struct Cli {
     pub verbose: bool,
 
     #[arg(
+        long = "lang",
+        default_value = "en",
+        help = "Output language: en or id",
+        global = true
+    )]
+    pub lang: Language,
+
+    #[arg(
         long = "yes",
         alias = "force",
         help = "Skip confirmation prompts for destructive operations",
         global = true
     )]
     pub yes: bool,
+}
+
+#[cfg(feature = "cli")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Language {
+    En,
+    Id,
 }
 
 #[cfg(feature = "cli")]
@@ -517,11 +532,15 @@ pub async fn dispatch(
                 .await
                 .map_err(map_anyhow_error)?
         }
-        Command::Transactions => {
-            commands::account::execute(client, &commands::account::AccountCommand::TransHistory)
-                .await
-                .map_err(map_anyhow_error)?
-        }
+        Command::Transactions => commands::account::execute(
+            client,
+            &commands::account::AccountCommand::TransHistory {
+                start: None,
+                end: None,
+            },
+        )
+        .await
+        .map_err(map_anyhow_error)?,
         Command::TradesHistory {
             pair,
             limit,
@@ -677,6 +696,8 @@ mod tests {
             idr: 100_000.0,
             price: None,
             order_type: None,
+            client_order_id: None,
+            time_in_force: None,
         });
         let _cmd4 = Command::Withdrawal(WithdrawalSubcommand::Fee {
             asset: "btc".into(),
@@ -693,6 +714,8 @@ mod tests {
         let _cmd10 = Command::Mcp {
             groups: "market,paper".into(),
             allow_dangerous: false,
+            port: 8000,
+            http: false,
         };
     }
 

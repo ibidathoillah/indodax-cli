@@ -473,7 +473,8 @@ pub async fn alert_check(
 
 fn alert_triggered() -> Result<CommandOutput> {
     let alerts = load_alerts()?;
-    let triggered: Vec<&PriceAlert> = alerts.iter()
+    let triggered: Vec<&PriceAlert> = alerts
+        .iter()
         .filter(|a| a.status == AlertStatus::Triggered)
         .collect();
 

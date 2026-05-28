@@ -283,7 +283,16 @@ impl IndodaxMcp {
             None => None,
         };
         let mut state = self.load_paper_state().await;
-        match crate::commands::paper::paper_fill(&mut state, order_id, fill_price, fill_all, Some(&self.client), fetch).await {
+        match crate::commands::paper::paper_fill(
+            &mut state,
+            order_id,
+            fill_price,
+            fill_all,
+            Some(&self.client),
+            fetch,
+        )
+        .await
+        {
             Ok(output) => {
                 if let Err(e) = self.save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
@@ -300,13 +309,8 @@ impl IndodaxMcp {
         fetch: bool,
     ) -> CallToolResult {
         let mut state = self.load_paper_state().await;
-        match crate::commands::paper::paper_check_fills(
-            &self.client,
-            &mut state,
-            prices,
-            fetch,
-        )
-        .await
+        match crate::commands::paper::paper_check_fills(&self.client, &mut state, prices, fetch)
+            .await
         {
             Ok(output) => {
                 if let Err(e) = self.save_paper_state(&state).await {

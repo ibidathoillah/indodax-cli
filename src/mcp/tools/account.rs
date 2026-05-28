@@ -64,10 +64,38 @@ pub fn account_tools() -> Vec<Tool> {
             vec!["order_id", "pair"],
         ),
         IndodaxMcp::tool_def(
+            "get_order_by_client_id",
+            "Retrieve order details using a custom client_order_id.",
+            serde_json::json!({
+                "client_order_id": IndodaxMcp::str_param("Client order ID assigned when placing the order.", true, None),
+            }),
+            vec!["client_order_id"],
+        ),
+        IndodaxMcp::tool_def(
             "trans_history",
             "Retrieve the complete history of all deposit and withdrawal transactions (both fiat IDR and cryptocurrency) for your account. Includes transaction IDs, destination addresses, fees, and current processing status.",
-            serde_json::json!({}),
+            serde_json::json!({
+                "start": IndodaxMcp::str_param("Optional start date or timestamp accepted by Indodax transHistory.", false, None),
+                "end": IndodaxMcp::str_param("Optional end date or timestamp accepted by Indodax transHistory.", false, None),
+            }),
             vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "list_downline",
+            "List affiliate downline users for accounts with affiliate access.",
+            serde_json::json!({
+                "page": IndodaxMcp::num_param("Page number, starting at 1.", false),
+                "limit": IndodaxMcp::num_param("Records per page, maximum 200.", false),
+            }),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "check_downline",
+            "Check whether an email belongs to your affiliate downline.",
+            serde_json::json!({
+                "email": IndodaxMcp::str_param("Email address to check.", true, None),
+            }),
+            vec!["email"],
         ),
     ]
 }
@@ -178,10 +206,96 @@ impl IndodaxMcp {
         }
     }
 
-    pub async fn handle_trans_history(&self) -> CallToolResult {
+    pub async fn handle_get_order_by_client_id(&self, client_order_id: &str) -> CallToolResult {
+        if client_order_id.trim().is_empty() {
+            return Self::validation_error_result(
+                "Missing required parameter: client_order_id".into(),
+            );
+        }
+        let mut params = HashMap::new();
+        params.insert("client_order_id".to_string(), client_order_id.to_string());
+
         match self
             .client
-            .private_post_v1::<Value>("transHistory", &HashMap::new())
+            .private_post_v1::<Value>("getOrderByClientOrderId", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_trans_history(
+        &self,
+        start: Option<&str>,
+        end: Option<&str>,
+    ) -> CallToolResult {
+        let mut params = HashMap::new();
+        if let Some(start) = start {
+            params.insert("start".to_string(), start.to_string());
+        }
+        if let Some(end) = end {
+            params.insert("end".to_string(), end.to_string());
+        }
+        match self
+            .client
+            .private_post_v1::<Value>("transHistory", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_list_downline(
+        &self,
+        page: Option<f64>,
+        limit: Option<f64>,
+    ) -> CallToolResult {
+        let page = match page {
+            Some(v) if v.fract() == 0.0 && v >= 1.0 => v as u32,
+            Some(v) => {
+                return Self::validation_error_result(format!(
+                    "page must be a whole number >= 1, got {}",
+                    v
+                ))
+            }
+            None => 1,
+        };
+        let limit = match limit {
+            Some(v) if v.fract() == 0.0 && (1.0..=200.0).contains(&v) => v as u32,
+            Some(v) => {
+                return Self::validation_error_result(format!(
+                    "limit must be a whole number between 1 and 200, got {}",
+                    v
+                ))
+            }
+            None => 10,
+        };
+        let mut params = HashMap::new();
+        params.insert("page".to_string(), page.to_string());
+        params.insert("limit".to_string(), limit.to_string());
+
+        match self
+            .client
+            .private_post_v1::<Value>("listDownline", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_check_downline(&self, email: &str) -> CallToolResult {
+        if email.trim().is_empty() {
+            return Self::validation_error_result("Missing required parameter: email".into());
+        }
+        let mut params = HashMap::new();
+        params.insert("email".to_string(), email.to_string());
+
+        match self
+            .client
+            .private_post_v1::<Value>("checkDownline", &params)
             .await
         {
             Ok(data) => Self::json_result(data),

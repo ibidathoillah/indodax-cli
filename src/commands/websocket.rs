@@ -35,6 +35,9 @@ pub enum WebSocketCommand {
     #[command(name = "summary", about = "Stream 24h summary for all pairs")]
     Summary,
 
+    #[command(name = "generate-token", about = "Generate a private WebSocket token")]
+    GenerateToken,
+
     #[command(name = "orders", about = "Stream private order updates")]
     Orders,
 }
@@ -58,8 +61,30 @@ pub async fn execute(
             ws_book(client, &pair, output_format).await
         }
         WebSocketCommand::Summary => ws_summary(client, output_format).await,
+        WebSocketCommand::GenerateToken => ws_generate_token(client).await,
         WebSocketCommand::Orders => ws_orders(client, output_format).await,
     }
+}
+
+async fn ws_generate_token(client: &IndodaxClient) -> Result<CommandOutput> {
+    if client.signer().is_none() {
+        return Err(anyhow::anyhow!(
+            "Private WebSocket token generation requires API credentials. Use 'indodax auth set' or set INDODAX_API_KEY and INDODAX_API_SECRET."
+        ));
+    }
+
+    let (token, channel) = client.generate_ws_token().await.map_err(|e| {
+        anyhow::anyhow!(
+            "WebSocket token generation failed: {}. Check API credentials and permissions.",
+            e
+        )
+    })?;
+    Ok(CommandOutput::json(serde_json::json!({
+        "token": token,
+        "channel": channel,
+        "url": PRIVATE_WS_URL,
+        "type": "private"
+    })))
 }
 
 async fn ws_connect_and_listen(
@@ -774,7 +799,8 @@ mod tests {
             pair: "btc_idr".into(),
         };
         let _cmd4 = WebSocketCommand::Summary;
-        let _cmd5 = WebSocketCommand::Orders;
+        let _cmd5 = WebSocketCommand::GenerateToken;
+        let _cmd6 = WebSocketCommand::Orders;
     }
 
     #[test]

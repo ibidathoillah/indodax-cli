@@ -55,6 +55,17 @@ pub enum FundingCommand {
         )]
         listen: Option<String>,
     },
+
+    #[command(
+        name = "create-voucher",
+        about = "Create an IDR voucher (partner-only Indodax API)"
+    )]
+    CreateVoucher {
+        #[arg(long, help = "Voucher value in IDR, minimum 1000")]
+        amount: f64,
+        #[arg(long, help = "Recipient Indodax account email")]
+        to_email: String,
+    },
 }
 
 pub async fn execute(
@@ -94,7 +105,36 @@ pub async fn execute(
             auto_ok,
             listen,
         } => serve_callback(*port, *auto_ok, listen.as_deref(), output_format).await,
+        FundingCommand::CreateVoucher { amount, to_email } => {
+            create_voucher(client, *amount, to_email).await
+        }
     }
+}
+
+async fn create_voucher(
+    client: &IndodaxClient,
+    amount: f64,
+    to_email: &str,
+) -> Result<CommandOutput> {
+    if amount < 1000.0 || !amount.is_finite() {
+        return Err(anyhow::anyhow!(
+            "Voucher amount must be at least 1000 IDR, got {}",
+            amount
+        ));
+    }
+    if to_email.trim().is_empty() {
+        return Err(anyhow::anyhow!("to-email cannot be empty"));
+    }
+
+    let mut params = HashMap::new();
+    params.insert("amount".into(), amount.to_string());
+    params.insert("to_email".into(), to_email.to_string());
+
+    let data: serde_json::Value = client.private_post_v1("createVoucher", &params).await?;
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows).with_addendum(
+        "Voucher created. This partner-only operation may require Indodax approval.",
+    ))
 }
 
 async fn withdraw_fee(
@@ -311,6 +351,10 @@ mod tests {
             port: 8080,
             auto_ok: true,
             listen: None,
+        };
+        let _cmd4 = FundingCommand::CreateVoucher {
+            amount: 10_000.0,
+            to_email: "user@example.com".into(),
         };
     }
 

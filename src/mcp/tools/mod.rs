@@ -13,10 +13,9 @@ use serde_json::{Map, Value};
 use tokio::sync::Mutex;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, ErrorData as McpError, Implementation,
-    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, ReadResourceResult,
-    ServerCapabilities, Tool, GetPromptRequestParams,
+    CallToolRequestParams, CallToolResult, Content, ErrorData as McpError, GetPromptRequestParams,
+    Implementation, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequestParams, ReadResourceResult, ServerCapabilities, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
 
@@ -134,11 +133,7 @@ impl IndodaxMcp {
             schema.insert("required".to_string(), Value::Array(req_values));
         }
 
-        Tool::new(
-            name.to_string(),
-            description.to_string(),
-            Arc::new(schema),
-        )
+        Tool::new(name.to_string(), description.to_string(), Arc::new(schema))
     }
 
     pub fn get_str(args: &Map<String, Value>, name: &str) -> Option<String> {
@@ -271,12 +266,10 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     "callback_url": config.callback_url,
                 })
             }
-            "pairs://list" => {
-                match self.client.public_get::<Value>("/api/pairs").await {
-                    Ok(data) => data,
-                    Err(e) => serde_json::json!({"error": e.to_string()}),
-                }
-            }
+            "pairs://list" => match self.client.public_get::<Value>("/api/pairs").await {
+                Ok(data) => data,
+                Err(e) => serde_json::json!({"error": e.to_string()}),
+            },
             "paper://state" => {
                 let state = self.load_paper_state().await;
                 serde_json::json!({
@@ -469,7 +462,18 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     helpers::normalize_pair(&Self::get_str(&args, "pair").unwrap_or_default());
                 let idr = Self::get_num(&args, "idr").unwrap_or(0.0);
                 let price = Self::get_num(&args, "price");
-                self.handle_buy_order(&pair, idr, price).await
+                let order_type = Self::get_str(&args, "order_type");
+                let client_order_id = Self::get_str(&args, "client_order_id");
+                let time_in_force = Self::get_str(&args, "time_in_force");
+                self.handle_buy_order(
+                    &pair,
+                    idr,
+                    price,
+                    order_type.as_deref(),
+                    client_order_id.as_deref(),
+                    time_in_force.as_deref(),
+                )
+                .await
             }
             "sell_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
@@ -498,8 +502,17 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 };
                 let order_type =
                     Self::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
-                self.handle_sell_order(&pair, price, amount, &order_type)
-                    .await
+                let client_order_id = Self::get_str(&args, "client_order_id");
+                let time_in_force = Self::get_str(&args, "time_in_force");
+                self.handle_sell_order(
+                    &pair,
+                    price,
+                    amount,
+                    &order_type,
+                    client_order_id.as_deref(),
+                    time_in_force.as_deref(),
+                )
+                .await
             }
 
             // Account
@@ -550,7 +563,39 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 };
                 self.handle_get_order(order_id, &pair).await
             }
-            "trans_history" => self.handle_trans_history().await,
+            "get_order_by_client_id" => {
+                let client_order_id = match Self::get_str(&args, "client_order_id") {
+                    Some(v) => v,
+                    None => {
+                        return Ok(Self::validation_error_result(
+                            "Missing required parameter: client_order_id".into(),
+                        ))
+                    }
+                };
+                self.handle_get_order_by_client_id(&client_order_id).await
+            }
+            "trans_history" => {
+                let start = Self::get_str(&args, "start");
+                let end = Self::get_str(&args, "end");
+                self.handle_trans_history(start.as_deref(), end.as_deref())
+                    .await
+            }
+            "list_downline" => {
+                let page = Self::get_num(&args, "page");
+                let limit = Self::get_num(&args, "limit");
+                self.handle_list_downline(page, limit).await
+            }
+            "check_downline" => {
+                let email = match Self::get_str(&args, "email") {
+                    Some(v) => v,
+                    None => {
+                        return Ok(Self::validation_error_result(
+                            "Missing required parameter: email".into(),
+                        ))
+                    }
+                };
+                self.handle_check_downline(&email).await
+            }
             "cancel_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
                 if let Err(msg) = self
@@ -634,7 +679,20 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             "deposit_address" => {
                 let currency = Self::get_str(&args, "currency").unwrap_or_default();
                 let network = Self::get_str(&args, "network");
-                self.handle_deposit_address(&currency, network.as_deref()).await
+                self.handle_deposit_address(&currency, network.as_deref())
+                    .await
+            }
+            "create_voucher" => {
+                let acknowledged = Self::get_bool(&args, "acknowledged");
+                if let Err(msg) = self
+                    .safety
+                    .check_operation(&ServiceGroup::Funding, acknowledged)
+                {
+                    return Ok(Self::error_result(msg));
+                }
+                let amount = Self::get_num(&args, "amount").unwrap_or(0.0);
+                let to_email = Self::get_str(&args, "to_email").unwrap_or_default();
+                self.handle_create_voucher(amount, &to_email).await
             }
 
             // Paper
@@ -701,8 +759,9 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let api_secret = Self::get_str(&args, "api_secret").unwrap_or_default();
                 let callback_url = Self::get_str(&args, "callback_url");
                 let test = Self::get_bool(&args, "test");
-                self.handle_auth_set(api_key, api_secret, callback_url, test).await
-            },
+                self.handle_auth_set(api_key, api_secret, callback_url, test)
+                    .await
+            }
 
             // Alert
             "alert_add" => {
@@ -712,7 +771,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let percent_up = Self::get_num(&args, "percent_up");
                 let percent_down = Self::get_num(&args, "percent_down");
                 let note = Self::get_str(&args, "note");
-                self.handle_alert_add(&pair, above, below, percent_up, percent_down, note).await
+                self.handle_alert_add(&pair, above, below, percent_up, percent_down, note)
+                    .await
             }
             "alert_list" => {
                 let history = Self::get_bool(&args, "history");
@@ -732,13 +792,13 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             // WebSocket snapshots (Market group)
             "ws_snapshot_ticker" => {
                 let pair = helpers::normalize_pair(
-                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()),
                 );
                 self.handle_ws_snapshot_ticker(&pair).await
             }
             "ws_snapshot_book" => {
                 let pair = helpers::normalize_pair(
-                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()),
                 );
                 self.handle_ws_snapshot_book(&pair).await
             }
@@ -747,6 +807,7 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let private = Self::get_bool(&args, "private");
                 self.handle_ws_token(private).await
             }
+            "generate_ws_token" => self.handle_ws_token(true).await,
 
             _ => Self::error_result(format!("Unknown tool: {}", name)),
         };

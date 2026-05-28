@@ -21,8 +21,16 @@ pub enum TradeCommand {
         idr: f64,
         #[arg(long, help = "Limit price. If omitted, a market order will be placed.")]
         price: Option<f64>,
-        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market"]), help = "Order type: limit or market. Inferred from --price if omitted.")]
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market", "stoplimit"]), help = "Order type: limit, market, or stoplimit. Inferred from --price if omitted.")]
         order_type: Option<String>,
+        #[arg(
+            short = 'c',
+            long,
+            help = "Client order ID (max 36 chars, alphanumeric, _ or -)"
+        )]
+        client_order_id: Option<String>,
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["GTC", "MOC", "gtc", "moc"]), help = "Time in force for limit orders: GTC or MOC")]
+        time_in_force: Option<String>,
     },
 
     #[command(name = "sell", about = "Place a sell order")]
@@ -37,8 +45,16 @@ pub enum TradeCommand {
             help = "Limit price. If omitted, a market order will be placed."
         )]
         price: Option<f64>,
-        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market"]), help = "Order type: limit or market. Inferred from --price if omitted.")]
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market", "stoplimit"]), help = "Order type: limit, market, or stoplimit. Inferred from --price if omitted.")]
         order_type: Option<String>,
+        #[arg(
+            short = 'c',
+            long,
+            help = "Client order ID (max 36 chars, alphanumeric, _ or -)"
+        )]
+        client_order_id: Option<String>,
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["GTC", "MOC", "gtc", "moc"]), help = "Time in force for limit orders: GTC or MOC")]
+        time_in_force: Option<String>,
     },
 
     #[command(name = "cancel", about = "Cancel an order by ID")]
@@ -56,6 +72,15 @@ pub enum TradeCommand {
         about = "Cancel an order by client order ID"
     )]
     CancelByClientId {
+        #[arg(long)]
+        client_order_id: String,
+    },
+
+    #[command(
+        name = "get-by-client-id",
+        about = "Get order details by client order ID"
+    )]
+    GetByClientId {
         #[arg(long)]
         client_order_id: String,
     },
@@ -93,18 +118,40 @@ pub async fn execute(
             idr,
             price,
             order_type,
+            client_order_id,
+            time_in_force,
         } => {
             let pair = helpers::normalize_pair(pair);
-            place_buy_order(client, &pair, *idr, *price, order_type.as_deref()).await
+            place_buy_order(
+                client,
+                &pair,
+                *idr,
+                *price,
+                order_type.as_deref(),
+                client_order_id.as_deref(),
+                time_in_force.as_deref(),
+            )
+            .await
         }
         TradeCommand::Sell {
             pair,
             price,
             amount,
             order_type,
+            client_order_id,
+            time_in_force,
         } => {
             let pair = helpers::normalize_pair(pair);
-            place_sell_order(client, &pair, *price, *amount, order_type.as_deref()).await
+            place_sell_order(
+                client,
+                &pair,
+                *price,
+                *amount,
+                order_type.as_deref(),
+                client_order_id.as_deref(),
+                time_in_force.as_deref(),
+            )
+            .await
         }
         TradeCommand::Cancel {
             order_id,
@@ -116,6 +163,9 @@ pub async fn execute(
         }
         TradeCommand::CancelByClientId { client_order_id } => {
             cancel_by_client_id(client, client_order_id).await
+        }
+        TradeCommand::GetByClientId { client_order_id } => {
+            get_by_client_id(client, client_order_id).await
         }
         TradeCommand::CancelAll { pair } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
@@ -137,6 +187,8 @@ async fn place_buy_order(
     idr_amount: f64,
     price: Option<f64>,
     explicit_type: Option<&str>,
+    client_order_id: Option<&str>,
+    time_in_force: Option<&str>,
 ) -> Result<CommandOutput> {
     let info = get_account_info(client).await?;
 
@@ -162,12 +214,13 @@ async fn place_buy_order(
     params.insert("pair".to_string(), pair.to_string());
     params.insert("type".to_string(), "buy".to_string());
     params.insert("idr".to_string(), idr_amount.to_string());
+    apply_optional_trade_params(&mut params, client_order_id, time_in_force, explicit_type)?;
 
     let order_type_str = if let Some(order_type) = explicit_type {
         match order_type {
-            "limit" => {
+            "limit" | "stoplimit" => {
                 let p = price.ok_or_else(|| {
-                    anyhow::anyhow!("--price is required when --order-type is 'limit'")
+                    anyhow::anyhow!("--price is required when --order-type is '{}'", order_type)
                 })?;
                 if p <= 0.0 {
                     return Err(anyhow::anyhow!("Price must be positive, got {}", p));
@@ -176,7 +229,10 @@ async fn place_buy_order(
                     warnings.push(warning);
                 }
                 params.insert("price".to_string(), p.to_string());
-                "limit"
+                if order_type == "stoplimit" {
+                    params.insert("order_type".to_string(), "stoplimit".to_string());
+                }
+                order_type
             }
             "market" => {
                 if price.is_some() {
@@ -229,6 +285,8 @@ async fn place_sell_order(
     price: Option<f64>,
     amount: f64,
     explicit_type: Option<&str>,
+    client_order_id: Option<&str>,
+    time_in_force: Option<&str>,
 ) -> Result<CommandOutput> {
     let base_currency = pair.split('_').next().unwrap_or_default();
     if base_currency.is_empty() {
@@ -257,12 +315,13 @@ async fn place_sell_order(
     params.insert("pair".to_string(), pair.to_string());
     params.insert("type".to_string(), "sell".to_string());
     params.insert(base_currency.to_string(), amount.to_string());
+    apply_optional_trade_params(&mut params, client_order_id, time_in_force, explicit_type)?;
 
     let order_type = if let Some(order_type) = explicit_type {
         match order_type {
-            "limit" => {
+            "limit" | "stoplimit" => {
                 let p = price.ok_or_else(|| {
-                    anyhow::anyhow!("--price is required when --order-type is 'limit'")
+                    anyhow::anyhow!("--price is required when --order-type is '{}'", order_type)
                 })?;
                 if p <= 0.0 {
                     return Err(anyhow::anyhow!("Price must be positive, got {}", p));
@@ -271,7 +330,10 @@ async fn place_sell_order(
                     warnings.push(warning);
                 }
                 params.insert("price".to_string(), p.to_string());
-                "limit"
+                if order_type == "stoplimit" {
+                    params.insert("order_type".to_string(), "stoplimit".to_string());
+                }
+                order_type
             }
             "market" => {
                 if price.is_some() {
@@ -326,6 +388,41 @@ async fn place_sell_order(
         output = output.with_warning(w);
     }
     Ok(output)
+}
+
+fn apply_optional_trade_params(
+    params: &mut HashMap<String, String>,
+    client_order_id: Option<&str>,
+    time_in_force: Option<&str>,
+    explicit_type: Option<&str>,
+) -> Result<()> {
+    if let Some(id) = client_order_id {
+        if id.len() > 36
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(anyhow::anyhow!(
+                "--client-order-id must be at most 36 chars and contain only letters, numbers, '_' or '-'"
+            ));
+        }
+        params.insert("client_order_id".into(), id.to_string());
+    }
+
+    if let Some(tif) = time_in_force {
+        let normalized = tif.to_ascii_uppercase();
+        if normalized != "GTC" && normalized != "MOC" {
+            return Err(anyhow::anyhow!("--time-in-force must be GTC or MOC"));
+        }
+        if matches!(explicit_type, Some("market" | "stoplimit")) {
+            return Err(anyhow::anyhow!(
+                "--time-in-force is only valid for limit orders"
+            ));
+        }
+        params.insert("time_in_force".into(), normalized);
+    }
+
+    Ok(())
 }
 
 async fn cancel_order(
@@ -390,6 +487,18 @@ async fn cancel_by_client_id(
             client_order_id
         )),
     )
+}
+
+async fn get_by_client_id(client: &IndodaxClient, client_order_id: &str) -> Result<CommandOutput> {
+    let mut params = HashMap::new();
+    params.insert("client_order_id".into(), client_order_id.to_string());
+
+    let data: serde_json::Value = client
+        .private_post_v1("getOrderByClientOrderId", &params)
+        .await?;
+
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
 }
 
 async fn cancel_all_orders(
@@ -481,12 +590,16 @@ mod tests {
             idr: 100_000.0,
             price: Some(100_000_000.0),
             order_type: None,
+            client_order_id: None,
+            time_in_force: None,
         };
         let _cmd2 = TradeCommand::Sell {
             pair: "btc_idr".into(),
             price: Some(100_000_000.0),
             amount: 0.5,
             order_type: None,
+            client_order_id: None,
+            time_in_force: None,
         };
         let _cmd3 = TradeCommand::Cancel {
             order_id: 123,
@@ -494,6 +607,9 @@ mod tests {
             order_type: "buy".into(),
         };
         let _cmd4 = TradeCommand::CancelByClientId {
+            client_order_id: "client_123".into(),
+        };
+        let _cmd4b = TradeCommand::GetByClientId {
             client_order_id: "client_123".into(),
         };
         let _cmd5 = TradeCommand::CancelAll {
@@ -512,6 +628,8 @@ mod tests {
             idr: 100_000.0,
             price: None,
             order_type: None,
+            client_order_id: None,
+            time_in_force: None,
         };
         match cmd {
             TradeCommand::Buy {
@@ -519,11 +637,15 @@ mod tests {
                 idr,
                 price,
                 order_type,
+                client_order_id,
+                time_in_force,
             } => {
                 assert_eq!(pair, "btc_idr");
                 assert_eq!(idr, 100_000.0);
                 assert!(price.is_none());
                 assert!(order_type.is_none());
+                assert!(client_order_id.is_none());
+                assert!(time_in_force.is_none());
             }
             _ => panic!("Expected Buy command, got {:?}", cmd),
         }
@@ -536,6 +658,8 @@ mod tests {
             price: None,
             amount: 1.0,
             order_type: None,
+            client_order_id: None,
+            time_in_force: None,
         };
         match cmd {
             TradeCommand::Sell { price, .. } => {
@@ -552,6 +676,8 @@ mod tests {
             price: Some(100_000_000.0),
             amount: 0.5,
             order_type: None,
+            client_order_id: None,
+            time_in_force: None,
         };
         match cmd {
             TradeCommand::Sell { price, .. } => {

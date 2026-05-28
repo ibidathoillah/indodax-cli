@@ -13,7 +13,10 @@ pub fn trade_tools() -> Vec<Tool> {
             serde_json::json!({
                 "pair": IndodaxMcp::str_param("The trading pair you wish to buy (e.g., 'btc_idr', 'eth_idr'). The format is typically base_quote in lowercase.", true, None),
                 "idr": IndodaxMcp::num_param("The total amount of Indonesian Rupiah (IDR) you want to spend on this purchase, including fees.", true),
-                "price": IndodaxMcp::num_param("Optional: The maximum price per unit you are willing to pay (Limit Order). If omitted, the exchange will execute a Market Order using the best available price in the order book.", false),
+                "price": IndodaxMcp::num_param("Optional: The maximum price per unit you are willing to pay (required for limit and stoplimit orders). If omitted, the exchange will execute a market order.", false),
+                "order_type": IndodaxMcp::str_param("The execution strategy: 'limit', 'market', or 'stoplimit'. Default is inferred from price.", false, Some("limit")),
+                "client_order_id": IndodaxMcp::str_param("Optional client order ID, max 36 chars using letters, numbers, '_' or '-'.", false, None),
+                "time_in_force": IndodaxMcp::str_param("Optional time in force for limit orders: GTC or MOC.", false, Some("GTC")),
                 "acknowledged":
                     IndodaxMcp::bool_param("Security confirmation: This must be explicitly set to true to acknowledge that you are performing a real-money trade operation."),
             }),
@@ -27,7 +30,9 @@ pub fn trade_tools() -> Vec<Tool> {
                 "price": IndodaxMcp::num_param("Optional: The minimum price per unit you want to receive (required if order_type is 'limit').", false),
                 "amount": IndodaxMcp::num_param("The exact quantity of the base asset (e.g., 0.005 for BTC) you wish to sell.", true),
                 "order_type":
-                    IndodaxMcp::str_param("The execution strategy: 'limit' (fixed price) or 'market' (execute immediately at current price). Default is 'limit'.", false, Some("limit")),
+                    IndodaxMcp::str_param("The execution strategy: 'limit', 'market', or 'stoplimit'. Default is 'limit'.", false, Some("limit")),
+                "client_order_id": IndodaxMcp::str_param("Optional client order ID, max 36 chars using letters, numbers, '_' or '-'.", false, None),
+                "time_in_force": IndodaxMcp::str_param("Optional time in force for limit orders: GTC or MOC.", false, Some("GTC")),
                 "acknowledged":
                     IndodaxMcp::bool_param("Security confirmation: This must be set to true to acknowledge that you are performing a real-money trade operation."),
             }),
@@ -66,6 +71,9 @@ impl IndodaxMcp {
         pair: &str,
         idr: f64,
         price: Option<f64>,
+        order_type: Option<&str>,
+        client_order_id: Option<&str>,
+        time_in_force: Option<&str>,
     ) -> CallToolResult {
         if idr <= 0.0 || !idr.is_finite() {
             return Self::validation_error_result(format!(
@@ -100,12 +108,45 @@ impl IndodaxMcp {
         params.insert("pair".to_string(), pair.to_string());
         params.insert("type".to_string(), "buy".to_string());
         params.insert("idr".to_string(), idr.to_string());
+        if let Err(e) =
+            apply_optional_trade_params(&mut params, client_order_id, time_in_force, order_type)
+        {
+            return Self::validation_error_result(e);
+        }
 
-        if let Some(p) = price {
-            params.insert("price".to_string(), p.to_string());
-        } else {
-            eprintln!("[MCP] Warning: Market buy order without limit price. Indodax may reject market orders with IDR amount.");
-            params.insert("order_type".to_string(), "market".to_string());
+        match order_type {
+            Some("market") => {
+                if price.is_some() {
+                    return Self::validation_error_result(
+                        "Cannot specify price for a market buy order".into(),
+                    );
+                }
+                eprintln!("[MCP] Warning: Market buy order without limit price. Indodax may reject market orders with IDR amount.");
+                params.insert("order_type".to_string(), "market".to_string());
+            }
+            Some("limit") | None => {
+                if let Some(p) = price {
+                    params.insert("price".to_string(), p.to_string());
+                } else {
+                    eprintln!("[MCP] Warning: Market buy order without limit price. Indodax may reject market orders with IDR amount.");
+                    params.insert("order_type".to_string(), "market".to_string());
+                }
+            }
+            Some("stoplimit") => {
+                let Some(p) = price else {
+                    return Self::validation_error_result(
+                        "price is required when order_type is 'stoplimit'".into(),
+                    );
+                };
+                params.insert("price".to_string(), p.to_string());
+                params.insert("order_type".to_string(), "stoplimit".to_string());
+            }
+            Some(other) => {
+                return Self::validation_error_result(format!(
+                    "Invalid order_type '{}'. Must be 'limit', 'market', or 'stoplimit'.",
+                    other
+                ))
+            }
         }
 
         let tick_warning = if let Some(p) = price {
@@ -126,6 +167,8 @@ impl IndodaxMcp {
         price: Option<f64>,
         amount: f64,
         order_type: &str,
+        client_order_id: Option<&str>,
+        time_in_force: Option<&str>,
     ) -> CallToolResult {
         if amount <= 0.0 || !amount.is_finite() {
             return Self::validation_error_result(format!(
@@ -164,9 +207,17 @@ impl IndodaxMcp {
                 }
                 false
             }
+            "stoplimit" => {
+                if price.is_none() {
+                    return Self::validation_error_result(
+                        "price is required when order_type is 'stoplimit'".into(),
+                    );
+                }
+                false
+            }
             _ => {
                 return Self::validation_error_result(format!(
-                    "Invalid order_type '{}'. Must be 'limit' or 'market'.",
+                    "Invalid order_type '{}'. Must be 'limit', 'market', or 'stoplimit'.",
                     order_type
                 ));
             }
@@ -192,6 +243,14 @@ impl IndodaxMcp {
         params.insert("pair".to_string(), pair.to_string());
         params.insert("type".to_string(), "sell".to_string());
         params.insert(base_currency.to_string(), amount.to_string());
+        if let Err(e) = apply_optional_trade_params(
+            &mut params,
+            client_order_id,
+            time_in_force,
+            Some(order_type),
+        ) {
+            return Self::validation_error_result(e);
+        }
 
         if let Some(p) = price {
             if !is_market {
@@ -200,6 +259,8 @@ impl IndodaxMcp {
         }
         if is_market {
             params.insert("order_type".to_string(), "market".to_string());
+        } else if order_type == "stoplimit" {
+            params.insert("order_type".to_string(), "stoplimit".to_string());
         }
 
         let tick_warning = if let Some(p) = price {
@@ -264,4 +325,35 @@ impl IndodaxMcp {
             Err(e) => Self::error_from_indodax(&e),
         }
     }
+}
+
+fn apply_optional_trade_params(
+    params: &mut HashMap<String, String>,
+    client_order_id: Option<&str>,
+    time_in_force: Option<&str>,
+    order_type: Option<&str>,
+) -> Result<(), String> {
+    if let Some(id) = client_order_id {
+        if id.len() > 36
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err("client_order_id must be at most 36 chars and contain only letters, numbers, '_' or '-'".into());
+        }
+        params.insert("client_order_id".to_string(), id.to_string());
+    }
+
+    if let Some(tif) = time_in_force {
+        let normalized = tif.to_ascii_uppercase();
+        if normalized != "GTC" && normalized != "MOC" {
+            return Err("time_in_force must be GTC or MOC".into());
+        }
+        if matches!(order_type, Some("market" | "stoplimit")) {
+            return Err("time_in_force is only valid for limit orders".into());
+        }
+        params.insert("time_in_force".to_string(), normalized);
+    }
+
+    Ok(())
 }

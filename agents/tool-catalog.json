@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "tools": [
+    {"name": "ticker", "group": "market", "safety": "safe", "auth_required": false, "parameters": [{"name": "pair", "type": "string", "required": false}]},
+    {"name": "ticker_all", "group": "market", "safety": "safe", "auth_required": false, "parameters": []},
+    {"name": "pairs", "group": "market", "safety": "safe", "auth_required": false, "parameters": []},
+    {"name": "summaries", "group": "market", "safety": "safe", "auth_required": false, "parameters": []},
+    {"name": "orderbook", "group": "market", "safety": "safe", "auth_required": false, "parameters": [{"name": "pair", "type": "string", "required": false}]},
+    {"name": "trades", "group": "market", "safety": "safe", "auth_required": false, "parameters": [{"name": "pair", "type": "string", "required": false}]},
+    {"name": "ohlc", "group": "market", "safety": "safe", "auth_required": false, "parameters": [{"name": "symbol", "type": "string", "required": false}, {"name": "timeframe", "type": "string", "required": false}, {"name": "from", "type": "number", "required": false}, {"name": "to", "type": "number", "required": false}]},
+    {"name": "account_info", "group": "account", "safety": "safe", "auth_required": true, "parameters": []},
+    {"name": "balance", "group": "account", "safety": "safe", "auth_required": true, "parameters": []},
+    {"name": "open_orders", "group": "account", "safety": "safe", "auth_required": true, "parameters": [{"name": "pair", "type": "string", "required": false}]},
+    {"name": "get_order", "group": "account", "safety": "safe", "auth_required": true, "parameters": [{"name": "order_id", "type": "number", "required": true}, {"name": "pair", "type": "string", "required": true}]},
+    {"name": "get_order_by_client_id", "group": "account", "safety": "safe", "auth_required": true, "parameters": [{"name": "client_order_id", "type": "string", "required": true}]},
+    {"name": "trans_history", "group": "account", "safety": "safe", "auth_required": true, "parameters": [{"name": "start", "type": "string", "required": false}, {"name": "end", "type": "string", "required": false}]},
+    {"name": "list_downline", "group": "account", "safety": "safe", "auth_required": true, "parameters": [{"name": "page", "type": "number", "required": false}, {"name": "limit", "type": "number", "required": false}]},
+    {"name": "check_downline", "group": "account", "safety": "safe", "auth_required": true, "parameters": [{"name": "email", "type": "string", "required": true}]},
+    {"name": "buy_order", "group": "trade", "safety": "dangerous", "auth_required": true, "parameters": [{"name": "pair", "type": "string", "required": true}, {"name": "idr", "type": "number", "required": true}, {"name": "price", "type": "number", "required": false}, {"name": "order_type", "type": "string", "required": false}, {"name": "client_order_id", "type": "string", "required": false}, {"name": "time_in_force", "type": "string", "required": false}, {"name": "acknowledged", "type": "boolean", "required": true}]},
+    {"name": "sell_order", "group": "trade", "safety": "dangerous", "auth_required": true, "parameters": [{"name": "pair", "type": "string", "required": true}, {"name": "amount", "type": "number", "required": true}, {"name": "price", "type": "number", "required": false}, {"name": "order_type", "type": "string", "required": false}, {"name": "client_order_id", "type": "string", "required": false}, {"name": "time_in_force", "type": "string", "required": false}, {"name": "acknowledged", "type": "boolean", "required": true}]},
+    {"name": "cancel_order", "group": "trade", "safety": "dangerous", "auth_required": true, "parameters": [{"name": "order_id", "type": "number", "required": true}, {"name": "pair", "type": "string", "required": true}, {"name": "order_type", "type": "string", "required": true}, {"name": "acknowledged", "type": "boolean", "required": true}]},
+    {"name": "withdraw_fee", "group": "funding", "safety": "safe", "auth_required": true, "parameters": [{"name": "currency", "type": "string", "required": true}, {"name": "network", "type": "string", "required": false}]},
+    {"name": "withdraw", "group": "funding", "safety": "dangerous", "auth_required": true, "parameters": [{"name": "currency", "type": "string", "required": true}, {"name": "amount", "type": "number", "required": true}, {"name": "address", "type": "string", "required": true}, {"name": "acknowledged", "type": "boolean", "required": true}]},
+    {"name": "create_voucher", "group": "funding", "safety": "dangerous", "auth_required": true, "parameters": [{"name": "amount", "type": "number", "required": true}, {"name": "to_email", "type": "string", "required": true}, {"name": "acknowledged", "type": "boolean", "required": true}]},
+    {"name": "ws_token", "group": "market", "safety": "safe", "auth_required": false, "parameters": [{"name": "private", "type": "boolean", "required": false}]},
+    {"name": "generate_ws_token", "group": "market", "safety": "safe", "auth_required": true, "parameters": []}
+  ]
+}

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" role="img" aria-label="Indodax CLI demo">
+  <rect width="900" height="420" fill="#111827"/>
+  <rect x="36" y="34" width="828" height="352" rx="8" fill="#0b1020" stroke="#334155"/>
+  <circle cx="66" cy="62" r="7" fill="#ef4444"/>
+  <circle cx="90" cy="62" r="7" fill="#f59e0b"/>
+  <circle cx="114" cy="62" r="7" fill="#10b981"/>
+  <text x="58" y="116" fill="#e5e7eb" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22">$ indodax ticker btc_idr</text>
+  <text x="58" y="158" fill="#93c5fd" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">Pair        Last          High          Low</text>
+  <text x="58" y="194" fill="#f8fafc" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">btc_idr     1,080,000,000 1,104,000,000 1,052,000,000</text>
+  <text x="58" y="258" fill="#e5e7eb" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22">$ indodax order buy --pair btc_idr --idr 100000 --price 1000000000</text>
+  <text x="58" y="300" fill="#fbbf24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">Safety: real-money command requires credentials and confirmation.</text>
+  <text x="58" y="342" fill="#34d399" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">MCP-ready tools for market, account, trade, funding, paper, auth, alerts.</text>
+</svg>
