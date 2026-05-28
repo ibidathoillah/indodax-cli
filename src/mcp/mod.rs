@@ -14,8 +14,10 @@ use axum::{
     extract::{Path, State},
     routing::{get, post},
     Json, Router,
-    http::HeaderMap,
+    http::{HeaderMap, Method},
 };
+#[cfg(feature = "server")]
+use tower_http::cors::{Any, CorsLayer};
 #[cfg(feature = "server")]
 use serde_json::Value;
 
@@ -57,16 +59,23 @@ pub async fn run_http(
         allow_dangerous,
     };
 
+    // Setup CORS for browser compatibility (Glama, custom dashboards)
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST])
+        .allow_origin(Any)
+        .allow_headers(Any);
+
     let app = Router::new()
         .route("/health", get(|| async { "OK" }))
         .route("/call/:tool_name", post(handle_http_call))
+        .layer(cors)
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await
         .map_err(|e| IndodaxError::Other(format!("Failed to bind port: {}", e)))?;
     
-    tracing::info!("MCP HTTP Server started on http://{}", addr);
+    tracing::info!("🚀 MCP HTTP Isolated Server started on http://{}", addr);
     axum::serve(listener, app).await
         .map_err(|e| IndodaxError::Other(format!("Server error: {}", e)))?;
     Ok(())
@@ -96,18 +105,39 @@ async fn handle_http_call(
     let args = arguments.as_object().cloned().unwrap_or_default();
     
     let result = match tool_name.as_str() {
-        // Market Tools
+        // --- Market Data ---
         "ticker" => {
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()));
             mcp.handle_ticker(&pair).await
         },
+        "orderbook" => {
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()));
+            mcp.handle_orderbook(&pair).await
+        },
+        "trades" => {
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()));
+            mcp.handle_trades(&pair).await
+        },
+        "pairs" => mcp.handle_pairs().await,
+        "summaries" => mcp.handle_summaries().await,
+        "server_time" => mcp.handle_server_time().await,
+        "price_increments" => mcp.handle_price_increments().await,
+        
+        // --- Account & Balance ---
         "balance" => mcp.handle_balance().await,
         "account_info" => mcp.handle_account_info().await,
-        "pairs" => mcp.handle_pairs().await,
-        "server_time" => mcp.handle_server_time().await,
-        "summaries" => mcp.handle_summaries().await,
+        "open_orders" => {
+            let pair = IndodaxMcp::get_str(&args, "pair").map(|p| crate::commands::helpers::normalize_pair(&p));
+            mcp.handle_open_orders(pair.as_deref()).await
+        },
+        "order_history" => {
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into()));
+            let limit = IndodaxMcp::get_num(&args, "limit");
+            mcp.handle_order_history(&pair, limit).await
+        },
+        "trans_history" => mcp.handle_trans_history().await,
         
-        // Trading Tools (Requiring Safety Check)
+        // --- Trading ---
         "buy_order" => {
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
             let idr = IndodaxMcp::get_num(&args, "idr").unwrap_or(0.0);
@@ -127,8 +157,12 @@ async fn handle_http_call(
             let order_type = IndodaxMcp::get_str(&args, "order_type").unwrap_or_default();
             mcp.handle_cancel_order(id, &pair, &order_type).await
         },
+        "cancel_all_orders" => {
+            let pair = IndodaxMcp::get_str(&args, "pair").map(|p| crate::commands::helpers::normalize_pair(&p));
+            mcp.handle_cancel_all_orders(pair.as_deref()).await
+        },
 
-        // Paper Trading Tools
+        // --- Paper Trading ---
         "paper_init" => {
             let idr = IndodaxMcp::get_num(&args, "idr");
             let btc = IndodaxMcp::get_num(&args, "btc");
@@ -143,9 +177,13 @@ async fn handle_http_call(
             let side = if tool_name == "paper_buy" { "buy" } else { "sell" };
             mcp.handle_paper_trade(side, &pair, price, amount, idr).await
         },
+        "paper_status" => mcp.handle_paper_status().await,
+
+        // --- Alerts ---
+        "alert_list" => mcp.handle_alert_list(IndodaxMcp::get_bool(&args, "history")).await,
 
         _ => rmcp::model::CallToolResult::error(vec![
-            rmcp::model::Content::text(format!("Tool '{}' is not implemented in HTTP Bridge.", tool_name))
+            rmcp::model::Content::text(format!("Tool '{}' is not yet implemented in HTTP Bridge.", tool_name))
         ]),
     };
 

@@ -2,30 +2,31 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Indodax MCP Isolated Bridge",
-    "description": "Secure bridge for Indodax exchange operations via MCP tools.",
-    "version": "1.0.0"
+    "description": "Comprehensive HTTP Bridge for Indodax MCP tools with multi-user isolation.",
+    "version": "1.1.0"
   },
   "servers": [
     {
-      "url": "https://YOUR-CODESPACE-OR-SERVER-URL"
+      "url": "https://YOUR-SERVER-URL"
     }
   ],
   "paths": {
     "/call/ticker": {
       "post": {
         "operationId": "getTicker",
-        "summary": "Get current price and 24h stats for a pair",
+        "summary": "Get current price and 24h stats",
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "pair": { "type": "string", "default": "btc_idr", "description": "Trading pair, e.g., btc_idr" }
-                }
-              }
-            }
-          }
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string", "default": "btc_idr" } } } } }
+        },
+        "responses": { "200": { "description": "Success" } }
+      }
+    },
+    "/call/orderbook": {
+      "post": {
+        "operationId": "getOrderbook",
+        "summary": "Get market depth (bids/asks)",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string", "default": "btc_idr" } } } } }
         },
         "responses": { "200": { "description": "Success" } }
       }
@@ -33,7 +34,17 @@
     "/call/balance": {
       "post": {
         "operationId": "getBalance",
-        "summary": "Get non-zero account balances",
+        "summary": "Get account balances",
+        "responses": { "200": { "description": "Success" } }
+      }
+    },
+    "/call/open_orders": {
+      "post": {
+        "operationId": "getOpenOrders",
+        "summary": "List pending orders",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string" } } } } }
+        },
         "responses": { "200": { "description": "Success" } }
       }
     },
@@ -48,8 +59,8 @@
                 "type": "object",
                 "properties": {
                   "pair": { "type": "string" },
-                  "idr": { "type": "number", "description": "Amount in IDR to spend" },
-                  "price": { "type": "number", "description": "Price per coin (omit for market order)" }
+                  "idr": { "type": "number" },
+                  "price": { "type": "number" }
                 },
                 "required": ["pair", "idr"]
               }
@@ -70,9 +81,8 @@
                 "type": "object",
                 "properties": {
                   "pair": { "type": "string" },
-                  "amount": { "type": "number", "description": "Amount of crypto to sell" },
-                  "price": { "type": "number", "description": "Price per coin (omit for market order)" },
-                  "order_type": { "type": "string", "enum": ["limit", "market"], "default": "limit" }
+                  "amount": { "type": "number" },
+                  "price": { "type": "number" }
                 },
                 "required": ["pair", "amount"]
               }
@@ -85,20 +95,7 @@
     "/call/paper_init": {
       "post": {
         "operationId": "initPaper",
-        "summary": "Initialize a risk-free paper trading account",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "idr": { "type": "number", "default": 100000000 },
-                  "btc": { "type": "number", "default": 1 }
-                }
-              }
-            }
-          }
-        },
+        "summary": "Start risk-free paper trading",
         "responses": { "200": { "description": "Success" } }
       }
     }
