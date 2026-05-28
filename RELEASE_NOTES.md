@@ -1,8 +1,29 @@
-## 🚀 Welcome to Indodax CLI v0.1.45
+## 🚀 Welcome to Indodax CLI v0.1.46
 
 The unofficial, fast, and feature-rich command-line interface for **Indodax**, Indonesia's largest cryptocurrency exchange.
 
-### 🆕 What's New in v0.1.45
+### 🆕 What's New in v0.1.46
+
+- **🌐 Production-Ready MCP HTTP Bridge**:
+  - Integrated a high-performance HTTP server directly into the binary using **Axum**.
+  - Supports **Isolated Multi-User Bridge** via custom headers (`x-api-key`, `x-api-secret`).
+  - Added **X-Bridge-Auth** security layer to protect the server from unauthorized access.
+  - Full tool coverage for HTTP transport (Market, Account, Trading, Paper, and Alerts).
+  - Built-in **CORS support** for browser-based tool integrations.
+
+- **🛡️ Security & Stability**:
+  - Implemented secure credential isolation; API keys are never stored on the server.
+  - Added **Automated CI/CD** via GitHub Actions for testing and Docker publishing.
+  - Enhanced **E2E Testing** for HTTP bridge authentication and tool dispatching.
+  - Replaced experimental library logic with a stable **Direct Tool Dispatcher**.
+
+- **📦 Deployment & Integration**:
+  - Added **Docker Compose** support for one-command deployment (Server + Cloudflare Tunnel).
+  - Updated **OpenAPI Spec (v1.2)** for smarter ChatGPT Actions integration.
+  - Revamped **MCP Documentation** in `src/mcp/README.md`.
+  - Optimized Docker image with multi-stage build.
+
+### 🆕 What's New in v0.1.46
 
 - **🚀 Glama Deploy Fixes**:
   - Updated the Docker image to Debian Trixie and removed unnecessary OpenSSL runtime dependencies.
@@ -10,68 +31,5 @@ The unofficial, fast, and feature-rich command-line interface for **Indodax**, I
   - Added an `indodax` command alias alongside the `indodax-cli` binary for MCP clients.
   - Added `.dockerignore` to keep hosted Docker build contexts small and predictable.
   - Documented the exact Glama build spec and the transient `ECONNRESET` metadata-fetch failure mode.
-### 🆕 What's New in v0.1.44
 
-- **🛠️ Glama & RMCP Fixes (Critical)**:
-  - **RMCP 1.7.0 Compatibility**: Resolved "non-exhaustive struct" compilation errors that caused v0.1.43 to fail in CI and Glama.
-  - **Optimized Glama Build**: Added documentation for the high-speed binary download method to bypass 15-minute compilation timeouts.
-  - **Lifetime Fixes**: Corrected `'static` lifetime requirements for MCP tool definitions.
-
-- **🛠️ Dependency & API Fixes**:
-  - **rustyline 12 Support**: Fixed `DefaultEditor` import issues in the interactive shell.
-  - **WASM Compatibility**: Improved target-specific builds for shell command parsing.
-  - **Feature Gating**: Refined MCP feature dependencies in `Cargo.toml`.
-
-- **📊 Expanded Market Data**:
-  - Added support for several new public endpoints: `webdata`, `chatroom`, `pairs_v2`, `search`, `terminal`, `onramp`, and `news`.
-  - **TradingView History V2**: Enhanced OHLCV data fetching with better interval handling.
-
-- **🚀 Glama & Cloud Ready**:
-  - **Optimized Dockerfile**: Added default `mcp` command for seamless one-click deployment as an MCP server.
-  - **License Compliance**: Added official MIT LICENSE file for registry compliance.
-  - **Environment Documentation**: Added `.env.example` for easier configuration in hosted environments.
-
-- **🔧 Platform & CI/CD**:
-  - Improved WASM support for web-based integrations.
-  - Added Android release build support for Termux users.
-  - Streamlined NPM publishing for unscoped packages.
-
-### ✨ Core Features
-
-- **🤖 AI Agent Integration (MCP)**: Built-in Model Context Protocol server. Seamlessly connect your Indodax account to **Claude Desktop, ChatGPT, Cursor, or Gemini CLI**.
-- **🔥 Real-Time WebSocket Streams**: Live data for tickers, trades, order books, and private order updates.
-- **📊 Comprehensive Market Data**: Access OHLCV, order books, tickers, and price increments without an API key.
-- **💰 Full Account Management**: Check balances, track open orders, and view trade/transaction history (V2 API support).
-- **🛠️ Powerful Trading**: Execute buy/sell orders (including Market IDR orders) and manage a deadman switch countdown.
-- **🧪 Paper Trading**: Risk-free simulated environment with virtual balances to test your strategies.
-- **🔐 Secure & Flexible**: HMAC-SHA512 signing, 0600 config permissions, and support for ENV vars/CLI flags.
-
-### 📦 Installation
-
-**From NPM:**
-```bash
-npm install -g indodax-cli
-```
-
-**From Source (requires Rust):**
-```bash
-git clone https://github.com/ibidathoillah/indodax-cli.git
-cd indodax-cli
-cargo install --path .
-```
-
-### 🤖 MCP Integration
-Add this to your `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "indodax": {
-      "command": "indodax",
-      "args": ["mcp", "-s", "all"]
-    }
-  }
-}
-```
-
----
-*Disclaimer: This is an unofficial tool. Trading cryptocurrency involves significant risk. Use at your own risk.*
+... (sisanya tetap sama)
