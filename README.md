@@ -1,9 +1,23 @@
-# indodax-cli
+# Indodax CLI & MCP Server
 
 [![indodax-cli MCP server](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli/badges/card.svg)](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli)
 [![indodax-cli MCP server](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli/badges/score.svg)](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli)
 
-Unofficial Rust CLI for Indodax. Use it to inspect markets, manage account data, place spot orders, stream live WebSocket events, run paper trading and price alerts, and expose the same command surface to agents through MCP.
+Professional command-line interface and **Model Context Protocol (MCP)** server for the Indodax cryptocurrency exchange.
+
+## 🤖 AI Agent & Mobile Support (MCP)
+This project is now a fully-featured MCP server, allowing AI agents (like ChatGPT, Claude, and Glama) to interact with Indodax.
+
+- **Desktop**: Use with Claude Desktop for a local trading experience.
+- **Mobile**: Use via ChatGPT Actions or Glama with our built-in **Isolated HTTP Bridge**.
+- **Features**: Market data, private balances, trading, and risk-free paper trading.
+
+👉 **[Read the MCP Full Feature Guide & Setup](./src/mcp/README.md)**
+
+---
+
+Unofficial Rust CLI for Indodax.
+ Use it to inspect markets, manage account data, place spot orders, stream live WebSocket events, run paper trading and price alerts, and expose the same command surface to agents through MCP.
 
 [![Rust](https://img.shields.io/badge/Rust-2021-000000?logo=rust)](https://www.rust-lang.org/)
 [![CLI](https://img.shields.io/badge/interface-terminal-2f855a)](#quick-start)
