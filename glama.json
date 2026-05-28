@@ -2,48 +2,50 @@
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "name": "indodax-cli",
   "mcpName": "io.github.ibidathoillah/indodax-cli",
-  "description": "Professional-grade Model Context Protocol (MCP) server and CLI for the Indodax cryptocurrency exchange. Provides comprehensive access to real-time market data, secure account management, high-performance spot trading, risk-free paper trading, and live WebSocket event streams. Optimized for LLM agents with detailed tool descriptions, safety guards for dangerous operations, and structured JSON output.",
+  "description": "Professional-grade MCP server and CLI for the Indodax cryptocurrency exchange. Provides comprehensive access to real-time market data, secure account management, spot trading, paper trading, and WebSocket event streams. Supports STDIO for desktop apps (Claude) and HTTP Bridge for mobile/cloud (ChatGPT/Glama) with multi-user isolation.",
   "environmentVariables": [
     {
       "name": "INDODAX_API_KEY",
-      "description": "Your Indodax API Key. Required for private operations like account info, trading, and funding.",
+      "description": "Your Indodax API Key. Required for private operations.",
       "required": true,
       "isSecret": true
     },
     {
       "name": "INDODAX_API_SECRET",
-      "description": "Your Indodax API Secret. Used to sign private API requests securely.",
+      "description": "Your Indodax API Secret. Required for private operations.",
       "required": true,
       "isSecret": true
-    },
-    {
-      "name": "INDODAX_RATE_LIMIT",
-      "description": "Optional: Global rate limit for API requests (e.g., 5 requests per second).",
-      "required": false,
-      "default": "5"
-    },
-    {
-      "name": "INDODAX_WS_TOKEN",
-      "description": "Optional: Custom authentication token for private WebSocket streams.",
-      "required": false
     }
   ],
-  "env": {
-    "RUST_LOG": "info"
+  "capabilities": {
+    "prompts": true,
+    "resources": true,
+    "tools": true
+  },
+  "deployment": {
+    "docker": {
+      "image": "ghcr.io/ibidathoillah/indodax-cli:latest",
+      "port": 8000
+    },
+    "http": {
+      "supported": true,
+      "auth": "Header (x-api-key, x-api-secret)",
+      "endpoints": {
+        "call": "/call/{tool_name}",
+        "health": "/health"
+      }
+    }
   },
   "keywords": [
     "indodax",
     "crypto",
     "trading",
-    "exchange",
     "mcp",
     "rust",
     "bitcoin",
-    "ethereum",
     "market-data",
     "automated-trading",
     "paper-trading",
-    "websocket",
-    "finance"
+    "http-bridge"
   ]
 }
