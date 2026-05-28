@@ -14,7 +14,7 @@ use axum::{
     extract::{Path, State},
     routing::{get, post},
     Json, Router,
-    http::{HeaderMap, Method},
+    http::{HeaderMap, Method, StatusCode},
 };
 #[cfg(feature = "server")]
 use tower_http::cors::{Any, CorsLayer};
@@ -46,6 +46,7 @@ pub async fn run(
 pub struct AppState {
     pub groups: String,
     pub allow_dangerous: bool,
+    pub bridge_secret: Option<String>,
 }
 
 #[cfg(feature = "server")]
@@ -54,12 +55,15 @@ pub async fn run_http(
     groups_str: &str,
     allow_dangerous: bool,
 ) -> Result<(), IndodaxError> {
+    // Load optional bridge secret for extra security
+    let bridge_secret = std::env::var("BRIDGE_SECRET").ok();
+    
     let state = AppState {
         groups: groups_str.to_string(),
         allow_dangerous,
+        bridge_secret,
     };
 
-    // Setup CORS for browser compatibility (Glama, custom dashboards)
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST])
         .allow_origin(Any)
@@ -76,6 +80,10 @@ pub async fn run_http(
         .map_err(|e| IndodaxError::Other(format!("Failed to bind port: {}", e)))?;
     
     tracing::info!("🚀 MCP HTTP Isolated Server started on http://{}", addr);
+    if state.bridge_secret.is_some() {
+        tracing::info!("🔒 Bridge Security Enabled: X-Bridge-Auth header required.");
+    }
+    
     axum::serve(listener, app).await
         .map_err(|e| IndodaxError::Other(format!("Server error: {}", e)))?;
     Ok(())
@@ -87,7 +95,19 @@ async fn handle_http_call(
     Path(tool_name): Path<String>,
     headers: HeaderMap,
     Json(arguments): Json<Value>,
-) -> Json<Value> {
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // 1. Security Check: Bridge Secret
+    if let Some(secret) = &state.bridge_secret {
+        let auth_header = headers.get("x-bridge-auth").and_then(|h| h.to_str().ok());
+        if auth_header != Some(secret) {
+            return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+                "error": true,
+                "message": "Unauthorized: Invalid or missing X-Bridge-Auth header."
+            }))));
+        }
+    }
+
+    // 2. Extract User Credentials
     let api_key = headers.get("x-api-key").and_then(|h| h.to_str().ok());
     let api_secret = headers.get("x-api-secret").and_then(|h| h.to_str().ok());
 
@@ -118,6 +138,13 @@ async fn handle_http_call(
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()));
             mcp.handle_trades(&pair).await
         },
+        "ohlc" => {
+            let symbol = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into())).replace('_', "").to_uppercase();
+            let timeframe = IndodaxMcp::get_str(&args, "timeframe").unwrap_or_else(|| "60".into());
+            let from = IndodaxMcp::get_num(&args, "from");
+            let to = IndodaxMcp::get_num(&args, "to");
+            mcp.handle_ohlc(&symbol, &timeframe, from, to).await
+        },
         "pairs" => mcp.handle_pairs().await,
         "summaries" => mcp.handle_summaries().await,
         "server_time" => mcp.handle_server_time().await,
@@ -134,6 +161,16 @@ async fn handle_http_call(
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into()));
             let limit = IndodaxMcp::get_num(&args, "limit");
             mcp.handle_order_history(&pair, limit).await
+        },
+        "trade_history" => {
+            let symbol = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "symbol").unwrap_or_else(|| "btc_idr".into()));
+            let limit = IndodaxMcp::get_num(&args, "limit");
+            mcp.handle_trade_history(&symbol, limit).await
+        },
+        "get_order" => {
+            let id = IndodaxMcp::get_num(&args, "order_id").unwrap_or(0.0);
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
+            mcp.handle_get_order(id, &pair).await
         },
         "trans_history" => mcp.handle_trans_history().await,
         
@@ -162,6 +199,23 @@ async fn handle_http_call(
             mcp.handle_cancel_all_orders(pair.as_deref()).await
         },
 
+        // --- Funding ---
+        "withdraw" => {
+            let currency = IndodaxMcp::get_str(&args, "currency").unwrap_or_default();
+            let amount = IndodaxMcp::get_num(&args, "amount").unwrap_or(0.0);
+            let address = IndodaxMcp::get_str(&args, "address").unwrap_or_default();
+            let to_username = IndodaxMcp::get_bool(&args, "to_username");
+            let memo = IndodaxMcp::get_str(&args, "memo");
+            let network = IndodaxMcp::get_str(&args, "network");
+            let callback = IndodaxMcp::get_str(&args, "callback_url");
+            mcp.handle_withdraw(&currency, amount, &address, to_username, memo.as_deref(), network.as_deref(), callback.as_deref()).await
+        },
+        "deposit_address" => {
+            let currency = IndodaxMcp::get_str(&args, "currency").unwrap_or_default();
+            let network = IndodaxMcp::get_str(&args, "network");
+            mcp.handle_deposit_address(&currency, network.as_deref()).await
+        },
+
         // --- Paper Trading ---
         "paper_init" => {
             let idr = IndodaxMcp::get_num(&args, "idr");
@@ -178,14 +232,28 @@ async fn handle_http_call(
             mcp.handle_paper_trade(side, &pair, price, amount, idr).await
         },
         "paper_status" => mcp.handle_paper_status().await,
+        "paper_history" => mcp.handle_paper_history().await,
+        "paper_orders" => mcp.handle_paper_orders().await,
 
         // --- Alerts ---
+        "alert_add" => {
+            let pair = IndodaxMcp::get_str(&args, "pair").unwrap_or_default();
+            let above = IndodaxMcp::get_num(&args, "above");
+            let below = IndodaxMcp::get_num(&args, "below");
+            let note = IndodaxMcp::get_str(&args, "note");
+            mcp.handle_alert_add(&pair, above, below, None, None, note).await
+        },
         "alert_list" => mcp.handle_alert_list(IndodaxMcp::get_bool(&args, "history")).await,
+        "alert_cancel" => {
+            let id = IndodaxMcp::get_num(&args, "id");
+            let all = IndodaxMcp::get_bool(&args, "all");
+            mcp.handle_alert_cancel(id, all).await
+        },
 
         _ => rmcp::model::CallToolResult::error(vec![
-            rmcp::model::Content::text(format!("Tool '{}' is not yet implemented in HTTP Bridge.", tool_name))
+            rmcp::model::Content::text(format!("Tool '{}' is not yet implemented in HTTP bridge.", tool_name))
         ]),
     };
 
-    Json(serde_json::to_value(result).unwrap())
+    Ok(Json(serde_json::to_value(result).unwrap()))
 }

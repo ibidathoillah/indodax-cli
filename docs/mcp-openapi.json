@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Indodax MCP Isolated Bridge",
-    "description": "Comprehensive HTTP Bridge for Indodax MCP tools with multi-user isolation.",
-    "version": "1.1.0"
+    "description": "Comprehensive HTTP Bridge for Indodax MCP tools with multi-user isolation and bridge security.",
+    "version": "1.2.0"
   },
   "servers": [
     {
@@ -15,9 +15,7 @@
       "post": {
         "operationId": "getTicker",
         "summary": "Get current price and 24h stats",
-        "requestBody": {
-          "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string", "default": "btc_idr" } } } } }
-        },
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string", "default": "btc_idr" } } } } } },
         "responses": { "200": { "description": "Success" } }
       }
     },
@@ -25,48 +23,31 @@
       "post": {
         "operationId": "getOrderbook",
         "summary": "Get market depth (bids/asks)",
-        "requestBody": {
-          "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string", "default": "btc_idr" } } } } }
-        },
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string", "default": "btc_idr" } } } } } },
+        "responses": { "200": { "description": "Success" } }
+      }
+    },
+    "/call/ohlc": {
+      "post": {
+        "operationId": "getOhlc",
+        "summary": "Get candlestick data for technical analysis",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { 
+          "symbol": { "type": "string", "default": "btc_idr" },
+          "timeframe": { "type": "string", "default": "60", "description": "1, 5, 15, 30, 60, 240, 1D, 1W" }
+        } } } } },
         "responses": { "200": { "description": "Success" } }
       }
     },
     "/call/balance": {
-      "post": {
-        "operationId": "getBalance",
-        "summary": "Get account balances",
-        "responses": { "200": { "description": "Success" } }
-      }
-    },
-    "/call/open_orders": {
-      "post": {
-        "operationId": "getOpenOrders",
-        "summary": "List pending orders",
-        "requestBody": {
-          "content": { "application/json": { "schema": { "type": "object", "properties": { "pair": { "type": "string" } } } } }
-        },
-        "responses": { "200": { "description": "Success" } }
-      }
+      "post": { "operationId": "getBalance", "summary": "Get non-zero account balances", "responses": { "200": { "description": "Success" } } }
     },
     "/call/buy_order": {
       "post": {
         "operationId": "placeBuyOrder",
         "summary": "Place a buy order",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "pair": { "type": "string" },
-                  "idr": { "type": "number" },
-                  "price": { "type": "number" }
-                },
-                "required": ["pair", "idr"]
-              }
-            }
-          }
-        },
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { 
+          "pair": { "type": "string" }, "idr": { "type": "number" }, "price": { "type": "number", "description": "Omit for market order" } 
+        }, "required": ["pair", "idr"] } } } },
         "responses": { "200": { "description": "Success" } }
       }
     },
@@ -74,37 +55,25 @@
       "post": {
         "operationId": "placeSellOrder",
         "summary": "Place a sell order",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "pair": { "type": "string" },
-                  "amount": { "type": "number" },
-                  "price": { "type": "number" }
-                },
-                "required": ["pair", "amount"]
-              }
-            }
-          }
-        },
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { 
+          "pair": { "type": "string" }, "amount": { "type": "number" }, "price": { "type": "number" } 
+        }, "required": ["pair", "amount"] } } } },
         "responses": { "200": { "description": "Success" } }
       }
     },
     "/call/paper_init": {
-      "post": {
-        "operationId": "initPaper",
-        "summary": "Start risk-free paper trading",
-        "responses": { "200": { "description": "Success" } }
-      }
+      "post": { "operationId": "initPaper", "summary": "Start risk-free paper trading account", "responses": { "200": { "description": "Success" } } }
+    },
+    "/call/alert_list": {
+      "post": { "operationId": "listAlerts", "summary": "View active price alerts", "responses": { "200": { "description": "Success" } } }
     }
   },
   "components": {
     "securitySchemes": {
       "ApiKey": { "type": "apiKey", "in": "header", "name": "x-api-key" },
-      "ApiSecret": { "type": "apiKey", "in": "header", "name": "x-api-secret" }
+      "ApiSecret": { "type": "apiKey", "in": "header", "name": "x-api-secret" },
+      "BridgeAuth": { "type": "apiKey", "in": "header", "name": "x-bridge-auth", "description": "Optional: Security token for the bridge itself" }
     }
   },
-  "security": [ { "ApiKey": [], "ApiSecret": [] } ]
+  "security": [ { "ApiKey": [], "ApiSecret": [], "BridgeAuth": [] } ]
 }

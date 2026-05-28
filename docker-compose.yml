@@ -8,6 +8,7 @@ services:
     environment:
       - INDODAX_API_KEY=${INDODAX_API_KEY}
       - INDODAX_API_SECRET=${INDODAX_API_SECRET}
+      - BRIDGE_SECRET=${BRIDGE_SECRET} # Tambahkan ini untuk keamanan ekstra
 
   tunnel:
     image: cloudflare/cloudflared:latest
