@@ -18,13 +18,17 @@ cargo build --release --features "mcp cli"
 
 ### 2. Mode HTTP Bridge (ChatGPT Mobile / Glama)
 Gunakan mode ini untuk akses via HP atau layanan cloud.
-```bash
-# Build dengan fitur server
-cargo build --release --features "mcp server cli"
 
-# Jalankan server HTTP di port 8000
-./target/release/indodax-cli mcp --http --port 8000 --groups all --allow-dangerous
-```
+#### Setup via Cloudflare Tunnel (Custom Domain)
+1. Set token Anda di environment variable:
+   ```bash
+   export CLOUDFLARE_TUNNEL_TOKEN="your-token-here"
+   ```
+2. Jalankan menggunakan Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+Server akan otomatis terhubung ke `https://indodax-mcp.tep2.in`.
 
 ---
 

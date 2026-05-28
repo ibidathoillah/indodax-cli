@@ -1,0 +1,17 @@
+services:
+  indodax-mcp:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/indodax-cli:latest
+    build: .
+    ports:
+      - "8000:8000"
+    restart: always
+    environment:
+      - INDODAX_API_KEY=${INDODAX_API_KEY}
+      - INDODAX_API_SECRET=${INDODAX_API_SECRET}
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
