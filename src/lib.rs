@@ -693,6 +693,8 @@ mod tests {
         let _cmd10 = Command::Mcp {
             groups: "market,paper".into(),
             allow_dangerous: false,
+            port: 8000,
+            http: false,
         };
     }
 

@@ -11,7 +11,7 @@ default = ["sdk"]
 sdk = []
 cli = ["dep:colored", "dep:dialoguer", "dep:rustyline", "dep:comfy-table", "dep:clap", "dep:tokio-tungstenite"]
 mcp = ["dep:rmcp", "rmcp/server", "rmcp/transport-io", "rmcp/macros", "rmcp/schemars"]
-server = ["dep:axum", "dep:tokio-tungstenite"]
+server = ["dep:axum", "dep:tower-http", "dep:tokio-tungstenite"]
 
 [[bin]]
 name = "indodax-cli"
@@ -56,3 +56,4 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Location", "Window"] }
 [dev-dependencies]
 serial_test = "3.4.0"
+tower = { version = "0.5", features = ["util"] }

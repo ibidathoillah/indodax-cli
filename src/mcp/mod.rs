@@ -73,7 +73,7 @@ pub async fn run_http(
         .route("/health", get(|| async { "OK" }))
         .route("/call/:tool_name", post(handle_http_call))
         .layer(cors)
-        .with_state(state);
+        .with_state(state.clone());
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await
@@ -256,4 +256,29 @@ async fn handle_http_call(
     };
 
     Ok(Json(serde_json::to_value(result).unwrap()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_service_group_parsing() {
+        let groups = ServiceGroup::parse("market,account").unwrap();
+        assert_eq!(groups.len(), 2);
+        assert!(groups.contains(&ServiceGroup::Market));
+        assert!(groups.contains(&ServiceGroup::Account));
+    }
+
+    #[test]
+    fn test_app_state_clonable() {
+        let state = AppState {
+            groups: "all".into(),
+            allow_dangerous: true,
+            bridge_secret: Some("secret".into()),
+        };
+        let cloned = state.clone();
+        assert_eq!(cloned.groups, "all");
+    }
 }
