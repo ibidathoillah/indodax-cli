@@ -9,27 +9,31 @@ pub fn trade_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "buy_order",
-            "Place a new buy order on the Indodax exchange. This tool supports both Limit orders (where you specify the maximum price) and Market orders (executed at the best available current price). It is a 'dangerous' operation that requires the 'acknowledged' parameter to be set to true. Always verify your available IDR balance before execution to avoid insufficient funds errors.",
+            "Place a new buy order on the Indodax exchange. This tool supports Limit orders (specify price), Market orders (omit price), and Stop-Limit orders (specify price and stop_price). It is a 'dangerous' operation that requires the 'acknowledged' parameter to be set to true.",
             serde_json::json!({
-                "pair": IndodaxMcp::str_param("The trading pair you wish to buy (e.g., 'btc_idr', 'eth_idr'). The format is typically base_quote in lowercase.", true, None),
-                "idr": IndodaxMcp::num_param("The total amount of Indonesian Rupiah (IDR) you want to spend on this purchase, including fees.", true),
-                "price": IndodaxMcp::num_param("Optional: The maximum price per unit you are willing to pay (Limit Order). If omitted, the exchange will execute a Market Order using the best available price in the order book.", false),
+                "pair": IndodaxMcp::str_param("The trading pair you wish to buy (e.g., 'btc_idr', 'eth_idr').", true, None),
+                "idr": IndodaxMcp::num_param("The total amount of Indonesian Rupiah (IDR) you want to spend.", true),
+                "price": IndodaxMcp::num_param("The limit price per unit you are willing to pay. Required for limit and stoplimit orders.", false),
+                "stop_price": IndodaxMcp::num_param("The trigger price for stop-limit orders. If provided, the order_type will be 'stoplimit'.", false),
+                "client_order_id": IndodaxMcp::str_param("Optional: A custom unique identifier for the order.", false, None),
                 "acknowledged":
-                    IndodaxMcp::bool_param("Security confirmation: This must be explicitly set to true to acknowledge that you are performing a real-money trade operation."),
+                    IndodaxMcp::bool_param("Security confirmation: This must be explicitly set to true."),
             }),
             vec!["pair", "idr", "acknowledged"],
         ),
         IndodaxMcp::tool_def(
             "sell_order",
-            "Place a new sell order on the Indodax exchange. Supports Limit orders for target prices and Market orders for immediate liquidation. This tool requires the 'acknowledged' parameter for safety. Ensure you have the required quantity of the base asset (e.g., BTC) available in your account before attempting a sell.",
+            "Place a new sell order on the Indodax exchange. Supports Limit, Market, and Stop-Limit orders. This tool requires the 'acknowledged' parameter for safety.",
             serde_json::json!({
                 "pair": IndodaxMcp::str_param("The trading pair you wish to sell (e.g., 'btc_idr').", true, None),
-                "price": IndodaxMcp::num_param("Optional: The minimum price per unit you want to receive (required if order_type is 'limit').", false),
+                "price": IndodaxMcp::num_param("The limit price per unit you want to receive. Required for limit and stoplimit orders.", false),
                 "amount": IndodaxMcp::num_param("The exact quantity of the base asset (e.g., 0.005 for BTC) you wish to sell.", true),
+                "stop_price": IndodaxMcp::num_param("The trigger price for stop-limit orders. If provided, the order_type will be 'stoplimit'.", false),
+                "client_order_id": IndodaxMcp::str_param("Optional: A custom unique identifier for the order.", false, None),
                 "order_type":
-                    IndodaxMcp::str_param("The execution strategy: 'limit' (fixed price) or 'market' (execute immediately at current price). Default is 'limit'.", false, Some("limit")),
+                    IndodaxMcp::str_param("The execution strategy: 'limit', 'market', or 'stoplimit'. Inferred from stop_price if omitted.", false, Some("limit")),
                 "acknowledged":
-                    IndodaxMcp::bool_param("Security confirmation: This must be set to true to acknowledge that you are performing a real-money trade operation."),
+                    IndodaxMcp::bool_param("Security confirmation: This must be set to true."),
             }),
             vec!["pair", "amount", "acknowledged"],
         ),
@@ -55,6 +59,14 @@ pub fn trade_tools() -> Vec<Tool> {
             }),
             vec!["acknowledged"],
         ),
+        IndodaxMcp::tool_def(
+            "get_order_by_client_id",
+            "Retrieve detailed information for a specific order using its client-assigned Order ID (client_order_id). This is useful for tracking orders that you have tagged with your own identifiers.",
+            serde_json::json!({
+                "client_order_id": IndodaxMcp::str_param("The client-assigned unique identifier for the order.", true, None),
+            }),
+            vec!["client_order_id"],
+        ),
     ]
 }
 
@@ -66,6 +78,8 @@ impl IndodaxMcp {
         pair: &str,
         idr: f64,
         price: Option<f64>,
+        stop_price: Option<f64>,
+        client_order_id: Option<&str>,
     ) -> CallToolResult {
         if idr <= 0.0 || !idr.is_finite() {
             return Self::validation_error_result(format!(
@@ -79,6 +93,19 @@ impl IndodaxMcp {
                     "Price must be positive and finite, got {}",
                     p
                 ));
+            }
+        }
+        if let Some(sp) = stop_price {
+            if sp <= 0.0 || !sp.is_finite() {
+                return Self::validation_error_result(format!(
+                    "Stop price must be positive and finite, got {}",
+                    sp
+                ));
+            }
+            if price.is_none() {
+                return Self::validation_error_result(
+                    "Price (limit price) is required when stop_price is provided.".into(),
+                );
             }
         }
 
@@ -100,8 +127,17 @@ impl IndodaxMcp {
         params.insert("pair".to_string(), pair.to_string());
         params.insert("type".to_string(), "buy".to_string());
         params.insert("idr".to_string(), idr.to_string());
+        if let Some(cid) = client_order_id {
+            params.insert("client_order_id".to_string(), cid.to_string());
+        }
 
-        if let Some(p) = price {
+        if let Some(sp) = stop_price {
+            params.insert("order_type".to_string(), "stoplimit".to_string());
+            params.insert("stop_price".to_string(), sp.to_string());
+            if let Some(p) = price {
+                params.insert("price".to_string(), p.to_string());
+            }
+        } else if let Some(p) = price {
             params.insert("price".to_string(), p.to_string());
         } else {
             eprintln!("[MCP] Warning: Market buy order without limit price. Indodax may reject market orders with IDR amount.");
@@ -126,6 +162,8 @@ impl IndodaxMcp {
         price: Option<f64>,
         amount: f64,
         order_type: &str,
+        stop_price: Option<f64>,
+        client_order_id: Option<&str>,
     ) -> CallToolResult {
         if amount <= 0.0 || !amount.is_finite() {
             return Self::validation_error_result(format!(
@@ -141,13 +179,26 @@ impl IndodaxMcp {
                 ));
             }
         }
+        if let Some(sp) = stop_price {
+            if sp <= 0.0 || !sp.is_finite() {
+                return Self::validation_error_result(format!(
+                    "Stop price must be positive and finite, got {}",
+                    sp
+                ));
+            }
+        }
 
         let base_currency = pair.split('_').next().unwrap_or_default();
         if base_currency.is_empty() {
             return Self::validation_error_result(format!("Invalid pair format: {}", pair));
         }
 
-        let is_market = match order_type {
+        let mut final_order_type = order_type.to_string();
+        if stop_price.is_some() {
+            final_order_type = "stoplimit".to_string();
+        }
+
+        let is_market = match final_order_type.as_str() {
             "market" => {
                 if price.is_some() {
                     return Self::validation_error_result(
@@ -164,10 +215,23 @@ impl IndodaxMcp {
                 }
                 false
             }
+            "stoplimit" => {
+                if price.is_none() {
+                    return Self::validation_error_result(
+                        "price (limit price) is required for 'stoplimit' orders".into(),
+                    );
+                }
+                if stop_price.is_none() {
+                    return Self::validation_error_result(
+                        "stop_price is required for 'stoplimit' orders".into(),
+                    );
+                }
+                false
+            }
             _ => {
                 return Self::validation_error_result(format!(
-                    "Invalid order_type '{}'. Must be 'limit' or 'market'.",
-                    order_type
+                    "Invalid order_type '{}'. Must be 'limit', 'market', or 'stoplimit'.",
+                    final_order_type
                 ));
             }
         };
@@ -192,14 +256,19 @@ impl IndodaxMcp {
         params.insert("pair".to_string(), pair.to_string());
         params.insert("type".to_string(), "sell".to_string());
         params.insert(base_currency.to_string(), amount.to_string());
+        if let Some(cid) = client_order_id {
+            params.insert("client_order_id".to_string(), cid.to_string());
+        }
+
+        if let Some(sp) = stop_price {
+            params.insert("order_type".to_string(), "stoplimit".to_string());
+            params.insert("stop_price".to_string(), sp.to_string());
+        } else if is_market {
+            params.insert("order_type".to_string(), "market".to_string());
+        }
 
         if let Some(p) = price {
-            if !is_market {
-                params.insert("price".to_string(), p.to_string());
-            }
-        }
-        if is_market {
-            params.insert("order_type".to_string(), "market".to_string());
+            params.insert("price".to_string(), p.to_string());
         }
 
         let tick_warning = if let Some(p) = price {
@@ -261,6 +330,20 @@ impl IndodaxMcp {
                 }
                 Self::json_result(result)
             }
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_get_order_by_client_id(&self, client_order_id: &str) -> CallToolResult {
+        let mut params = HashMap::new();
+        params.insert("client_order_id".to_string(), client_order_id.to_string());
+
+        match self
+            .client
+            .private_post_v1::<Value>("getOrderByClientOrderId", &params)
+            .await
+        {
+            Ok(data) => Self::json_result(data),
             Err(e) => Self::error_from_indodax(&e),
         }
     }

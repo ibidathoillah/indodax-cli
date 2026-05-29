@@ -69,6 +69,34 @@ pub fn account_tools() -> Vec<Tool> {
             serde_json::json!({}),
             vec![],
         ),
+        IndodaxMcp::tool_def(
+            "equity_snap",
+            "Record a current portfolio equity snapshot in Indonesian Rupiah (IDR). This calculates the total value of all your holdings based on current market prices and saves it to a local history file. This is useful for tracking your portfolio growth over time.",
+            serde_json::json!({}),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "equity_history",
+            "Retrieve the history of recorded portfolio equity snapshots. This allows you to see how your total account value has changed over time. You can limit the number of snapshots returned.",
+            serde_json::json!({
+                "limit": IndodaxMcp::num_param("The maximum number of historical snapshots to return. Default is 20.", false),
+            }),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "list_downline",
+            "List all downline users associated with your Indodax account (Affiliate program). Returns user IDs and registration dates for your referrals.",
+            serde_json::json!({}),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "check_downline",
+            "Check if a specific email address exists in your affiliate downline. This helps you verify if a user has registered using your referral link.",
+            serde_json::json!({
+                "email": IndodaxMcp::str_param("The email address to check.", true, None),
+            }),
+            vec!["email"],
+        ),
     ]
 }
 
@@ -182,6 +210,50 @@ impl IndodaxMcp {
         match self
             .client
             .private_post_v1::<Value>("transHistory", &HashMap::new())
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_equity_snap(&self) -> CallToolResult {
+        match crate::commands::account::equity_snap(&self.client).await {
+            Ok(output) => Self::json_result(output.data),
+            Err(e) => Self::error_result(format!("Failed to record equity snapshot: {}", e)),
+        }
+    }
+
+    pub async fn handle_equity_history(&self, limit: Option<f64>) -> CallToolResult {
+        let limit_val = match validate_limit(limit) {
+            Ok(v) => v,
+            Err(e) => return Self::validation_error_result(e),
+        };
+
+        match crate::commands::account::equity_history(limit_val as usize, false) {
+            Ok(output) => Self::json_result(output.data),
+            Err(e) => Self::error_result(format!("Failed to retrieve equity history: {}", e)),
+        }
+    }
+
+    pub async fn handle_list_downline(&self) -> CallToolResult {
+        match self
+            .client
+            .private_post_v1::<Value>("listDownline", &HashMap::new())
+            .await
+        {
+            Ok(data) => Self::json_result(data),
+            Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_check_downline(&self, email: &str) -> CallToolResult {
+        let mut params = HashMap::new();
+        params.insert("email".into(), email.to_string());
+
+        match self
+            .client
+            .private_post_v1::<Value>("checkDownline", &params)
             .await
         {
             Ok(data) => Self::json_result(data),

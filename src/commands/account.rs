@@ -62,6 +62,15 @@ pub enum AccountCommand {
         #[arg(long, help = "Show all snapshots")]
         all: bool,
     },
+
+    #[command(name = "list-downline", about = "List all downline users")]
+    ListDownline,
+
+    #[command(name = "check-downline", about = "Check if an email is in your downline")]
+    CheckDownline {
+        #[arg(short, long)]
+        email: String,
+    },
 }
 
 pub async fn execute(client: &IndodaxClient, cmd: &AccountCommand) -> Result<CommandOutput> {
@@ -87,7 +96,28 @@ pub async fn execute(client: &IndodaxClient, cmd: &AccountCommand) -> Result<Com
         }
         AccountCommand::EquitySnap => equity_snap(client).await,
         AccountCommand::EquityHistory { limit, all } => equity_history(*limit, *all),
+        AccountCommand::ListDownline => list_downline(client).await,
+        AccountCommand::CheckDownline { email } => check_downline(client, email).await,
     }
+}
+
+async fn list_downline(client: &IndodaxClient) -> Result<CommandOutput> {
+    let data: serde_json::Value = client
+        .private_post_v1("listDownline", &HashMap::new())
+        .await?;
+
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
+}
+
+async fn check_downline(client: &IndodaxClient, email: &str) -> Result<CommandOutput> {
+    let mut params = HashMap::new();
+    params.insert("email".into(), email.to_string());
+
+    let data: serde_json::Value = client.private_post_v1("checkDownline", &params).await?;
+
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
 }
 
 async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
@@ -607,7 +637,7 @@ async fn calculate_equity(client: &IndodaxClient) -> Result<f64> {
     Ok(total)
 }
 
-async fn equity_snap(client: &IndodaxClient) -> Result<CommandOutput> {
+pub async fn equity_snap(client: &IndodaxClient) -> Result<CommandOutput> {
     let equity = calculate_equity(client).await?;
     let timestamp = helpers::now_millis();
 
@@ -671,7 +701,7 @@ async fn equity_snap(client: &IndodaxClient) -> Result<CommandOutput> {
     Ok(CommandOutput::new(data, headers, rows))
 }
 
-fn equity_history(limit: usize, all: bool) -> Result<CommandOutput> {
+pub fn equity_history(limit: usize, all: bool) -> Result<CommandOutput> {
     let history = load_equity_history();
 
     if history.snapshots.is_empty() {

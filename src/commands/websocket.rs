@@ -14,21 +14,21 @@ const PRIVATE_WS_URL: &str = "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=tr
 
 #[derive(Debug, clap::Subcommand)]
 pub enum WebSocketCommand {
-    #[command(name = "ticker", about = "Stream real-time ticker for a pair")]
+    #[command(name = "ticker", about = "Stream real-time ticker for one or more pairs")]
     Ticker {
-        #[arg(default_value = "btc_idr")]
+        #[arg(default_value = "btc_idr", help = "Trading pairs (comma-separated, e.g., btc_idr,eth_idr)")]
         pair: String,
     },
 
-    #[command(name = "trades", about = "Stream real-time trades for a pair")]
+    #[command(name = "trades", about = "Stream real-time trades for one or more pairs")]
     Trades {
-        #[arg(default_value = "btc_idr")]
+        #[arg(default_value = "btc_idr", help = "Trading pairs (comma-separated, e.g., btc_idr,eth_idr)")]
         pair: String,
     },
 
-    #[command(name = "book", about = "Stream real-time order book for a pair")]
+    #[command(name = "book", about = "Stream real-time order book for one or more pairs")]
     Book {
-        #[arg(default_value = "btc_idr")]
+        #[arg(default_value = "btc_idr", help = "Trading pairs (comma-separated, e.g., btc_idr,eth_idr)")]
         pair: String,
     },
 
@@ -37,6 +37,12 @@ pub enum WebSocketCommand {
 
     #[command(name = "orders", about = "Stream private order updates")]
     Orders,
+
+    #[command(name = "subscribe", about = "Subscribe to one or more raw channels")]
+    Subscribe {
+        #[arg(help = "Channel names (comma-separated, e.g., chart:tick-btcidr,market:summary-24h)")]
+        channels: String,
+    },
 }
 
 pub async fn execute(
@@ -46,26 +52,32 @@ pub async fn execute(
 ) -> Result<CommandOutput> {
     match cmd {
         WebSocketCommand::Ticker { pair } => {
-            let pair = helpers::normalize_pair_v2(pair);
-            ws_ticker(client, &pair, output_format).await
+            let pairs: Vec<String> = pair.split(',').map(|s| helpers::normalize_pair_v2(s.trim())).collect();
+            ws_ticker(client, &pairs, output_format).await
         }
         WebSocketCommand::Trades { pair } => {
-            let pair = helpers::normalize_pair_v2(pair);
-            ws_trades(client, &pair, output_format).await
+            let pairs: Vec<String> = pair.split(',').map(|s| helpers::normalize_pair_v2(s.trim())).collect();
+            ws_trades(client, &pairs, output_format).await
         }
         WebSocketCommand::Book { pair } => {
-            let pair = helpers::normalize_pair_v2(pair);
-            ws_book(client, &pair, output_format).await
+            let pairs: Vec<String> = pair.split(',').map(|s| helpers::normalize_pair_v2(s.trim())).collect();
+            ws_book(client, &pairs, output_format).await
         }
         WebSocketCommand::Summary => ws_summary(client, output_format).await,
         WebSocketCommand::Orders => ws_orders(client, output_format).await,
+        WebSocketCommand::Subscribe { channels } => {
+            let channels: Vec<String> = channels.split(',').map(|s| s.trim().to_string()).collect();
+            ws_generic_subscribe(client, &channels, output_format).await
+        }
     }
 }
+
+use std::collections::HashMap;
 
 async fn ws_connect_and_listen(
     ws_url: &str,
     token: &str,
-    channel: &str,
+    channels: &[String],
     handler: impl Fn(serde_json::Value) -> Option<serde_json::Value>,
     output_format: OutputFormat,
 ) -> Result<CommandOutput> {
@@ -84,6 +96,7 @@ async fn ws_connect_and_listen(
 
     let mut events: Vec<serde_json::Value> = Vec::new();
     let mut retry_count = 0;
+    let mut channel_offsets: HashMap<String, u64> = HashMap::new();
 
     'reconnect: loop {
         if retry_count > 0 {
@@ -139,6 +152,7 @@ async fn ws_connect_and_listen(
         }
 
         let mut authed = false;
+        let mut subscribed_count = 0;
         let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
         ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
@@ -155,7 +169,6 @@ async fn ws_connect_and_listen(
                     break 'reconnect;
                 }
                 _ = ping_interval.tick() => {
-                    // Application-level ping to keep connection alive
                     let ping_msg = serde_json::json!({
                         "method": 7,
                         "id": 7
@@ -191,33 +204,52 @@ async fn ws_connect_and_listen(
                                     && val.get("result").is_some()
                                 {
                                     authed = true;
-                                    retry_count = 0; // Reset retry count on successful auth
+                                    retry_count = 0;
                                     if let Some(ref pb) = spinner_ref {
-                                        pb.set_message(format!("Authenticated. Subscribing to: {}", channel));
+                                        pb.set_message("Authenticated. Subscribing to channels...");
                                     } else {
-                                        eprintln!("{}", serde_json::json!({"event": "authenticated", "channel": channel}));
+                                        eprintln!("{}", serde_json::json!({"event": "authenticated"}));
                                     }
-                                    let sub_msg = serde_json::json!({
-                                        "method": 1,
-                                        "params": { "channel": channel },
-                                        "id": 2
-                                    });
-                                    if let Err(_e) = ws_stream.send(Message::Text(sub_msg.to_string())).await {
-                                        retry_count += 1;
-                                        continue 'reconnect;
+                                    
+                                    for (i, channel) in channels.iter().enumerate() {
+                                        let mut params = serde_json::json!({ "channel": channel });
+                                        if let Some(offset) = channel_offsets.get(channel) {
+                                            params["recover"] = serde_json::json!(true);
+                                            params["offset"] = serde_json::json!(offset);
+                                        }
+                                        
+                                        let sub_msg = serde_json::json!({
+                                            "method": 1,
+                                            "params": params,
+                                            "id": 10 + i
+                                        });
+                                        if let Err(_e) = ws_stream.send(Message::Text(sub_msg.to_string())).await {
+                                            retry_count += 1;
+                                            continue 'reconnect;
+                                        }
                                     }
                                 }
                                 continue;
                             }
 
-                            if val.get("id").and_then(|v| v.as_i64()) == Some(2) {
-                                // subscription confirmation
-                                if let Some(ref pb) = spinner_ref {
-                                    pb.finish_and_clear();
-                                    eprintln!("Subscription active: {}", channel);
-                                    eprintln!();
+                            let id = val.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+                            if id >= 10 && id < 10 + channels.len() as i64 {
+                                subscribed_count += 1;
+                                if subscribed_count == channels.len() {
+                                    if let Some(ref pb) = spinner_ref {
+                                        pb.finish_and_clear();
+                                        eprintln!("Subscriptions active for {} channels", channels.len());
+                                        eprintln!();
+                                    }
                                 }
                             } else if val.get("result").is_some() {
+                                // Track offset if present
+                                if let Some(channel) = val["result"].get("channel").and_then(|v| v.as_str()) {
+                                    if let Some(offset) = val["result"]["data"].get("offset").and_then(|v| v.as_u64()) {
+                                        channel_offsets.insert(channel.to_string(), offset);
+                                    }
+                                }
+
                                 if let Some(event) = handler(val) {
                                     events.push(event);
                                 }
@@ -271,12 +303,14 @@ fn format_ws_price(val: &serde_json::Value) -> Option<String> {
 
 async fn ws_ticker(
     client: &IndodaxClient,
-    pair: &str,
+    pairs: &[String],
     output_format: OutputFormat,
 ) -> Result<CommandOutput> {
-    let channel = format!("chart:tick-{}", pair);
+    let channels: Vec<String> = pairs.iter().map(|p| format!("chart:tick-{}", p)).collect();
     let token = helpers::fetch_public_ws_token(client).await?;
-    ws_connect_and_listen(PUBLIC_WS_URL, &token, &channel, |val| {
+    ws_connect_and_listen(PUBLIC_WS_URL, &token, &channels, |val| {
+        let channel = val["result"]["channel"].as_str().unwrap_or("");
+        let pair = channel.strip_prefix("chart:tick-").unwrap_or(channel);
         let rows = &val["result"]["data"]["data"];
         let mut last_event = None;
         if let serde_json::Value::Array(arr) = rows {
@@ -284,19 +318,25 @@ async fn ws_ticker(
                 if let serde_json::Value::Array(fields) = row {
                     if fields.len() >= 4 {
                         let ts = fields[0].as_u64().unwrap_or(0);
+                        let seq = fields[1].as_u64().unwrap_or(0);
                         let price = fields.get(2).and_then(format_ws_price).unwrap_or_default();
+                        let vol = fields.get(3).and_then(helpers::value_to_string_opt).unwrap_or_else(|| "0".to_string());
+                        
                         let time_str = chrono::DateTime::from_timestamp(ts.min(i64::MAX as u64) as i64, 0)
                             .map(|d| d.format("%H:%M:%S").to_string())
                             .unwrap_or_default();
+                        
                         if output_format == OutputFormat::Json {
                             println!("{}", serde_json::json!({
-                                "event": "ticker", "pair": pair, "time": time_str, "price": price
+                                "event": "ticker", "pair": pair, "time": time_str, 
+                                "price": price, "volume": vol, "seq": seq
                             }));
                         } else {
-                            println!("[{}] {}  {}", time_str, pair, price);
+                            println!("[{}] {}  price: {:>15}  vol: {:>15}", time_str, pair, price, vol);
                         }
                         last_event = Some(serde_json::json!({
-                            "event": "ticker", "pair": pair, "time": time_str, "price": price
+                            "event": "ticker", "pair": pair, "time": time_str, 
+                            "price": price, "volume": vol, "seq": seq
                         }));
                     }
                 }
@@ -309,16 +349,21 @@ async fn ws_ticker(
 
 async fn ws_trades(
     client: &IndodaxClient,
-    pair: &str,
+    pairs: &[String],
     output_format: OutputFormat,
 ) -> Result<CommandOutput> {
-    let channel = format!("market:trade-activity-{}", pair);
+    let channels: Vec<String> = pairs
+        .iter()
+        .map(|p| format!("market:trade-activity-{}", p))
+        .collect();
     let token = helpers::fetch_public_ws_token(client).await?;
     ws_connect_and_listen(
         PUBLIC_WS_URL,
         &token,
-        &channel,
+        &channels,
         |val| {
+            let channel = val["result"]["channel"].as_str().unwrap_or("");
+            let pair = channel.strip_prefix("market:trade-activity-").unwrap_or(channel);
             let rows = &val["result"]["data"]["data"];
             let mut last_event = None;
             if let serde_json::Value::Array(arr) = rows {
@@ -326,13 +371,12 @@ async fn ws_trades(
                     if let serde_json::Value::Array(fields) = row {
                         if fields.len() >= 7 {
                             let ts = fields[1].as_u64().unwrap_or(0);
+                            let seq = fields[2].as_u64().unwrap_or(0);
                             let side = fields.get(3).and_then(|v| v.as_str()).unwrap_or("?");
                             let price = fields.get(4).and_then(|v| v.as_f64()).unwrap_or(0.0);
-                            let volume = fields
-                                .get(6)
-                                .and_then(|v| v.as_str())
-                                .and_then(|s| s.parse().ok())
-                                .unwrap_or(0.0);
+                            let idr_vol = fields.get(5).and_then(helpers::value_to_string_opt).unwrap_or_default();
+                            let coin_vol = fields.get(6).and_then(helpers::value_to_string_opt).unwrap_or_default();
+                            
                             let time_str =
                                 chrono::DateTime::from_timestamp(ts.min(i64::MAX as u64) as i64, 0)
                                     .map(|d| d.format("%H:%M:%S").to_string())
@@ -342,18 +386,20 @@ async fn ws_trades(
                                     "{}",
                                     serde_json::json!({
                                         "event": "trade", "pair": pair, "time": time_str,
-                                        "side": side, "price": price, "volume": volume
+                                        "side": side, "price": price, "coin_vol": coin_vol,
+                                        "idr_vol": idr_vol, "seq": seq
                                     })
                                 );
                             } else {
                                 println!(
-                                    "[{}] {} {} @ {} vol: {}",
-                                    time_str, side, pair, price, volume
+                                    "[{}] {} {} @ {} vol: {} ({} IDR)",
+                                    time_str, side, pair, price, coin_vol, idr_vol
                                 );
                             }
                             last_event = Some(serde_json::json!({
                                 "event": "trade", "pair": pair, "time": time_str,
-                                "side": side, "price": price, "volume": volume
+                                "side": side, "price": price, "coin_vol": coin_vol,
+                                "idr_vol": idr_vol, "seq": seq
                             }));
                         }
                     }
@@ -368,16 +414,21 @@ async fn ws_trades(
 
 async fn ws_book(
     client: &IndodaxClient,
-    pair: &str,
+    pairs: &[String],
     output_format: OutputFormat,
 ) -> Result<CommandOutput> {
-    let channel = format!("market:order-book-{}", pair);
+    let channels: Vec<String> = pairs
+        .iter()
+        .map(|p| format!("market:order-book-{}", p))
+        .collect();
     let token = helpers::fetch_public_ws_token(client).await?;
     ws_connect_and_listen(
         PUBLIC_WS_URL,
         &token,
-        &channel,
+        &channels,
         |val| {
+            let channel = val["result"]["channel"].as_str().unwrap_or("");
+            let pair = channel.strip_prefix("market:order-book-").unwrap_or(channel);
             let data = &val["result"]["data"]["data"];
 
             let parse_entry = |entry: &serde_json::Value| -> Option<(String, String)> {
@@ -428,19 +479,18 @@ async fn ws_book(
             if output_format == OutputFormat::Json {
                 println!("{}", event);
             } else if std::io::stdout().is_terminal() {
-                if let Some((price, amount)) = ask_price {
-                    print!("\r\x1b[KAsk: {} @ {} | ", price, amount);
-                }
-                if let Some((price, amount)) = bid_price {
-                    println!("Bid: {} @ {}", price, amount);
-                }
+                print!("\r\x1b[K[{}] Ask: {} @ {} | ", pair, 
+                    ask_price.as_ref().map(|(p, _)| p.as_str()).unwrap_or("?"), 
+                    ask_price.as_ref().map(|(_, a)| a.as_str()).unwrap_or("?"));
+                println!("Bid: {} @ {}", 
+                    bid_price.as_ref().map(|(p, _)| p.as_str()).unwrap_or("?"), 
+                    bid_price.as_ref().map(|(_, a)| a.as_str()).unwrap_or("?"));
             } else {
-                if let Some((price, amount)) = ask_price {
-                    println!("Ask: {} @ {}", price, amount);
-                }
-                if let Some((price, amount)) = bid_price {
-                    println!("Bid: {} @ {}", price, amount);
-                }
+                println!("[{}] Ask: {} @ {} | Bid: {} @ {}", pair,
+                    ask_price.as_ref().map(|(p, _)| p.as_str()).unwrap_or("?"), 
+                    ask_price.as_ref().map(|(_, a)| a.as_str()).unwrap_or("?"),
+                    bid_price.as_ref().map(|(p, _)| p.as_str()).unwrap_or("?"), 
+                    bid_price.as_ref().map(|(_, a)| a.as_str()).unwrap_or("?"));
             }
             Some(event)
         },
@@ -451,7 +501,7 @@ async fn ws_book(
 
 async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Result<CommandOutput> {
     let token = helpers::fetch_public_ws_token(client).await?;
-    ws_connect_and_listen(PUBLIC_WS_URL, &token, "market:summary-24h", |val| {
+    ws_connect_and_listen(PUBLIC_WS_URL, &token, &["market:summary-24h".to_string()], |val| {
         let rows = &val["result"]["data"]["data"];
         let mut last_event = None;
         if let serde_json::Value::Array(arr) = rows {
@@ -459,35 +509,58 @@ async fn ws_summary(client: &IndodaxClient, output_format: OutputFormat) -> Resu
                 if let serde_json::Value::Array(fields) = row {
                     if fields.len() >= 8 {
                         let pair = fields[0].as_str().unwrap_or("?");
+                        let ts = fields[1].as_u64().unwrap_or(0);
                         let last = helpers::value_to_string(fields.get(2).unwrap_or(&serde_json::Value::Null));
                         let high = helpers::value_to_string(&fields[4]);
                         let low = helpers::value_to_string(&fields[3]);
                         let price_24h = fields[5].as_f64().unwrap_or(0.0);
                         let last_f = fields[2].as_f64().unwrap_or(0.0);
+                        let idr_vol = helpers::value_to_string(&fields[6]);
+                        let coin_vol = helpers::value_to_string(&fields[7]);
+
                         let change = if price_24h > 0.0 {
                             format!("{:+.2}%", (last_f - price_24h) / price_24h * 100.0)
                         } else {
                             "0%".to_string()
                         };
+                        
                         if output_format == OutputFormat::Json {
                             println!("{}", serde_json::json!({
                                 "event": "summary", "pair": pair, "last": last,
-                                "high": high, "low": low, "change": change
+                                "high": high, "low": low, "change": change,
+                                "idr_vol": idr_vol, "coin_vol": coin_vol, "timestamp": ts
                             }));
-                        } else if std::io::stdout().is_terminal() {
-                            println!("\x1b[K{:15}  last: {:>15}  high: {:>15}  low: {:>15}  change: {}", pair, last, high, low, change);
                         } else {
-                            println!("{:15}  last: {:>15}  high: {:>15}  low: {:>15}  change: {}", pair, last, high, low, change);
+                            println!("\x1b[K{:15}  last: {:>15}  high: {:>15}  low: {:>15}  change: {:>8}  vol: {}", 
+                                pair, last, high, low, change, idr_vol);
                         }
                         last_event = Some(serde_json::json!({
                             "event": "summary", "pair": pair, "last": last,
-                            "high": high, "low": low, "change": change
+                            "high": high, "low": low, "change": change,
+                            "idr_vol": idr_vol, "coin_vol": coin_vol, "timestamp": ts
                         }));
                     }
                 }
             }
         }
         last_event
+    }, output_format)
+    .await
+}
+
+async fn ws_generic_subscribe(
+    client: &IndodaxClient,
+    channels: &[String],
+    output_format: OutputFormat,
+) -> Result<CommandOutput> {
+    let token = helpers::fetch_public_ws_token(client).await?;
+    ws_connect_and_listen(PUBLIC_WS_URL, &token, channels, |val| {
+        if output_format == OutputFormat::Json {
+            println!("{}", val);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
+        }
+        Some(val)
     }, output_format)
     .await
 }
@@ -510,9 +583,44 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
         &token,
         &channel,
         |val| {
-            // Private WebSocket messages can be in several formats depending on the server version
-            // We look for common patterns in order and balance updates.
+            // Support both old and new Private WebSocket formats
+            let mut last_event = None;
 
+            // 1. Handle new format: push -> pub -> data -> [ { eventType, order } ]
+            if let Some(push) = val.get("push") {
+                if let Some(pub_data) = push.get("pub") {
+                    if let Some(data_arr) = pub_data.get("data").and_then(|v| v.as_array()) {
+                        for item in data_arr {
+                            if item.get("eventType").and_then(|v| v.as_str()) == Some("order_update") {
+                                if let Some(order) = item.get("order") {
+                                    let order_id = helpers::value_to_string(order.get("orderId").unwrap_or(&serde_json::Value::Null));
+                                    let pair = order.get("symbol").or(order.get("description")).and_then(|v| v.as_str()).unwrap_or("?");
+                                    let side = order.get("side").and_then(|v| v.as_str()).unwrap_or("?");
+                                    let status = order.get("status").and_then(|v| v.as_str()).unwrap_or("?");
+                                    let price = helpers::value_to_string(order.get("price").unwrap_or(&serde_json::Value::Null));
+                                    let amount = helpers::value_to_string(order.get("origQty").or(order.get("executedQty")).unwrap_or(&serde_json::Value::Null));
+
+                                    let event = serde_json::json!({
+                                        "event": "order_update", "order_id": order_id, "pair": pair,
+                                        "side": side, "status": status, "price": price, "amount": amount
+                                    });
+
+                                    if output_format == OutputFormat::Json {
+                                        println!("{}", event);
+                                    } else {
+                                        println!("Order Update: ID={} Pair={} Side={} Status={} Price={} Amount={}",
+                                            order_id, pair, side, status, price, amount);
+                                    }
+                                    last_event = Some(event);
+                                }
+                            }
+                        }
+                        if last_event.is_some() { return last_event; }
+                    }
+                }
+            }
+
+            // 2. Handle old/fallback format
             let result = val
                 .get("result")
                 .or_else(|| val.get("push"))
@@ -534,24 +642,20 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
                         .unwrap_or(&serde_json::Value::Null),
                 );
 
+                let event = serde_json::json!({
+                    "event": "order_update", "order_id": order_id, "pair": pair,
+                    "side": side, "status": status, "price": price, "amount": amount
+                });
+
                 if output_format == OutputFormat::Json {
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "event": "order_update", "order_id": order_id, "pair": pair,
-                            "side": side, "status": status, "price": price, "amount": amount
-                        })
-                    );
+                    println!("{}", event);
                 } else {
                     println!(
-                        "Order Update: ID={} Pair={} Side={} Status={} Price={} Amount={}",
+                        "Order Update (Legacy): ID={} Pair={} Side={} Status={} Price={} Amount={}",
                         order_id, pair, side, status, price, amount
                     );
                 }
-                Some(serde_json::json!({
-                    "event": "order_update", "order_id": order_id, "pair": pair,
-                    "side": side, "status": status, "price": price, "amount": amount
-                }))
+                Some(event)
             } else if let Some(currency) = data
                 .get("currency")
                 .or(data.get("asset"))
@@ -568,39 +672,38 @@ async fn ws_orders(client: &IndodaxClient, output_format: OutputFormat) -> Resul
                         .unwrap_or(&serde_json::Value::Null),
                 );
 
+                let event = serde_json::json!({
+                    "event": "balance_update", "currency": currency,
+                    "available": available, "frozen": frozen
+                });
+
                 if output_format == OutputFormat::Json {
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "event": "balance_update", "currency": currency,
-                            "available": available, "frozen": frozen
-                        })
-                    );
+                    println!("{}", event);
                 } else {
                     println!(
                         "Balance Update: {} Available={} Frozen={}",
                         currency, available, frozen
                     );
                 }
-                Some(serde_json::json!({
-                    "event": "balance_update", "currency": currency,
-                    "available": available, "frozen": frozen
-                }))
+                Some(event)
             } else {
-                // Raw fallback for unknown private events
-                if output_format == OutputFormat::Json {
-                    let raw = serde_json::json!({"event": "private_update_raw", "data": data});
-                    println!("{}", raw);
-                    Some(raw)
-                } else {
-                    // If it's a heartbeat or confirmation, we might want to skip printing
-                    if data.get("method").and_then(|m| m.as_str()) != Some("pong") {
+                // Raw fallback for unknown private events (excluding pings/pongs)
+                if val.get("method").and_then(|m| m.as_str()) != Some("pong") && 
+                   val.get("connect").is_none() && val.get("subscribe").is_none() &&
+                   val.get("id").is_none() {
+                    if output_format == OutputFormat::Json {
+                        let raw = serde_json::json!({"event": "private_update_raw", "data": val});
+                        println!("{}", raw);
+                        Some(raw)
+                    } else {
                         println!(
                             "Private Event: {}",
-                            serde_json::to_string(data).unwrap_or_default()
+                            serde_json::to_string(data).unwrap_or_else(|_| serde_json::to_string(&val).unwrap_or_default())
                         );
+                        Some(val.clone())
                     }
-                    Some(data.clone())
+                } else {
+                    None
                 }
             }
         },
@@ -765,7 +868,7 @@ mod tests {
     #[test]
     fn test_websocket_command_variants() {
         let _cmd1 = WebSocketCommand::Ticker {
-            pair: "btc_idr".into(),
+            pair: "btc_idr,eth_idr".into(),
         };
         let _cmd2 = WebSocketCommand::Trades {
             pair: "eth_idr".into(),
@@ -775,6 +878,9 @@ mod tests {
         };
         let _cmd4 = WebSocketCommand::Summary;
         let _cmd5 = WebSocketCommand::Orders;
+        let _cmd6 = WebSocketCommand::Subscribe {
+            channels: "chart:tick-btcidr,market:summary-24h".into(),
+        };
     }
 
     #[test]
@@ -883,7 +989,50 @@ mod tests {
     }
 
     #[test]
-    fn test_private_order_update_parsing() {
+    fn test_private_order_update_v5_parsing() {
+        let msg = json!({
+            "push": {
+                "channel": "pws:#hash",
+                "pub": {
+                    "data": [
+                        {
+                            "eventType": "order_update",
+                            "order": {
+                                "orderId": "12345",
+                                "symbol": "btcidr",
+                                "side": "BUY",
+                                "status": "FILL",
+                                "price": "500000000",
+                                "origQty": "0.1"
+                            }
+                        }
+                    ]
+                }
+            }
+        });
+
+        // Simulating the handler logic inside ws_orders
+        let mut last_event = None;
+        if let Some(push) = msg.get("push") {
+            if let Some(pub_data) = push.get("pub") {
+                if let Some(data_arr) = pub_data.get("data").and_then(|v| v.as_array()) {
+                    for item in data_arr {
+                        if item.get("eventType").and_then(|v| v.as_str()) == Some("order_update") {
+                            if let Some(order) = item.get("order") {
+                                let order_id = helpers::value_to_string(order.get("orderId").unwrap());
+                                assert_eq!(order_id, "12345");
+                                last_event = Some(json!({"event": "order_update", "order_id": order_id}));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(last_event.is_some());
+    }
+
+    #[test]
+    fn test_private_order_update_legacy_parsing() {
         let msg = json!({
             "push": {
                 "data": {

@@ -55,6 +55,14 @@ pub enum FundingCommand {
         )]
         listen: Option<String>,
     },
+
+    #[command(name = "deposit-address", about = "Get deposit address for a currency")]
+    DepositAddress {
+        #[arg(short, long)]
+        currency: String,
+        #[arg(short, long, help = "Blockchain network (optional)")]
+        network: Option<String>,
+    },
 }
 
 pub async fn execute(
@@ -94,7 +102,27 @@ pub async fn execute(
             auto_ok,
             listen,
         } => serve_callback(*port, *auto_ok, listen.as_deref(), output_format).await,
+        FundingCommand::DepositAddress { currency, network } => {
+            deposit_address(client, currency, network.as_deref()).await
+        }
     }
+}
+
+async fn deposit_address(
+    client: &IndodaxClient,
+    currency: &str,
+    network: Option<&str>,
+) -> Result<CommandOutput> {
+    let mut params = HashMap::new();
+    params.insert("currency".into(), currency.to_string());
+    if let Some(n) = network {
+        params.insert("network".into(), n.to_string());
+    }
+
+    let data: serde_json::Value = client.private_post_v1("depositAddress", &params).await?;
+
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
 }
 
 async fn withdraw_fee(

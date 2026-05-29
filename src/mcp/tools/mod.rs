@@ -469,7 +469,9 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     helpers::normalize_pair(&Self::get_str(&args, "pair").unwrap_or_default());
                 let idr = Self::get_num(&args, "idr").unwrap_or(0.0);
                 let price = Self::get_num(&args, "price");
-                self.handle_buy_order(&pair, idr, price).await
+                let stop_price = Self::get_num(&args, "stop_price");
+                let client_order_id = Self::get_str(&args, "client_order_id");
+                self.handle_buy_order(&pair, idr, price, stop_price, client_order_id.as_deref()).await
             }
             "sell_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
@@ -482,6 +484,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let pair =
                     helpers::normalize_pair(&Self::get_str(&args, "pair").unwrap_or_default());
                 let price = Self::get_num(&args, "price");
+                let stop_price = Self::get_num(&args, "stop_price");
+                let client_order_id = Self::get_str(&args, "client_order_id");
                 let amount = match Self::get_num(&args, "amount") {
                     Some(v) if v > 0.0 => v,
                     Some(v) => {
@@ -498,13 +502,29 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 };
                 let order_type =
                     Self::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
-                self.handle_sell_order(&pair, price, amount, &order_type)
+                self.handle_sell_order(&pair, price, amount, &order_type, stop_price, client_order_id.as_deref())
                     .await
+            }
+            "get_order_by_client_id" => {
+                let client_order_id = match Self::get_str(&args, "client_order_id") {
+                    Some(v) => v,
+                    None => {
+                        return Ok(Self::validation_error_result(
+                            "Missing required parameter: client_order_id".into(),
+                        ))
+                    }
+                };
+                self.handle_get_order_by_client_id(&client_order_id).await
             }
 
             // Account
             "account_info" => self.handle_account_info().await,
             "balance" => self.handle_balance().await,
+            "equity_snap" => self.handle_equity_snap().await,
+            "equity_history" => {
+                let limit = Self::get_num(&args, "limit");
+                self.handle_equity_history(limit).await
+            }
             "open_orders" => {
                 let pair = Self::get_str(&args, "pair").map(|p| helpers::normalize_pair(&p));
                 self.handle_open_orders(pair.as_deref()).await
