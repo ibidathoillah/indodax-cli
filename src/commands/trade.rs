@@ -589,6 +589,7 @@ mod tests {
             price: Some(100_000_000.0),
             order_type: None,
             stop_price: None,
+            client_id: None,
         };
         let _cmd2 = TradeCommand::Sell {
             pair: "btc_idr".into(),
@@ -596,6 +597,7 @@ mod tests {
             amount: 0.5,
             order_type: None,
             stop_price: None,
+            client_id: None,
         };
         let _cmd3 = TradeCommand::Cancel {
             order_id: 123,
@@ -625,6 +627,7 @@ mod tests {
             price: None,
             order_type: None,
             stop_price: None,
+            client_id: None,
         };
         match cmd {
             TradeCommand::Buy {
@@ -633,12 +636,14 @@ mod tests {
                 price,
                 order_type,
                 stop_price,
+                client_id,
             } => {
                 assert_eq!(pair, "btc_idr");
                 assert_eq!(idr, 100_000.0);
                 assert!(price.is_none());
                 assert!(order_type.is_none());
                 assert!(stop_price.is_none());
+                assert!(client_id.is_none());
             }
             _ => panic!("Expected Buy command, got {:?}", cmd),
         }
@@ -652,6 +657,7 @@ mod tests {
             amount: 1.0,
             order_type: None,
             stop_price: None,
+            client_id: None,
         };
         match cmd {
             TradeCommand::Sell { price, .. } => {
@@ -669,6 +675,7 @@ mod tests {
             amount: 0.5,
             order_type: None,
             stop_price: None,
+            client_id: None,
         };
         match cmd {
             TradeCommand::Sell { price, .. } => {

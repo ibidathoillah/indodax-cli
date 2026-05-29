@@ -677,6 +677,8 @@ mod tests {
             idr: 100_000.0,
             price: None,
             order_type: None,
+            stop_price: None,
+            client_id: None,
         });
         let _cmd4 = Command::Withdrawal(WithdrawalSubcommand::Fee {
             asset: "btc".into(),
