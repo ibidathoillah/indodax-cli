@@ -1,7 +1,6 @@
 # Indodax CLI & MCP Server
 
 [![indodax-cli MCP server](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli/badges/card.svg)](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli)
-[![indodax-cli MCP server](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli/badges/score.svg)](https://glama.ai/mcp/servers/ibidathoillah/indodax-cli)
 
 Professional command-line interface and **Model Context Protocol (MCP)** server for the Indodax cryptocurrency exchange.
 
