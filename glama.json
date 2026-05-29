@@ -1,6 +1,9 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "name": "indodax-cli",
+  "maintainers": [
+    "ibidathoillah"
+  ],
   "mcpName": "io.github.ibidathoillah/indodax-cli",
   "description": "Professional-grade MCP server and CLI for the Indodax cryptocurrency exchange. Provides comprehensive access to real-time market data, secure account management, spot trading, paper trading, and WebSocket event streams. Supports STDIO for desktop apps (Claude) and HTTP Bridge for mobile/cloud (ChatGPT/Glama) with multi-user isolation.",
   "environmentVariables": [
