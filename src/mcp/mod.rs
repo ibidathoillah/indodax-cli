@@ -90,7 +90,7 @@ pub async fn run_http(
 }
 
 #[cfg(feature = "server")]
-async fn handle_http_call(
+pub async fn handle_http_call(
     State(state): State<AppState>,
     Path(tool_name): Path<String>,
     headers: HeaderMap,
@@ -172,21 +172,39 @@ async fn handle_http_call(
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
             mcp.handle_get_order(id, &pair).await
         },
+        "get_order_by_client_id" => {
+            let client_order_id = IndodaxMcp::get_str(&args, "client_order_id").unwrap_or_default();
+            mcp.handle_get_order_by_client_id(&client_order_id).await
+        },
         "trans_history" => mcp.handle_trans_history().await,
+        "equity_snap" => mcp.handle_equity_snap().await,
+        "equity_history" => {
+            let limit = IndodaxMcp::get_num(&args, "limit");
+            mcp.handle_equity_history(limit).await
+        },
+        "list_downline" => mcp.handle_list_downline().await,
+        "check_downline" => {
+            let email = IndodaxMcp::get_str(&args, "email").unwrap_or_default();
+            mcp.handle_check_downline(&email).await
+        },
         
         // --- Trading ---
         "buy_order" => {
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
             let idr = IndodaxMcp::get_num(&args, "idr").unwrap_or(0.0);
             let price = IndodaxMcp::get_num(&args, "price");
-            mcp.handle_buy_order(&pair, idr, price).await
+            let stop_price = IndodaxMcp::get_num(&args, "stop_price");
+            let client_order_id = IndodaxMcp::get_str(&args, "client_order_id");
+            mcp.handle_buy_order(&pair, idr, price, stop_price, client_order_id.as_deref()).await
         },
         "sell_order" => {
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
             let price = IndodaxMcp::get_num(&args, "price");
             let amount = IndodaxMcp::get_num(&args, "amount").unwrap_or(0.0);
+            let stop_price = IndodaxMcp::get_num(&args, "stop_price");
+            let client_order_id = IndodaxMcp::get_str(&args, "client_order_id");
             let order_type = IndodaxMcp::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
-            mcp.handle_sell_order(&pair, price, amount, &order_type).await
+            mcp.handle_sell_order(&pair, price, amount, &order_type, stop_price, client_order_id.as_deref()).await
         },
         "cancel_order" => {
             let id = IndodaxMcp::get_num(&args, "order_id").unwrap_or(0.0);

@@ -2,6 +2,11 @@ use crate::client::IndodaxClient;
 use crate::config::ResolvedCredentials;
 use crate::output::CommandOutput;
 use anyhow::Result;
+use rustyline::completion::{Completer, Pair};
+use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
+use rustyline::hint::{HistoryHinter};
+use rustyline::validate::MatchingBracketValidator;
+use rustyline::{Helper};
 use std::collections::HashMap;
 
 #[derive(Debug, clap::Subcommand)]
@@ -12,6 +17,101 @@ pub enum UtilityCommand {
     #[command(name = "shell", about = "Start interactive REPL")]
     Shell,
 }
+
+struct IndodaxHelper {
+    completer: IndodaxCompleter,
+    highlighter: MatchingBracketHighlighter,
+    validator: MatchingBracketValidator,
+    hinter: HistoryHinter,
+}
+
+struct IndodaxCompleter {
+    commands: Vec<String>,
+    pairs: Vec<String>,
+}
+
+impl Completer for IndodaxCompleter {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        let (start, word) = rustyline::completion::extract_word(line, pos, None, |c: char| c == ' ' || c == '/');
+        let word_lower = word.to_lowercase();
+
+        let mut candidates = Vec::new();
+
+        // If it looks like we are typing a pair (e.g. after a space or --pair)
+        let line_before = &line[..start];
+        let is_pair_context = line_before.contains("ticker") || 
+                             line_before.contains("book") || 
+                             line_before.contains("trades") ||
+                             line_before.contains("--pair") ||
+                             line_before.contains("-p");
+
+        if is_pair_context {
+            for pair in &self.pairs {
+                if pair.starts_with(&word_lower) {
+                    candidates.push(Pair {
+                        display: pair.clone(),
+                        replacement: pair.clone(),
+                    });
+                }
+            }
+        }
+
+        // Also suggest commands if we are at the start or just after 'indodax '
+        if start == 0 || line_before.trim().is_empty() {
+            for cmd in &self.commands {
+                if cmd.starts_with(&word_lower) {
+                    candidates.push(Pair {
+                        display: cmd.clone(),
+                        replacement: cmd.clone(),
+                    });
+                }
+            }
+        }
+
+        Ok((start, candidates))
+    }
+}
+
+impl Highlighter for IndodaxHelper {
+    fn highlight<'l>(&self, line: &'l str, pos: usize) -> std::borrow::Cow<'l, str> {
+        self.highlighter.highlight(line, pos)
+    }
+    fn highlight_char(&self, line: &str, pos: usize) -> bool {
+        self.highlighter.highlight_char(line, pos)
+    }
+}
+
+impl rustyline::hint::Hinter for IndodaxHelper {
+    type Hint = String;
+    fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
+        self.hinter.hint(line, pos, ctx)
+    }
+}
+
+impl rustyline::validate::Validator for IndodaxHelper {
+    fn validate(&self, ctx: &mut rustyline::validate::ValidationContext<'_>) -> rustyline::Result<rustyline::validate::ValidationResult> {
+        self.validator.validate(ctx)
+    }
+    fn validate_while_typing(&self) -> bool {
+        self.validator.validate_while_typing()
+    }
+}
+
+impl Completer for IndodaxHelper {
+    type Candidate = Pair;
+    fn complete(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> rustyline::Result<(usize, Vec<Pair>)> {
+        self.completer.complete(line, pos, ctx)
+    }
+}
+
+impl Helper for IndodaxHelper {}
 
 pub async fn execute(
     client: &IndodaxClient,
@@ -112,12 +212,39 @@ async fn shell(
 ) -> Result<CommandOutput> {
     use crate::Cli;
     use clap::Parser;
+    use clap::CommandFactory;
 
     println!("Indodax CLI interactive shell");
     println!("Type commands without 'indodax' prefix (e.g. 'ticker btc/idr')");
     println!("Type 'help' for available commands, 'exit' to quit\n");
 
-    let mut rl = rustyline::Editor::<(), rustyline::history::DefaultHistory>::new()?;
+    // Pre-collect commands for completion
+    let mut command_list = Vec::new();
+    let cli_cmd = Cli::command();
+    for cmd in cli_cmd.get_subcommands() {
+        command_list.push(cmd.get_name().to_string());
+    }
+    
+    // Add common pairs for completion
+    let common_pairs = vec![
+        "btc_idr".to_string(), "eth_idr".to_string(), "usdt_idr".to_string(), 
+        "idrt_idr".to_string(), "bnb_idr".to_string(), "doge_idr".to_string(),
+        "xrpidr".to_string(), "adaidr".to_string(), "dotidr".to_string(),
+    ];
+
+    let h = IndodaxHelper {
+        completer: IndodaxCompleter {
+            commands: command_list,
+            pairs: common_pairs,
+        },
+        highlighter: MatchingBracketHighlighter::new(),
+        validator: MatchingBracketValidator::new(),
+        hinter: HistoryHinter {},
+    };
+
+    let mut rl = rustyline::Editor::<IndodaxHelper, rustyline::history::DefaultHistory>::new()?;
+    rl.set_helper(Some(h));
+    
     let mut config = crate::config::IndodaxConfig::load()?;
     let client_ref = client;
 

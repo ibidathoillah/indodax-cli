@@ -1,0 +1,110 @@
+2026-05-29T01:12:06Z INF Starting tunnel tunnelID=b81e1d53-314f-4bca-b57d-f7474862fc2f
+2026-05-29T01:12:06Z INF Version 2026.5.0 (Checksum 0095e46fdc88855d801c4d304cb1f5dd4bd656116c47ab94c2ad0ae7cda1c7ec)
+2026-05-29T01:12:06Z INF GOOS: linux, GOVersion: go1.26.2, GoArch: amd64
+2026-05-29T01:12:06Z INF Settings: map[cred-file:/root/.cloudflared/b81e1d53-314f-4bca-b57d-f7474862fc2f.json credentials-file:/root/.cloudflared/b81e1d53-314f-4bca-b57d-f7474862fc2f.json]
+2026-05-29T01:12:06Z INF Autoupdate frequency is set autoupdateFreq=86400000
+2026-05-29T01:12:06Z INF Generated Connector ID: 926c4267-7dae-40ff-8358-a645075ff013
+2026-05-29T01:12:06Z INF Initial protocol quic
+2026-05-29T01:12:06Z INF ICMP proxy will use 75.119.149.120 as source for IPv4
+2026-05-29T01:12:06Z INF ICMP proxy will use 2a02:c207:2313:4889::1 in zone eth0 as source for IPv6
+2026-05-29T01:12:06Z WRN The user running cloudflared process has a GID (group ID) that is not within ping_group_range. You might need to add that user to a group within that range, or instead update the range to encompass a group the user is already in by modifying /proc/sys/net/ipv4/ping_group_range. Otherwise cloudflared will not be able to ping this network error="Group ID 0 is not between ping group 1 to 0"
+2026-05-29T01:12:06Z WRN ICMP proxy feature is disabled error="cannot create ICMPv4 proxy: Group ID 0 is not between ping group 1 to 0 nor ICMPv6 proxy: socket: permission denied"
+2026-05-29T01:12:06Z INF ICMP proxy will use 75.119.149.120 as source for IPv4
+2026-05-29T01:12:06Z INF ICMP proxy will use 2a02:c207:2313:4889::1 in zone eth0 as source for IPv6
+2026-05-29T01:12:06Z INF Starting metrics server on 127.0.0.1:20241/metrics
+2026-05-29T01:12:06Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:12:07Z INF Registered tunnel connection connIndex=0 connection=8f96f406-6a6b-49de-a930-d80f406d89fe event=0 ip=2606:4700:a8::8 location=fra15 protocol=quic
+2026-05-29T01:12:07Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T01:12:07Z INF Registered tunnel connection connIndex=1 connection=0edade6f-fbf6-4cd2-be4b-37ff45fc5a1b event=0 ip=2606:4700:a0::4 location=fra03 protocol=quic
+2026-05-29T01:12:08Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T01:12:08Z INF Registered tunnel connection connIndex=2 connection=a46c39d1-b729-49fe-b7cf-8cd0d4f15757 event=0 ip=2606:4700:a8::9 location=fra15 protocol=quic
+2026-05-29T01:12:09Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:12:14Z ERR failed to run the datagram handler error="context canceled" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:12:14Z WRN failed to serve tunnel connection error="control stream encountered a failure while serving" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:12:14Z WRN Serve tunnel error error="control stream encountered a failure while serving" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:12:14Z INF Retrying connection in up to 2s connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:12:15Z WRN Connection terminated error="control stream encountered a failure while serving" connIndex=3
+2026-05-29T01:12:29Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:12:30Z INF Registered tunnel connection connIndex=3 connection=9170eb1d-adb2-4eaf-81ae-47dedca508bb event=0 ip=2606:4700:a0::2 location=cdg14 protocol=quic
+2026-05-29T01:51:41Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T01:51:41Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T01:51:41Z WRN failed to serve tunnel connection error="datagram manager encountered a failure while serving" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T01:51:41Z WRN Serve tunnel error error="datagram manager encountered a failure while serving" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T01:51:41Z INF Retrying connection in up to 1s connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T01:51:42Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:42Z ERR failed to run the datagram handler error="context canceled" connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:42Z WRN failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:42Z WRN Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:42Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:42Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T01:51:42Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T01:51:42Z WRN failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T01:51:42Z WRN Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T01:51:42Z INF Retrying connection in up to 1s connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T01:51:42Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:51:42Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:51:42Z ERR failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:51:42Z ERR Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:51:42Z INF Retrying connection in up to 1s connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:51:42Z ERR Connection terminated error="datagram manager encountered a failure while serving" connIndex=2
+2026-05-29T01:51:43Z ERR Connection terminated error="accept stream listener encountered a failure while serving" connIndex=1
+2026-05-29T01:51:43Z ERR Connection terminated error="accept stream listener encountered a failure while serving" connIndex=3
+2026-05-29T01:51:43Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:48Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:48Z INF Retrying connection in up to 4s connIndex=0 event=0 ip=2606:4700:a8::8
+2026-05-29T01:51:52Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.13
+2026-05-29T01:51:52Z INF Registered tunnel connection connIndex=0 connection=e75ccaf3-ce5e-4e98-bc3a-8f5cae861bb5 event=0 ip=198.41.200.13 location=fra15 protocol=quic
+2026-05-29T01:51:52Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T01:51:52Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T01:51:52Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T01:51:55Z INF Registered tunnel connection connIndex=2 connection=8f91cabc-8c77-4ba6-94d1-989392243bb9 event=0 ip=2606:4700:a8::9 location=fra15 protocol=quic
+2026-05-29T01:51:55Z INF Registered tunnel connection connIndex=1 connection=07d91d23-e68e-4b52-a4f4-608122522eea event=0 ip=2606:4700:a0::4 location=fra03 protocol=quic
+2026-05-29T01:51:55Z INF Registered tunnel connection connIndex=3 connection=f06bb85c-64d5-46a1-be91-751e8997681c event=0 ip=2606:4700:a0::2 location=cdg14 protocol=quic
+2026-05-29T02:00:57Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:00:57Z ERR failed to run the datagram handler error="context canceled" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:00:57Z WRN failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:00:57Z WRN Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:00:57Z INF Retrying connection in up to 1s connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:00:59Z WRN Connection terminated error="accept stream listener encountered a failure while serving" connIndex=1
+2026-05-29T02:01:09Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:01:09Z INF Registered tunnel connection connIndex=1 connection=da51a7c8-647f-4dfb-825d-ac12cb0875cf event=0 ip=2606:4700:a0::4 location=fra03 protocol=quic
+2026-05-29T02:04:26Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:26Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:26Z WRN failed to serve tunnel connection error="datagram manager encountered a failure while serving" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:26Z WRN Serve tunnel error error="datagram manager encountered a failure while serving" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:26Z INF Retrying connection in up to 1s connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:27Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:04:27Z ERR failed to run the datagram handler error="context canceled" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:04:27Z WRN failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:04:27Z WRN Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:04:27Z INF Retrying connection in up to 1s connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:04:27Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:04:27Z ERR failed to run the datagram handler error="context canceled" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:04:27Z WRN failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:04:27Z WRN Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:04:27Z INF Retrying connection in up to 1s connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:04:27Z WRN Connection terminated error="datagram manager encountered a failure while serving" connIndex=2
+2026-05-29T02:04:28Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:28Z WRN Connection terminated error="accept stream listener encountered a failure while serving" connIndex=3
+2026-05-29T02:04:29Z WRN Connection terminated error="accept stream listener encountered a failure while serving" connIndex=1
+2026-05-29T02:04:33Z WRN Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:33Z INF Retrying connection in up to 4s connIndex=2 event=0 ip=2606:4700:a8::9
+2026-05-29T02:04:36Z WRN Connection terminated error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=2
+2026-05-29T02:04:55Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=2 event=0 ip=2606:4700:a8::8
+2026-05-29T02:04:55Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:04:55Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:05:00Z WRN Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:05:00Z INF Retrying connection in up to 4s connIndex=3 event=0 ip=2606:4700:a0::2
+2026-05-29T02:05:00Z WRN Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=2 event=0 ip=2606:4700:a8::8
+2026-05-29T02:05:00Z INF Retrying connection in up to 8s connIndex=2 event=0 ip=2606:4700:a8::8
+2026-05-29T02:05:00Z WRN Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:05:00Z INF Retrying connection in up to 4s connIndex=1 event=0 ip=2606:4700:a0::4
+2026-05-29T02:05:01Z WRN Connection terminated error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=3
+2026-05-29T02:05:02Z WRN Connection terminated error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=2
+2026-05-29T02:05:03Z WRN Connection terminated error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=1
+2026-05-29T02:06:03Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=2 event=0 ip=198.41.200.33
+2026-05-29T02:06:03Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=3 event=0 ip=198.41.192.27
+2026-05-29T02:06:03Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=1 event=0 ip=198.41.192.167
+2026-05-29T02:06:03Z INF Registered tunnel connection connIndex=2 connection=ace544ca-8f84-4cc9-b870-0ccd05fb3327 event=0 ip=198.41.200.33 location=fra20 protocol=quic
+2026-05-29T02:06:03Z INF Registered tunnel connection connIndex=1 connection=f9a35876-0ff5-4a84-915b-d216d60a2e71 event=0 ip=198.41.192.167 location=fra03 protocol=quic
+2026-05-29T02:06:03Z INF Registered tunnel connection connIndex=3 connection=12aa26e9-4c9e-4163-bd4b-ac30dff308b5 event=0 ip=198.41.192.27 location=fra03 protocol=quic

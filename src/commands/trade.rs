@@ -21,8 +21,12 @@ pub enum TradeCommand {
         idr: f64,
         #[arg(long, help = "Limit price. If omitted, a market order will be placed.")]
         price: Option<f64>,
-        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market"]), help = "Order type: limit or market. Inferred from --price if omitted.")]
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market", "stoplimit"]), help = "Order type: limit, market, or stoplimit. Inferred from --price/--stop-price if omitted.")]
         order_type: Option<String>,
+        #[arg(long, help = "Trigger price for stop-limit orders.")]
+        stop_price: Option<f64>,
+        #[arg(long, help = "Optional: Custom client order ID for tracking.")]
+        client_id: Option<String>,
     },
 
     #[command(name = "sell", about = "Place a sell order")]
@@ -37,8 +41,12 @@ pub enum TradeCommand {
             help = "Limit price. If omitted, a market order will be placed."
         )]
         price: Option<f64>,
-        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market"]), help = "Order type: limit or market. Inferred from --price if omitted.")]
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["limit", "market", "stoplimit"]), help = "Order type: limit, market, or stoplimit. Inferred from --price/--stop-price if omitted.")]
         order_type: Option<String>,
+        #[arg(long, help = "Trigger price for stop-limit orders.")]
+        stop_price: Option<f64>,
+        #[arg(long, help = "Optional: Custom client order ID for tracking.")]
+        client_id: Option<String>,
     },
 
     #[command(name = "cancel", about = "Cancel an order by ID")]
@@ -80,6 +88,15 @@ pub enum TradeCommand {
         #[arg(short, long, help = "Countdown in milliseconds (0 to disable)")]
         countdown_time: u64,
     },
+
+    #[command(
+        name = "get-order-by-client-id",
+        about = "Get order details by client order ID"
+    )]
+    GetOrderByClientId {
+        #[arg(long)]
+        client_order_id: String,
+    },
 }
 
 pub async fn execute(
@@ -93,18 +110,40 @@ pub async fn execute(
             idr,
             price,
             order_type,
+            stop_price,
+            client_id,
         } => {
             let pair = helpers::normalize_pair(pair);
-            place_buy_order(client, &pair, *idr, *price, order_type.as_deref()).await
+            place_buy_order(
+                client,
+                &pair,
+                *idr,
+                *price,
+                order_type.as_deref(),
+                *stop_price,
+                client_id.as_deref(),
+            )
+            .await
         }
         TradeCommand::Sell {
             pair,
             price,
             amount,
             order_type,
+            stop_price,
+            client_id,
         } => {
             let pair = helpers::normalize_pair(pair);
-            place_sell_order(client, &pair, *price, *amount, order_type.as_deref()).await
+            place_sell_order(
+                client,
+                &pair,
+                *price,
+                *amount,
+                order_type.as_deref(),
+                *stop_price,
+                client_id.as_deref(),
+            )
+            .await
         }
         TradeCommand::Cancel {
             order_id,
@@ -128,7 +167,25 @@ pub async fn execute(
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
             countdown_cancel_all(client, pair.as_deref(), *countdown_time).await
         }
+        TradeCommand::GetOrderByClientId { client_order_id } => {
+            get_order_by_client_id(client, client_order_id).await
+        }
     }
+}
+
+async fn get_order_by_client_id(
+    client: &IndodaxClient,
+    client_order_id: &str,
+) -> Result<CommandOutput> {
+    let mut params = HashMap::new();
+    params.insert("client_order_id".into(), client_order_id.to_string());
+
+    let data: serde_json::Value = client
+        .private_post_v1("getOrderByClientOrderId", &params)
+        .await?;
+
+    let (headers, rows) = helpers::flatten_json_to_table(&data);
+    Ok(CommandOutput::new(data, headers, rows))
 }
 
 async fn place_buy_order(
@@ -137,6 +194,8 @@ async fn place_buy_order(
     idr_amount: f64,
     price: Option<f64>,
     explicit_type: Option<&str>,
+    stop_price: Option<f64>,
+    client_id: Option<&str>,
 ) -> Result<CommandOutput> {
     let info = get_account_info(client).await?;
 
@@ -162,6 +221,9 @@ async fn place_buy_order(
     params.insert("pair".to_string(), pair.to_string());
     params.insert("type".to_string(), "buy".to_string());
     params.insert("idr".to_string(), idr_amount.to_string());
+    if let Some(cid) = client_id {
+        params.insert("client_order_id".to_string(), cid.to_string());
+    }
 
     let order_type_str = if let Some(order_type) = explicit_type {
         match order_type {
@@ -186,8 +248,28 @@ async fn place_buy_order(
                 params.insert("order_type".to_string(), "market".to_string());
                 "market"
             }
+            "stoplimit" => {
+                let p = price.ok_or_else(|| {
+                    anyhow::anyhow!("--price is required when --order-type is 'stoplimit'")
+                })?;
+                let sp = stop_price.ok_or_else(|| {
+                    anyhow::anyhow!("--stop-price is required when --order-type is 'stoplimit'")
+                })?;
+                params.insert("price".to_string(), p.to_string());
+                params.insert("stop_price".to_string(), sp.to_string());
+                params.insert("order_type".to_string(), "stoplimit".to_string());
+                "stoplimit"
+            }
             _ => unreachable!(),
         }
+    } else if let Some(sp) = stop_price {
+        let p = price.ok_or_else(|| {
+            anyhow::anyhow!("--price (limit price) is required for stop-limit orders")
+        })?;
+        params.insert("price".to_string(), p.to_string());
+        params.insert("stop_price".to_string(), sp.to_string());
+        params.insert("order_type".to_string(), "stoplimit".to_string());
+        "stoplimit"
     } else if let Some(p) = price {
         if p <= 0.0 {
             return Err(anyhow::anyhow!("Price must be positive, got {}", p));
@@ -229,6 +311,8 @@ async fn place_sell_order(
     price: Option<f64>,
     amount: f64,
     explicit_type: Option<&str>,
+    stop_price: Option<f64>,
+    client_id: Option<&str>,
 ) -> Result<CommandOutput> {
     let base_currency = pair.split('_').next().unwrap_or_default();
     if base_currency.is_empty() {
@@ -257,6 +341,9 @@ async fn place_sell_order(
     params.insert("pair".to_string(), pair.to_string());
     params.insert("type".to_string(), "sell".to_string());
     params.insert(base_currency.to_string(), amount.to_string());
+    if let Some(cid) = client_id {
+        params.insert("client_order_id".to_string(), cid.to_string());
+    }
 
     let order_type = if let Some(order_type) = explicit_type {
         match order_type {
@@ -280,8 +367,28 @@ async fn place_sell_order(
                 params.insert("order_type".to_string(), "market".to_string());
                 "market"
             }
+            "stoplimit" => {
+                let p = price.ok_or_else(|| {
+                    anyhow::anyhow!("--price is required when --order-type is 'stoplimit'")
+                })?;
+                let sp = stop_price.ok_or_else(|| {
+                    anyhow::anyhow!("--stop-price is required when --order-type is 'stoplimit'")
+                })?;
+                params.insert("price".to_string(), p.to_string());
+                params.insert("stop_price".to_string(), sp.to_string());
+                params.insert("order_type".to_string(), "stoplimit".to_string());
+                "stoplimit"
+            }
             _ => unreachable!(),
         }
+    } else if let Some(sp) = stop_price {
+        let p = price.ok_or_else(|| {
+            anyhow::anyhow!("--price (limit price) is required for stop-limit orders")
+        })?;
+        params.insert("price".to_string(), p.to_string());
+        params.insert("stop_price".to_string(), sp.to_string());
+        params.insert("order_type".to_string(), "stoplimit".to_string());
+        "stoplimit"
     } else if let Some(p) = price {
         if p <= 0.0 {
             return Err(anyhow::anyhow!("Price must be positive, got {}", p));
@@ -481,12 +588,14 @@ mod tests {
             idr: 100_000.0,
             price: Some(100_000_000.0),
             order_type: None,
+            stop_price: None,
         };
         let _cmd2 = TradeCommand::Sell {
             pair: "btc_idr".into(),
             price: Some(100_000_000.0),
             amount: 0.5,
             order_type: None,
+            stop_price: None,
         };
         let _cmd3 = TradeCommand::Cancel {
             order_id: 123,
@@ -503,6 +612,9 @@ mod tests {
             pair: Some("btc_idr".into()),
             countdown_time: 60000,
         };
+        let _cmd7 = TradeCommand::GetOrderByClientId {
+            client_order_id: "client_123".into(),
+        };
     }
 
     #[test]
@@ -512,6 +624,7 @@ mod tests {
             idr: 100_000.0,
             price: None,
             order_type: None,
+            stop_price: None,
         };
         match cmd {
             TradeCommand::Buy {
@@ -519,11 +632,13 @@ mod tests {
                 idr,
                 price,
                 order_type,
+                stop_price,
             } => {
                 assert_eq!(pair, "btc_idr");
                 assert_eq!(idr, 100_000.0);
                 assert!(price.is_none());
                 assert!(order_type.is_none());
+                assert!(stop_price.is_none());
             }
             _ => panic!("Expected Buy command, got {:?}", cmd),
         }
@@ -536,6 +651,7 @@ mod tests {
             price: None,
             amount: 1.0,
             order_type: None,
+            stop_price: None,
         };
         match cmd {
             TradeCommand::Sell { price, .. } => {
@@ -552,6 +668,7 @@ mod tests {
             price: Some(100_000_000.0),
             amount: 0.5,
             order_type: None,
+            stop_price: None,
         };
         match cmd {
             TradeCommand::Sell { price, .. } => {

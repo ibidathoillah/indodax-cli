@@ -1,0 +1,7 @@
+tunnel: 3233c395-5bd0-4488-819a-5a2efc629e1c
+credentials-file: /root/.cloudflared/3233c395-5bd0-4488-819a-5a2efc629e1c.json
+
+ingress:
+  - hostname: indodax-mcp.tep2.in
+    service: http://localhost:8000
+  - service: http_status:404

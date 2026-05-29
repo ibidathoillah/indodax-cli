@@ -137,6 +137,13 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
     }
 }
 
+pub fn value_to_string_opt(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::Null => None,
+        _ => Some(value_to_string(v)),
+    }
+}
+
 pub fn format_timestamp(ts: u64, millis: bool) -> String {
     let ts_sec = if millis { ts / 1000 } else { ts };
     if let Some(dt) = DateTime::from_timestamp(ts_sec.min(i64::MAX as u64) as i64, 0) {

@@ -1,18 +1,21 @@
-## UPDATED 2026-05-17 (2nd Review) — All high/medium issues resolved.
+## UPDATED 2026-05-29 (3rd Review) — Full WebSocket, Advanced Trading, and Affiliate features implemented.
 
 ### Completed (this session)
+- [x] **Stop-Limit Orders** — Added `stop_price` support to CLI (`buy`/`sell`) and MCP tools.
+- [x] **Advanced Trading Params** — Added `client_order_id` support for order tracking in CLI and MCP.
+- [x] **Order Lookup** — Implemented `get-order-by-client-id` command and MCP tool.
+- [x] **Affiliate Commands** — Added `list-downline` and `check-downline` commands to CLI and MCP.
+- [x] **Equity Snap in MCP** — Added `equity_snap` and `equity_history` tools to MCP for AI-driven portfolio tracking.
+- [x] **Deposit Address in CLI** — Added `indodax funding deposit-address` command to CLI.
+- [x] **Auto-completion** — Implemented command and pair completion for the interactive shell.
+- [x] **Private WebSocket** — Full implementation of `ws orders` (token generation + live streaming) [#19].
+- [x] **Public WebSocket Recovery** — Implemented offset-based recovery for market data streams.
+- [x] **Multi-pair WebSocket** — Support for comma-separated pairs in ticker, trades, and book commands.
 - [x] **Backward Compatibility** — Added hidden `market`, `account`, `trade`, `funding` commands to `lib.rs` for v0.1.x script compatibility.
-- [x] **Paper State Migration** — Implemented one-time migration from `config.toml` to `paper_state.json` in `PaperState::load()`.
-- [x] **Table Renderer Warnings** — Updated `table::render()` to display warnings from `CommandOutput.warnings`.
-- [x] **MCP Tick Size Warnings** — Updated `handle_buy/sell_order` to include tick size warnings in the JSON response body.
 
 ### High Priority (Planned)
-- [ ] **Private WebSocket** — Full implementation of `ws orders` (token generation + live streaming) [#19].
-- [ ] **Stop-Limit Orders** — Add `stoplimit` support to trade commands and MCP [#21].
-- [ ] **Advanced Trading Params** — Add `client_order_id` and `time_in_force` (GTC/MOC) support [#18, #8].
-- [ ] **Order Lookup** — Implement `getOrderByClientOrderId` command and MCP tool [#17, #8].
 - [ ] **Reliability Upgrades** — Client-side rate-limit tracking and high-precision nonce generation [#9].
-
+- [ ] **Extended TradeAPI-2** — Map more endpoints to the new V2 REST API where available.
 ### Medium Priority
 - [ ] **Affiliate Commands** — `listDownline` and `checkDownline` support [#20, #8].
 - [ ] **Auto-completion** — Pair and command completion for the interactive shell [#16].
