@@ -809,6 +809,7 @@ mod tests {
             order_type: None,
             stop_price: None,
             client_id: None,
+            validate: false,
         };
         let _cmd2 = TradeCommand::Sell {
             pair: "btc_idr".into(),
@@ -817,6 +818,7 @@ mod tests {
             order_type: None,
             stop_price: None,
             client_id: None,
+            validate: false,
         };
         let _cmd3 = TradeCommand::Cancel {
             order_id: 123,
@@ -847,6 +849,7 @@ mod tests {
             order_type: None,
             stop_price: None,
             client_id: None,
+            validate: false,
         };
         match cmd {
             TradeCommand::Buy {
@@ -856,6 +859,7 @@ mod tests {
                 order_type,
                 stop_price,
                 client_id,
+                ..
             } => {
                 assert_eq!(pair, "btc_idr");
                 assert_eq!(idr, 100_000.0);
