@@ -35,6 +35,7 @@ pub enum FundingCommand {
         callback_url: Option<String>,
     },
 
+    #[cfg(feature = "server")]
     #[command(
         name = "serve-callback",
         about = "Start a temporary HTTP server to handle Indodax withdrawal callback"
@@ -69,7 +70,7 @@ pub async fn execute(
     client: &IndodaxClient,
     config: &crate::config::IndodaxConfig,
     cmd: &FundingCommand,
-    output_format: crate::output::OutputFormat,
+    _output_format: crate::output::OutputFormat,
 ) -> Result<CommandOutput> {
     match cmd {
         FundingCommand::WithdrawFee { currency, network } => {
@@ -97,11 +98,12 @@ pub async fn execute(
             )
             .await
         }
+        #[cfg(feature = "server")]
         FundingCommand::ServeCallback {
             port,
             auto_ok,
             listen,
-        } => serve_callback(*port, *auto_ok, listen.as_deref(), output_format).await,
+        } => serve_callback(*port, *auto_ok, listen.as_deref(), _output_format).await,
         FundingCommand::DepositAddress { currency, network } => {
             deposit_address(client, currency, network.as_deref()).await
         }
@@ -200,6 +202,7 @@ async fn withdraw(
     )
 }
 
+#[cfg(feature = "server")]
 async fn serve_callback(
     port: u16,
     auto_ok: bool,
@@ -361,6 +364,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "server")]
     #[test]
     fn test_funding_command_serve_callback_defaults() {
         let cmd = FundingCommand::ServeCallback {

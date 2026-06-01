@@ -1,15 +1,22 @@
-## 🚀 Welcome to Indodax CLI v0.1.56
+## 🚀 Welcome to Indodax CLI v0.1.57
 
-### 🆕 What's New in v0.1.56
+### 🆕 What's New in v0.1.57
+- **🛠️ WebSocket TLS Test Fix**: Resolved a compilation error in `tests/websocket_tls.rs` where `url::Url` was incorrectly passed to `connect_async`.
+- **🏗️ Feature Guarding Improvements**: Fixed several build issues when compiling with minimal features (e.g., without `mcp` or `server`). Properly guarded `axum` and `mcp` related code in `src/commands/funding.rs` and `src/main.rs`.
+- **🧹 Warning Cleanup**: Suppressed unused variable warnings when certain features are disabled.
+
+## 🚀 Welcome to Indodax CLI v0.1.57
+
+### 🆕 What's New in v0.1.57
 - **🧰 MCP Tool Definition Quality**: Added strict MCP input schemas, tool titles, and behavior annotations for read-only, destructive, idempotent, and open-world hints to improve Glama scoring and agent safety.
 - **📚 Clearer Tool Guidance**: Expanded lower-scoring market, account, auth, paper trading, and WebSocket tool descriptions with authentication requirements, side effects, output shape, and recommended alternatives.
 - **🛠️ Test Suite Fix**: Resolved a compilation error in `mcp_e2e` integration tests by making HTTP handler functions public.
 
-## 🚀 Welcome to Indodax CLI v0.1.56
+## 🚀 Welcome to Indodax CLI v0.1.57
 
 This release brings highly requested advanced trading features, affiliate support, and a significant boost to shell productivity.
 
-### 🆕 What's New in v0.1.56
+### 🆕 What's New in v0.1.57
 
 - **🛑 Stop-Limit Orders**: 
   - Full support for stop-limit orders in both CLI and MCP. 
@@ -30,7 +37,7 @@ This release brings highly requested advanced trading features, affiliate suppor
 - **📈 Portfolio Tracking in MCP**:
   - New tools: `equity_snap` and `equity_history` for AI-driven portfolio growth analysis.
 
-### 🆕 What's New in v0.1.56
+### 🆕 What's New in v0.1.57
 
 - **📡 Full WebSocket API Coverage**:
   - Implemented all public and private channels from the official Indodax documentation.
@@ -47,7 +54,7 @@ This release brings highly requested advanced trading features, affiliate suppor
   - Improved real-time order book display with support for multiple markets.
   - Detailed Private Order updates including fill information, fees, and tax assets.
 
-### 🆕 What's New in v0.1.56
+### 🆕 What's New in v0.1.57
 
 - **🌐 Production-Ready MCP HTTP Bridge**:
   - Integrated a high-performance HTTP server directly into the binary using **Axum**.
@@ -68,7 +75,7 @@ This release brings highly requested advanced trading features, affiliate suppor
   - Revamped **MCP Documentation** in `src/mcp/README.md`.
   - Optimized Docker image with multi-stage build.
 
-### 🆕 What's New in v0.1.56
+### 🆕 What's New in v0.1.57
 
 - **🚀 Glama Deploy Fixes**:
   - Updated the Docker image to Debian Trixie and removed unnecessary OpenSSL runtime dependencies.

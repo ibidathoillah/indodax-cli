@@ -1,5 +1,6 @@
 use clap::Parser;
 use indodax_cli::errors::IndodaxError;
+#[cfg(feature = "mcp")]
 use indodax_cli::mcp;
 use indodax_cli::output::{CommandOutput, OutputFormat};
 use indodax_cli::{
@@ -94,6 +95,7 @@ async fn main() {
     };
 
     // Handle MCP server separately — it runs indefinitely on stdio or http
+    #[cfg(feature = "mcp")]
     if let Command::Mcp {
         groups,
         allow_dangerous,
@@ -101,29 +103,10 @@ async fn main() {
         http,
     } = &cli.command
     {
-        #[cfg(feature = "mcp")]
-        {
-            if *http {
-                #[cfg(feature = "server")]
-                {
-                    match mcp::run_http(*port, groups, *allow_dangerous).await {
-                        Ok(()) => process::exit(0),
-                        Err(e) => {
-                            report_error(&e, output_format);
-                            process::exit(1);
-                        }
-                    }
-                }
-                #[cfg(not(feature = "server"))]
-                {
-                    report_error(
-                        &IndodaxError::Other("HTTP server feature not enabled. Rebuild with --features server".into()),
-                        output_format,
-                    );
-                    process::exit(1);
-                }
-            } else {
-                match mcp::run(groups, *allow_dangerous, client, config).await {
+        if *http {
+            #[cfg(feature = "server")]
+            {
+                match mcp::run_http(*port, groups, *allow_dangerous).await {
                     Ok(()) => process::exit(0),
                     Err(e) => {
                         report_error(&e, output_format);
@@ -131,15 +114,22 @@ async fn main() {
                     }
                 }
             }
-        }
-        #[cfg(not(feature = "mcp"))]
-        {
-            let _ = (groups, allow_dangerous, port, http);
-            report_error(
-                &IndodaxError::Other("MCP feature not enabled".into()),
-                output_format,
-            );
-            process::exit(1);
+            #[cfg(not(feature = "server"))]
+            {
+                report_error(
+                    &IndodaxError::Other("HTTP server feature not enabled. Rebuild with --features server".into()),
+                    output_format,
+                );
+                process::exit(1);
+            }
+        } else {
+            match mcp::run(groups, *allow_dangerous, client, config).await {
+                Ok(()) => process::exit(0),
+                Err(e) => {
+                    report_error(&e, output_format);
+                    process::exit(1);
+                }
+            }
         }
     }
 

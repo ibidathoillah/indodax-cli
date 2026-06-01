@@ -8,7 +8,7 @@ async fn test_websocket_tls_connection() {
     
     // We don't need to actually subscribe, just verify the handshake succeeds
     // or at least doesn't fail with "TLS support not compiled in"
-    let result = connect_async(url).await;
+    let result = connect_async(url.as_str()).await;
     
     match result {
         Ok(_) => {
