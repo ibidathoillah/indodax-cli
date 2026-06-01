@@ -236,21 +236,14 @@ jobs:
             rm minisign.key
           else
             echo "Skipping signature generation, MINISIGN_PRIVATE_KEY is not set."
-            touch checksums.txt.minisig
           fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            indodax-linux-x86_64
-            indodax-linux-aarch64
-            indodax-android-aarch64
-            indodax-macos-x86_64
-            indodax-macos-aarch64
-            indodax-windows-x86_64.exe
-            checksums.txt
-            checksums.txt.minisig
+            indodax-*
+            checksums.txt*
           body_path: RELEASE_NOTES.md
           fail_on_unmatched_files: false
         env:
