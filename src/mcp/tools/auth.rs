@@ -13,13 +13,13 @@ pub fn auth_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "auth_test",
-            "Perform a live authentication test by sending a signed request to the Indodax API. This tool verifies that your configured API Key and Secret are valid, have not expired, and possess the necessary permissions to access private account data. It returns the account name and user ID upon success.",
+            "[REQUIRES AUTH, READ-ONLY] Verify the currently configured Indodax API key and secret by sending a signed private getInfo request. It does not save or change credentials. Returns JSON text with status ok and account name on success, or a structured authentication/API error on failure.",
             serde_json::json!({}),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "auth_set",
-            "Configure and save your Indodax API credentials. These credentials are required for all private operations, including trading, funding, and account inspection. The information is saved locally in a secure configuration file with restricted file permissions. You can also use this tool to set a callback URL for exchange notifications.",
+            "[LOCAL WRITE, SENSITIVE] Save Indodax API credentials and optional callback URL into the local config file used by this MCP server. This overwrites prior local credentials and never returns the secret. Set test=true to immediately call auth_test after saving; use read-only exchange keys unless live trading or withdrawals are required.",
             serde_json::json!({
                 "api_key": IndodaxMcp::str_param("The API Key generated from your Indodax account settings page.", true, None),
                 "api_secret": IndodaxMcp::str_param("The corresponding API Secret. This value is used for cryptographic signing and must be kept strictly confidential.", true, None),
@@ -104,7 +104,9 @@ impl IndodaxMcp {
                 let signer = crate::auth::Signer::new(&api_key, &api_secret);
                 match crate::client::IndodaxClient::new(Some(signer)) {
                     Ok(c) => c,
-                    Err(e) => return Self::error_result(format!("Failed to create test client: {}", e)),
+                    Err(e) => {
+                        return Self::error_result(format!("Failed to create test client: {}", e))
+                    }
                 }
             };
 

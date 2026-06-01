@@ -37,7 +37,7 @@ Unofficial Rust CLI for Indodax.
 - Credential resolution: CLI flags, environment variables, or `~/.config/indodax/config.toml`.
 - Agent support: MCP server mode with guarded dangerous operations.
 
-## Recent Highlights (v0.1.55)
+## Recent Highlights (v0.1.56)
 
 - **MCP server overhaul**: Alert tools, deposit address, auth configuration, WebSocket snapshot tools, Resources, and Prompts support.
 - WebSocket reliability overhaul: application-level pings, automatic reconnection with exponential backoff, and private WebSocket support for real-time order and balance updates.

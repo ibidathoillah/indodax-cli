@@ -13,10 +13,9 @@ use serde_json::{Map, Value};
 use tokio::sync::Mutex;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, ErrorData as McpError, Implementation,
-    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, ReadResourceResult,
-    ServerCapabilities, Tool, GetPromptRequestParams,
+    CallToolRequestParams, CallToolResult, Content, ErrorData as McpError, GetPromptRequestParams,
+    Implementation, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequestParams, ReadResourceResult, ServerCapabilities, Tool, ToolAnnotations,
 };
 use rmcp::service::{RequestContext, RoleServer};
 
@@ -77,7 +76,7 @@ impl IndodaxMcp {
         state.save()
     }
 
-    pub fn str_param(description: &str, required: bool, default_: Option<&str>) -> Value {
+    pub fn str_param(description: &str, _required: bool, default_: Option<&str>) -> Value {
         let mut schema = serde_json::json!({
             "type": "string",
             "description": description,
@@ -85,21 +84,14 @@ impl IndodaxMcp {
         if let Some(d) = default_ {
             schema["default"] = Value::String(d.to_string());
         }
-        if required {
-            schema["required"] = Value::Bool(true);
-        }
         schema
     }
 
-    pub fn num_param(description: &str, required: bool) -> Value {
-        let mut schema = serde_json::json!({
+    pub fn num_param(description: &str, _required: bool) -> Value {
+        serde_json::json!({
             "type": "number",
             "description": description,
-        });
-        if required {
-            schema["required"] = Value::Bool(true);
-        }
-        schema
+        })
     }
 
     pub fn bool_param(description: &str) -> Value {
@@ -119,6 +111,7 @@ impl IndodaxMcp {
     pub fn tool_def(name: &str, description: &str, properties: Value, required: Vec<&str>) -> Tool {
         let mut schema = Map::new();
         schema.insert("type".to_string(), Value::String("object".to_string()));
+        schema.insert("additionalProperties".to_string(), Value::Bool(false));
 
         if let Value::Object(props) = properties {
             if !props.is_empty() {
@@ -134,10 +127,86 @@ impl IndodaxMcp {
             schema.insert("required".to_string(), Value::Array(req_values));
         }
 
-        Tool::new(
-            name.to_string(),
-            description.to_string(),
-            Arc::new(schema),
+        let title = Self::tool_title(name);
+        Tool::new(name.to_string(), description.to_string(), Arc::new(schema))
+            .with_title(title.clone())
+            .with_annotations(Self::tool_annotations(name, title))
+    }
+
+    fn tool_title(name: &str) -> String {
+        name.split('_')
+            .map(|part| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn tool_annotations(name: &str, title: String) -> ToolAnnotations {
+        let (read_only, destructive, idempotent, open_world) = match name {
+            // Public exchange reads.
+            "server_time"
+            | "ticker"
+            | "ticker_all"
+            | "pairs"
+            | "summaries"
+            | "orderbook"
+            | "trades"
+            | "ohlc"
+            | "price_increments"
+            | "ws_snapshot_ticker"
+            | "ws_snapshot_book"
+            | "ws_snapshot_summary"
+            | "ws_token" => (true, false, true, true),
+
+            // Authenticated or exchange-backed reads.
+            "account_info"
+            | "balance"
+            | "open_orders"
+            | "order_history"
+            | "trade_history"
+            | "get_order"
+            | "trans_history"
+            | "list_downline"
+            | "check_downline"
+            | "get_order_by_client_id"
+            | "withdraw_fee"
+            | "auth_test" => (true, false, true, true),
+
+            // Local reads.
+            "auth_show" | "equity_history" | "paper_balance" | "paper_orders" | "paper_history"
+            | "paper_status" | "alert_list" => (true, false, true, false),
+
+            // Local or local-plus-market writes.
+            "auth_set" => (false, false, false, false),
+            "equity_snap" | "alert_add" | "alert_check" | "paper_check_fills" => {
+                (false, false, false, true)
+            }
+            "paper_buy" | "paper_sell" | "paper_fill" => (false, false, false, false),
+
+            // Local destructive simulation or alert state changes.
+            "paper_init" | "paper_reset" | "paper_cancel_all" => (false, true, true, false),
+            "paper_cancel" | "alert_cancel" => (false, true, false, false),
+
+            // Live exchange writes.
+            "buy_order" | "sell_order" | "cancel_order" | "cancel_all_orders" | "withdraw" => {
+                (false, true, false, true)
+            }
+            "deposit_address" => (false, false, true, true),
+
+            _ => (false, true, false, true),
+        };
+
+        ToolAnnotations::from_raw(
+            Some(title),
+            Some(read_only),
+            Some(destructive),
+            Some(idempotent),
+            Some(open_world),
         )
     }
 
@@ -271,12 +340,10 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                     "callback_url": config.callback_url,
                 })
             }
-            "pairs://list" => {
-                match self.client.public_get::<Value>("/api/pairs").await {
-                    Ok(data) => data,
-                    Err(e) => serde_json::json!({"error": e.to_string()}),
-                }
-            }
+            "pairs://list" => match self.client.public_get::<Value>("/api/pairs").await {
+                Ok(data) => data,
+                Err(e) => serde_json::json!({"error": e.to_string()}),
+            },
             "paper://state" => {
                 let state = self.load_paper_state().await;
                 serde_json::json!({
@@ -471,7 +538,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let price = Self::get_num(&args, "price");
                 let stop_price = Self::get_num(&args, "stop_price");
                 let client_order_id = Self::get_str(&args, "client_order_id");
-                self.handle_buy_order(&pair, idr, price, stop_price, client_order_id.as_deref()).await
+                self.handle_buy_order(&pair, idr, price, stop_price, client_order_id.as_deref())
+                    .await
             }
             "sell_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
@@ -502,8 +570,15 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 };
                 let order_type =
                     Self::get_str(&args, "order_type").unwrap_or_else(|| "limit".into());
-                self.handle_sell_order(&pair, price, amount, &order_type, stop_price, client_order_id.as_deref())
-                    .await
+                self.handle_sell_order(
+                    &pair,
+                    price,
+                    amount,
+                    &order_type,
+                    stop_price,
+                    client_order_id.as_deref(),
+                )
+                .await
             }
             "get_order_by_client_id" => {
                 let client_order_id = match Self::get_str(&args, "client_order_id") {
@@ -654,7 +729,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             "deposit_address" => {
                 let currency = Self::get_str(&args, "currency").unwrap_or_default();
                 let network = Self::get_str(&args, "network");
-                self.handle_deposit_address(&currency, network.as_deref()).await
+                self.handle_deposit_address(&currency, network.as_deref())
+                    .await
             }
 
             // Paper
@@ -721,8 +797,9 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let api_secret = Self::get_str(&args, "api_secret").unwrap_or_default();
                 let callback_url = Self::get_str(&args, "callback_url");
                 let test = Self::get_bool(&args, "test");
-                self.handle_auth_set(api_key, api_secret, callback_url, test).await
-            },
+                self.handle_auth_set(api_key, api_secret, callback_url, test)
+                    .await
+            }
 
             // Alert
             "alert_add" => {
@@ -732,7 +809,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 let percent_up = Self::get_num(&args, "percent_up");
                 let percent_down = Self::get_num(&args, "percent_down");
                 let note = Self::get_str(&args, "note");
-                self.handle_alert_add(&pair, above, below, percent_up, percent_down, note).await
+                self.handle_alert_add(&pair, above, below, percent_up, percent_down, note)
+                    .await
             }
             "alert_list" => {
                 let history = Self::get_bool(&args, "history");
@@ -752,13 +830,13 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
             // WebSocket snapshots (Market group)
             "ws_snapshot_ticker" => {
                 let pair = helpers::normalize_pair(
-                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()),
                 );
                 self.handle_ws_snapshot_ticker(&pair).await
             }
             "ws_snapshot_book" => {
                 let pair = helpers::normalize_pair(
-                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into())
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()),
                 );
                 self.handle_ws_snapshot_book(&pair).await
             }
@@ -815,5 +893,42 @@ fn all_tools(mcp: &IndodaxMcp) -> Vec<Tool> {
 impl IndodaxMcp {
     pub fn all_tools(&self) -> Vec<Tool> {
         all_tools(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn tool_def_sets_behavior_annotations() {
+        let tool = IndodaxMcp::tool_def("paper_reset", "Reset paper state", json!({}), vec![]);
+        let annotations = tool.annotations.expect("annotations should be set");
+
+        assert_eq!(tool.title.as_deref(), Some("Paper Reset"));
+        assert_eq!(annotations.title.as_deref(), Some("Paper Reset"));
+        assert_eq!(annotations.read_only_hint, Some(false));
+        assert_eq!(annotations.destructive_hint, Some(true));
+        assert_eq!(annotations.idempotent_hint, Some(true));
+        assert_eq!(annotations.open_world_hint, Some(false));
+    }
+
+    #[test]
+    fn tool_def_uses_root_required_and_strict_object_schema() {
+        let tool = IndodaxMcp::tool_def(
+            "get_order",
+            "Get one order",
+            json!({
+                "order_id": IndodaxMcp::num_param("Order ID", true),
+            }),
+            vec!["order_id"],
+        );
+        let schema = tool.schema_as_json_value();
+
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"], json!(["order_id"]));
+        assert!(schema["properties"]["order_id"].get("required").is_none());
     }
 }

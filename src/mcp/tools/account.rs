@@ -10,13 +10,13 @@ pub fn account_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "account_info",
-            "Retrieve comprehensive information about your Indodax account. This tool provides a complete snapshot of your identity verification status, transaction permissions, and all asset balances, including both available funds and those currently locked in open orders. Use this to get a high-level overview of your account state.",
+            "[REQUIRES AUTH, READ-ONLY] Retrieve the full private account snapshot from Indodax. Returns JSON text with identity/status fields, API permissions, balances, locked funds, and server timestamp when provided by the exchange. Use this for a complete account overview; use balance when you only need non-zero wallet balances.",
             serde_json::json!({}),
             vec![],
         ),
         IndodaxMcp::tool_def(
             "balance",
-            "Get a clean list of all non-zero asset balances for your authenticated Indodax account. This tool simplifies portfolio tracking by filtering out inactive assets, showing you exactly what you hold and in what quantities (e.g., IDR, BTC, ETH).",
+            "[REQUIRES AUTH, READ-ONLY] Return only the non-zero wallet balances from your Indodax account as JSON text. This filters the broader account_info response for portfolio tracking. Use account_info instead when you need permissions, locked balances, or account metadata.",
             serde_json::json!({}),
             vec![],
         ),
@@ -30,7 +30,7 @@ pub fn account_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "order_history",
-            "Retrieve a detailed historical record of all orders (both filled and cancelled) placed on a specific trading pair. This tool is vital for auditing your trading performance, calculating cost basis, and reconciling trade activity over time.",
+            "[REQUIRES AUTH, READ-ONLY] Retrieve historical orders for one trading pair, including filled, cancelled, and other exchange-reported order states. Returns JSON text from the private orderHistory API. Use this for order lifecycle auditing; use trade_history when you only need executed fills and fees.",
             serde_json::json!({
                 "symbol": IndodaxMcp::str_param(
                     "The trading pair symbol to query (e.g., 'btc_idr', 'eth_idr'). Supports both underscore and compact formats.",
@@ -43,7 +43,7 @@ pub fn account_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "trade_history",
-            "Get a precise history of executed trade fills for your account. Unlike order history, this tool focuses on actual transactions, providing specific execution prices, quantities, and the trading fees paid for each fill on a given pair.",
+            "[REQUIRES AUTH, READ-ONLY] Retrieve executed trade fills for your account on one trading pair. Returns JSON text with execution prices, quantities, timestamps, and exchange fee fields when available. Use this for realized trading activity; use order_history when you need cancelled or still-open order records too.",
             serde_json::json!({
                 "symbol": IndodaxMcp::str_param(
                     "The trading pair symbol to query (e.g., 'btc_idr', 'eth_idr').",

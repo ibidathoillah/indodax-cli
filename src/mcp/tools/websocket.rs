@@ -7,7 +7,7 @@ pub fn websocket_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "ws_snapshot_ticker",
-            "Retrieve a real-time price ticker snapshot using a direct, high-speed WebSocket connection. This tool bypasses the standard REST API rate limits and provides the absolute latest price data available from the exchange's live stream. It is the preferred method for getting the most recent price for a single trading pair.",
+            "[PUBLIC READ-ONLY] Open a temporary public WebSocket connection, subscribe to one ticker channel, return one JSON text snapshot, and close. This does not require calling ws_token first and does not create a persistent stream. Use this when freshness matters more than REST simplicity; use ticker for normal one-pair REST checks.",
             serde_json::json!({
                 "pair": IndodaxMcp::str_param("The trading pair symbol to query (e.g., 'btc_idr'). Must be in lowercase with an underscore.", true, None),
             }),
@@ -15,7 +15,7 @@ pub fn websocket_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "ws_snapshot_book",
-            "Obtain a high-precision snapshot of the current order book depth via a live WebSocket stream. This tool provides a low-latency view of the market's liquidity, including the most competitive buy (bid) and sell (ask) orders. Use this for real-time depth analysis and to minimize slippage on large trades.",
+            "[PUBLIC READ-ONLY] Open a temporary public WebSocket connection, subscribe to one order-book channel, return one JSON text snapshot of bids and asks, and close. This does not require calling ws_token first and is not a persistent stream. Use this for low-latency depth checks; use orderbook for the simpler REST alternative.",
             serde_json::json!({
                 "pair": IndodaxMcp::str_param("The trading pair symbol to query (e.g., 'btc_idr').", true, None),
             }),
@@ -29,7 +29,7 @@ pub fn websocket_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "ws_token",
-            "Generate a secure, time-limited authentication token for connecting to Indodax's WebSocket API. This tool can generate tokens for public market data streams as well as private, authenticated streams (such as real-time order and balance updates). The returned token should be used as a query parameter when establishing a WebSocket connection.",
+            "[READ-ONLY] Generate a time-limited Indodax WebSocket token for external streaming clients. Public tokens need no credentials; private=true requires configured API credentials and returns a token suitable for private order or balance streams. Snapshot tools handle their own token internally, so call this only when another client will open the WebSocket connection.",
             serde_json::json!({
                 "private": IndodaxMcp::bool_param("Set to true to generate an authenticated token for private WebSocket streams. This requires valid API credentials to be configured."),
             }),
@@ -41,10 +41,7 @@ pub fn websocket_tools() -> Vec<Tool> {
 const PUBLIC_WS_URL: &str = "wss://ws3.indodax.com/ws/";
 
 impl IndodaxMcp {
-    async fn fetch_ws_snapshot(
-        &self,
-        channel: &str,
-    ) -> CallToolResult {
+    async fn fetch_ws_snapshot(&self, channel: &str) -> CallToolResult {
         let token = match helpers::fetch_public_ws_token(&self.client).await {
             Ok(t) => t,
             Err(e) => return Self::error_result(format!("Failed to fetch WS token: {}", e)),
@@ -62,11 +59,7 @@ impl IndodaxMcp {
         }
     }
 
-    async fn ws_single_request(
-        &self,
-        url: &str,
-        channel: &str,
-    ) -> CallToolResult {
+    async fn ws_single_request(&self, url: &str, channel: &str) -> CallToolResult {
         use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::connect_async;
         use tokio_tungstenite::tungstenite::Message;
@@ -165,19 +158,19 @@ impl IndodaxMcp {
     pub async fn handle_ws_token(&self, private: bool) -> CallToolResult {
         if private {
             match self.client.signer() {
-                Some(_) => {
-                    match self.client.generate_ws_token().await {
-                        Ok((token, channel)) => Self::json_result(serde_json::json!({
-                            "token": token,
-                            "channel": channel,
-                            "url": "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true",
-                            "type": "private",
-                        })),
-                        Err(e) => Self::error_result(format!("Failed to generate private token: {}", e)),
+                Some(_) => match self.client.generate_ws_token().await {
+                    Ok((token, channel)) => Self::json_result(serde_json::json!({
+                        "token": token,
+                        "channel": channel,
+                        "url": "wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true",
+                        "type": "private",
+                    })),
+                    Err(e) => {
+                        Self::error_result(format!("Failed to generate private token: {}", e))
                     }
-                }
+                },
                 None => Self::error_result(
-                    "Private WebSocket token requires API credentials. Use auth_set first.".into()
+                    "Private WebSocket token requires API credentials. Use auth_set first.".into(),
                 ),
             }
         } else {

@@ -6,7 +6,7 @@ pub fn paper_tools() -> Vec<Tool> {
     vec![
         IndodaxMcp::tool_def(
             "paper_init",
-            "Initialize the virtual paper trading simulation environment. This tool sets up your starting virtual balances for risk-free strategy testing. You can use the default amounts or specify your own initial IDR and BTC holdings to simulate different starting scenarios.",
+            "[LOCAL WRITE, DESTRUCTIVE TO PAPER STATE ONLY] Initialize or replace the paper trading simulation with virtual IDR and BTC balances. This never touches real Indodax funds, but it overwrites any existing simulated balances, open paper orders, and paper trade history. Call this before paper_buy or paper_sell when starting a fresh practice session; the response confirms the virtual starting balances.",
             serde_json::json!({
                 "idr": IndodaxMcp::num_param("The initial virtual IDR balance for the simulation. Defaults to 100,000,000 IDR if not specified.", false),
                 "btc": IndodaxMcp::num_param("The initial virtual BTC balance for the simulation. Defaults to 1.0 BTC if not specified.", false),
@@ -15,7 +15,7 @@ pub fn paper_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "paper_reset",
-            "Completely wipe and reset the paper trading environment. This tool clears all virtual balances, removes all simulated open orders, and deletes the entire trade history, returning everything to the initial default state. Use this to start a fresh simulation from scratch.",
+            "[LOCAL WRITE, DESTRUCTIVE TO PAPER STATE ONLY] Reset the paper trading simulation to the default virtual balances. This clears simulated open orders and simulated trade history, but never places or cancels real Indodax orders. Use paper_init instead when you need custom starting balances.",
             serde_json::json!({}),
             vec![],
         ),
@@ -50,7 +50,7 @@ pub fn paper_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "paper_orders",
-            "List all simulated orders that are currently active and unfilled in the paper trading environment. Use this to monitor your pending virtual trades.",
+            "[LOCAL READ-ONLY] List active, unfilled simulated orders in the current paper trading session as JSON text. This does not contact Indodax and does not change virtual balances. Use paper_history for filled or cancelled simulated orders.",
             serde_json::json!({}),
             vec![],
         ),
@@ -82,7 +82,7 @@ pub fn paper_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "paper_fill",
-            "Manually simulate the execution (filling) of an open paper order. This tool is useful for testing how your strategy handles filled orders. You can provide a specific fill price or instruct the tool to fetch real-time prices from the Indodax API.",
+            "[LOCAL WRITE TO PAPER STATE] Manually mark one or all open paper orders as filled, updating only simulated balances and simulated history. It never sends real exchange orders. Provide price for a manual fill, omit price to use the order price, or set fetch=true to read current Indodax market prices before deciding fills.",
             serde_json::json!({
                 "order_id":
                     IndodaxMcp::num_param("The ID of the specific simulated order to fill. Optional if 'all' is true.", false),
@@ -94,7 +94,7 @@ pub fn paper_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "paper_check_fills",
-            "Automatically evaluate all open paper orders against real-world market prices and fill those that would have been executed in a real market. This tool effectively acts as the 'matching engine' for your paper trading simulation.",
+            "[LOCAL WRITE TO PAPER STATE, OPTIONAL PUBLIC MARKET READ] Evaluate open paper orders against supplied prices or fetched Indodax market prices, then fill only simulated orders whose conditions match. This is the paper matching-engine step after paper_buy or paper_sell; it never places real orders. Returns JSON text summarizing filled and remaining simulated orders.",
             serde_json::json!({
                 "prices":
                     IndodaxMcp::str_param("Optional: A JSON object of current prices to check against (e.g., '{\"btc_idr\": 100000000}'). If omitted, use 'fetch: true' to get real-time data.", false, None),
@@ -283,7 +283,16 @@ impl IndodaxMcp {
             None => None,
         };
         let mut state = self.load_paper_state().await;
-        match crate::commands::paper::paper_fill(&mut state, order_id, fill_price, fill_all, Some(&self.client), fetch).await {
+        match crate::commands::paper::paper_fill(
+            &mut state,
+            order_id,
+            fill_price,
+            fill_all,
+            Some(&self.client),
+            fetch,
+        )
+        .await
+        {
             Ok(output) => {
                 if let Err(e) = self.save_paper_state(&state).await {
                     return Self::error_from_indodax(&e);
@@ -300,13 +309,8 @@ impl IndodaxMcp {
         fetch: bool,
     ) -> CallToolResult {
         let mut state = self.load_paper_state().await;
-        match crate::commands::paper::paper_check_fills(
-            &self.client,
-            &mut state,
-            prices,
-            fetch,
-        )
-        .await
+        match crate::commands::paper::paper_check_fills(&self.client, &mut state, prices, fetch)
+            .await
         {
             Ok(output) => {
                 if let Err(e) = self.save_paper_state(&state).await {

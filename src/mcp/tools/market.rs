@@ -14,7 +14,7 @@ pub fn market_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "ticker",
-            "Obtain a real-time market data snapshot for a specific trading pair. Returns critical price action metrics including the last traded price, current best bid and ask (buy/sell) prices, 24-hour high and low, and total 24-hour trading volume. This is the primary tool for price discovery and basic market monitoring.",
+            "[PUBLIC READ-ONLY] Obtain the current REST ticker snapshot for one Indodax trading pair. Returns JSON text with last price, buy/sell prices, 24h high/low, and volume. Use this for normal price checks; use ticker_all for all pairs or ws_snapshot_ticker when low-latency WebSocket data matters.",
             serde_json::json!({
                 "pair": IndodaxMcp::str_param("The specific trading pair to query (e.g., 'btc_idr', 'eth_idr', 'usdt_idr'). The standard format is base_quote in lowercase.", false, Some("btc_idr"))
             }),
@@ -22,7 +22,7 @@ pub fn market_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "ticker_all",
-            "Get real-time ticker data for every supported trading pair on the Indodax exchange in a single request. This provides a comprehensive view of global market activity, allowing you to quickly identify volume spikes, significant price moves, and arbitrage opportunities across all listed assets.",
+            "[PUBLIC READ-ONLY] Get current REST ticker snapshots for every supported Indodax trading pair in one call. Returns JSON text keyed by pair with price and 24h statistics. Use this for exchange-wide scans; use ticker when you only need one pair.",
             serde_json::json!({}),
             vec![],
         ),
@@ -40,7 +40,7 @@ pub fn market_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "orderbook",
-            "Fetch the current order book depth for a specific trading pair. Returns a detailed list of open buy orders (bids) and sell orders (asks) sorted by price. This tool is fundamental for analyzing market liquidity, identifying support/resistance levels, and estimating the slippage for large orders.",
+            "[PUBLIC READ-ONLY] Fetch the current REST order book depth for one trading pair. Returns JSON text containing bid and ask price levels with volumes, sorted by price. Use this for resting liquidity and slippage checks; use trades for recent executions or ws_snapshot_book for a one-shot WebSocket depth snapshot.",
             serde_json::json!({
                 "pair": IndodaxMcp::str_param("The trading pair for which to retrieve order book depth (e.g., 'btc_idr').", false, Some("btc_idr"))
             }),
@@ -48,7 +48,7 @@ pub fn market_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "trades",
-            "Retrieve the list of the most recent public trades executed for a specific trading pair. For each trade, it provides the execution price, the amount of the asset traded, the exact timestamp, and the trade side. Essential for verifying real-time market activity and trade flow.",
+            "[PUBLIC READ-ONLY] Retrieve recent public executions for one Indodax trading pair. Returns JSON text with trade price, amount, timestamp, and side. Use this to inspect tape activity; use orderbook for resting bids/asks or trade_history for authenticated fills from your own account.",
             serde_json::json!({
                 "pair": IndodaxMcp::str_param("The trading pair to retrieve recent trade history for (e.g., 'btc_idr').", false, Some("btc_idr"))
             }),
@@ -56,7 +56,7 @@ pub fn market_tools() -> Vec<Tool> {
         ),
         IndodaxMcp::tool_def(
             "ohlc",
-            "Retrieve historical Open, High, Low, Close, and Volume (OHLCV) candle data. This tool is designed for technical analysis, allowing you to fetch historical price action over custom timeframes and date ranges to power charting and algorithmic strategies.",
+            "[PUBLIC READ-ONLY] Retrieve historical OHLCV candles from the Indodax TradingView v2 endpoint. Returns JSON text with candle arrays for charting and technical analysis. If from/to are omitted the handler uses the last 24 hours; Unix timestamps must be seconds, though millisecond-looking values are normalized. Use ticker for the latest quote instead of historical candles.",
             serde_json::json!({
                 "symbol": IndodaxMcp::str_param("The trading pair symbol in v2 format (e.g., 'BTCIDR' or 'BTC_IDR').", false, Some("BTCIDR")),
                 "timeframe": IndodaxMcp::str_param(
