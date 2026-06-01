@@ -52,6 +52,22 @@ function getSourceBinaryPath() {
 }
 
 function buildFromSource() {
+    if (platform === 'android') {
+        const cargoCheck = spawnSync('cargo', ['--version']);
+        if (cargoCheck.error && cargoCheck.error.code === 'ENOENT') {
+            console.log('\x1b[33mCargo not found. Attempting to install Rust/Cargo automatically on Termux...\x1b[0m');
+            const installRust = spawnSync('pkg', ['install', 'rust', '-y'], {
+                stdio: 'inherit'
+            });
+
+            if (installRust.status !== 0) {
+                console.error('\x1b[31mFailed to install Rust automatically.\x1b[0m');
+                console.error('Please run \x1b[32mpkg install rust\x1b[0m manually.');
+                process.exit(1);
+            }
+        }
+    }
+
     console.log('Building indodax-cli from source...');
 
     const result = spawnSync('cargo', ['build', '--release', '--all-features'], {

@@ -1,7 +1,7 @@
 {
   "name": "paper-wasm",
   "type": "module",
-  "version": "0.1.50",
+  "version": "0.1.51",
   "files": [
     "paper_wasm_bg.wasm",
     "paper_wasm.js",
