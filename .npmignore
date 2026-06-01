@@ -1,11 +1,8 @@
-src/
 target/
 paper-wasm/
 web/
 docs/
 tests/
-Cargo.toml
-Cargo.lock
 Dockerfile
 E2E_TESTING_LOG.md
 RELEASE_NOTES.md
