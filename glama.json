@@ -5,7 +5,7 @@
     "ibidathoillah"
   ],
   "mcpName": "io.github.ibidathoillah/indodax-cli",
-  "description": "Professional-grade MCP server and CLI for the Indodax cryptocurrency exchange. Provides comprehensive access to real-time market data, secure account management, spot trading, paper trading, and WebSocket event streams. Supports STDIO for desktop apps (Claude) and HTTP Bridge for mobile/cloud (ChatGPT/Glama) with multi-user isolation.",
+  "description": "AI-Native Kraken-style MCP server and CLI for the Indodax exchange. Fully optimized for LLMs with machine-readable tool/error catalogs and workflow skills. Supports real-time market data, portfolio management, secure spot trading with previews, paper trading, and WebSocket streams. Native support for Claude Desktop (STDIO) and mobile/cloud agents (HTTP Bridge) with multi-user isolation.",
   "environmentVariables": [
     {
       "name": "INDODAX_API_KEY",
