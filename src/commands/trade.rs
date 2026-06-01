@@ -877,31 +877,36 @@ mod tests {
             order_type: None,
             stop_price: None,
             client_id: None,
+            validate: false,
         };
         match cmd {
             TradeCommand::Sell { price, .. } => {
                 assert!(price.is_none());
             }
             _ => panic!("Expected Sell command, got {:?}", cmd),
-        #[test]
-        fn test_trade_command_sell_limit_order() {
-            let cmd = TradeCommand::Sell {
-                pair: "btc_idr".into(),
-                price: Some(100_000_000.0),
-                amount: 0.5,
-                order_type: None,
-                stop_price: None,
-                client_id: None,
-                validate: false,
-            };
-            match cmd {
-                TradeCommand::Sell { price, .. } => {
-                    assert_eq!(price, Some(100_000_000.0));
-                }
-                _ => panic!("Expected Sell command, got {:?}", cmd),
+        }
+    }
+
+    #[test]
+    fn test_trade_command_sell_limit_order() {
+        let cmd = TradeCommand::Sell {
+            pair: "btc_idr".into(),
+            price: Some(100_000_000.0),
+            amount: 0.5,
+            order_type: None,
+            stop_price: None,
+            client_id: None,
+            validate: false,
+        };
+        match cmd {
+            TradeCommand::Sell { price, .. } => {
+                assert_eq!(price, Some(100_000_000.0));
             }
+            _ => panic!("Expected Sell command, got {:?}", cmd),
         }
-        }
+    }
+
+    #[test]
     fn test_trade_command_cancel_all_no_pair() {
         let cmd = TradeCommand::CountdownCancelAll {
             pair: None,
