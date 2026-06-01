@@ -1,13 +1,13 @@
-## 🚀 Welcome to Indodax CLI v0.1.49
+## 🚀 Welcome to Indodax CLI v0.1.55
 
-### 🆕 What's New in v0.1.49
+### 🆕 What's New in v0.1.55
 - **🛠️ Test Suite Fix**: Resolved a compilation error in `mcp_e2e` integration tests by making HTTP handler functions public.
 
-## 🚀 Welcome to Indodax CLI v0.1.49
+## 🚀 Welcome to Indodax CLI v0.1.55
 
 This release brings highly requested advanced trading features, affiliate support, and a significant boost to shell productivity.
 
-### 🆕 What's New in v0.1.49
+### 🆕 What's New in v0.1.55
 
 - **🛑 Stop-Limit Orders**: 
   - Full support for stop-limit orders in both CLI and MCP. 
@@ -28,7 +28,7 @@ This release brings highly requested advanced trading features, affiliate suppor
 - **📈 Portfolio Tracking in MCP**:
   - New tools: `equity_snap` and `equity_history` for AI-driven portfolio growth analysis.
 
-### 🆕 What's New in v0.1.49
+### 🆕 What's New in v0.1.55
 
 - **📡 Full WebSocket API Coverage**:
   - Implemented all public and private channels from the official Indodax documentation.
@@ -45,7 +45,7 @@ This release brings highly requested advanced trading features, affiliate suppor
   - Improved real-time order book display with support for multiple markets.
   - Detailed Private Order updates including fill information, fees, and tax assets.
 
-### 🆕 What's New in v0.1.49
+### 🆕 What's New in v0.1.55
 
 - **🌐 Production-Ready MCP HTTP Bridge**:
   - Integrated a high-performance HTTP server directly into the binary using **Axum**.
@@ -66,7 +66,7 @@ This release brings highly requested advanced trading features, affiliate suppor
   - Revamped **MCP Documentation** in `src/mcp/README.md`.
   - Optimized Docker image with multi-stage build.
 
-### 🆕 What's New in v0.1.49
+### 🆕 What's New in v0.1.55
 
 - **🚀 Glama Deploy Fixes**:
   - Updated the Docker image to Debian Trixie and removed unnecessary OpenSSL runtime dependencies.
