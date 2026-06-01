@@ -42,7 +42,7 @@ comfy-table = { version = "7", optional = true }
 rmcp = { version = "1.7", features = ["server", "transport-io", "macros", "schemars"], optional = true }
 axum = { version = "0.7", optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
-tokio-tungstenite = { version = "0.24", optional = true }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 indicatif = "0.17"
