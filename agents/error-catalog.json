@@ -1,0 +1,38 @@
+[
+  {
+    "error": "auth",
+    "retryable": false,
+    "action": "Check INDODAX_API_KEY and INDODAX_API_SECRET. Ensure credentials have appropriate permissions.",
+    "categories": ["authentication", "permissions"]
+  },
+  {
+    "error": "rate_limit",
+    "retryable": true,
+    "action": "Back off and prefer WebSocket for polling-heavy workflows. Check client-side rate-limit status.",
+    "categories": ["rate_limit", "throttling"]
+  },
+  {
+    "error": "validation",
+    "retryable": false,
+    "action": "Fix pair, amount, price, or required parameters. Ensure pair format is 'base_quote'.",
+    "categories": ["invalid_input", "validation"]
+  },
+  {
+    "error": "connection",
+    "retryable": true,
+    "action": "Check internet connectivity and Indodax API status page. Retry with exponential backoff.",
+    "categories": ["network", "dns", "timeout"]
+  },
+  {
+    "error": "server",
+    "retryable": true,
+    "action": "Indodax server-side issue. Wait and retry later.",
+    "categories": ["api_error", "server_down"]
+  },
+  {
+    "error": "insufficient_funds",
+    "retryable": false,
+    "action": "Top up account or reduce order volume. Check available balance vs locked balance.",
+    "categories": ["trade", "balance"]
+  }
+]

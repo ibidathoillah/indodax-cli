@@ -1,0 +1,28 @@
+# Indodax CLI
+
+Indodax CLI is an AI-native command-line interface for the Indodax cryptocurrency exchange. It provides a robust, machine-readable bridge for market data, trading, and account management.
+
+## Key Files for LLMs
+- [AGENTS.md](AGENTS.md): Technical guide for AI agents.
+- [CONTEXT.md](CONTEXT.md): System architecture and high-level context.
+- [CLAUDE.md](CLAUDE.md): Development and interaction guidelines.
+- [TODO.md](TODO.md): Roadmap and task status.
+
+## Command Groups
+- `market`: Public market data (tickers, books, history).
+- `account`: Private account information and history.
+- `trade`: Live order execution.
+- `funding`: Deposit and withdrawal management.
+- `ws`: Real-time WebSocket streaming.
+- `paper`: Risk-free trading simulation.
+- `mcp`: Model Context Protocol server.
+
+## Installation
+```bash
+cargo install --path .
+```
+
+## Usage Example
+```bash
+indodax market ticker btc_idr -o json
+```

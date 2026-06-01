@@ -97,6 +97,18 @@ pub fn account_tools() -> Vec<Tool> {
             }),
             vec!["email"],
         ),
+        IndodaxMcp::tool_def(
+            "portfolio_summary",
+            "[REQUIRES AUTH, READ-ONLY] Retrieve a summarized view of your entire portfolio. This tool calculates the total value of all your holdings in IDR by fetching current market prices for each non-zero balance. Returns an aggregated table of assets, amounts, current IDR values, and percentage allocations.",
+            serde_json::json!({}),
+            vec![],
+        ),
+        IndodaxMcp::tool_def(
+            "portfolio_allocation",
+            "[REQUIRES AUTH, READ-ONLY] Get a percentage-based breakdown of your portfolio across different assets. This is essential for risk management and ensuring your holdings align with your target diversification strategy.",
+            serde_json::json!({}),
+            vec![],
+        ),
     ]
 }
 
@@ -258,6 +270,20 @@ impl IndodaxMcp {
         {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_portfolio_summary(&self) -> CallToolResult {
+        match crate::commands::account::portfolio_summary(&self.client).await {
+            Ok(output) => Self::json_result(output.data),
+            Err(e) => Self::error_result(format!("Failed to get portfolio summary: {}", e)),
+        }
+    }
+
+    pub async fn handle_portfolio_allocation(&self) -> CallToolResult {
+        match crate::commands::account::portfolio_allocation(&self.client).await {
+            Ok(output) => Self::json_result(output.data),
+            Err(e) => Self::error_result(format!("Failed to get portfolio allocation: {}", e)),
         }
     }
 }

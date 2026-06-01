@@ -38,6 +38,9 @@ pub enum WebSocketCommand {
     #[command(name = "orders", about = "Stream private order updates")]
     Orders,
 
+    #[command(name = "balances", about = "Stream private balance updates")]
+    Balances,
+
     #[command(name = "subscribe", about = "Subscribe to one or more raw channels")]
     Subscribe {
         #[arg(help = "Channel names (comma-separated, e.g., chart:tick-btcidr,market:summary-24h)")]
@@ -65,11 +68,65 @@ pub async fn execute(
         }
         WebSocketCommand::Summary => ws_summary(client, output_format).await,
         WebSocketCommand::Orders => ws_orders(client, output_format).await,
+        WebSocketCommand::Balances => ws_balances(client, output_format).await,
         WebSocketCommand::Subscribe { channels } => {
             let channels: Vec<String> = channels.split(',').map(|s| s.trim().to_string()).collect();
             ws_generic_subscribe(client, &channels, output_format).await
         }
     }
+}
+
+async fn ws_balances(client: &IndodaxClient, output_format: OutputFormat) -> Result<CommandOutput> {
+    if client.signer().is_none() {
+        return Err(anyhow::anyhow!(
+            "Private WebSocket requires API credentials."
+        ));
+    }
+
+    eprintln!("Generating WebSocket token...");
+    let (token, channel) = client.generate_ws_token().await?;
+    eprintln!("Token generated. Connecting to private WebSocket...");
+
+    ws_private_connect_and_listen(
+        PRIVATE_WS_URL,
+        &token,
+        &channel,
+        |val| {
+            let mut last_event = None;
+
+            // Handle new format: push -> pub -> data -> [ { eventType, balance } ]
+            if let Some(push) = val.get("push") {
+                if let Some(pub_data) = push.get("pub") {
+                    if let Some(data_arr) = pub_data.get("data").and_then(|v| v.as_array()) {
+                        for item in data_arr {
+                            if item.get("eventType").and_then(|v| v.as_str()) == Some("balance_update") {
+                                if let Some(balance) = item.get("balance") {
+                                    let asset = balance.get("asset").or(balance.get("currency")).and_then(|v| v.as_str()).unwrap_or("?");
+                                    let free = helpers::value_to_string(balance.get("free").or(balance.get("available")).unwrap_or(&serde_json::Value::Null));
+                                    let locked = helpers::value_to_string(balance.get("locked").or(balance.get("frozen")).unwrap_or(&serde_json::Value::Null));
+
+                                    let event = serde_json::json!({
+                                        "event": "balance_update", "asset": asset,
+                                        "free": free, "locked": locked
+                                    });
+
+                                    if output_format == OutputFormat::Json {
+                                        println!("{}", event);
+                                    } else {
+                                        println!("Balance Update: Asset={} Free={} Locked={}",
+                                            asset, free, locked);
+                                    }
+                                    last_event = Some(event);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            last_event
+        },
+        output_format
+    ).await
 }
 
 use std::collections::HashMap;

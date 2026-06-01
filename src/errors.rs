@@ -86,6 +86,37 @@ impl IndodaxError {
             _ => false,
         }
     }
+
+    pub fn suggestion(&self) -> Option<String> {
+        match self {
+            IndodaxError::Api { category, message, .. } => match category {
+                ErrorCategory::Authentication => Some("Check your API key and secret. Ensure they are correct and have the necessary permissions.".into()),
+                ErrorCategory::RateLimit => Some("Reduce the frequency of your requests or use WebSockets for real-time data.".into()),
+                ErrorCategory::Validation => {
+                    if message.contains("pair") || message.contains("symbol") {
+                        Some("Use 'indodax pairs' to find valid trading pairs. Use 'base_quote' format (e.g., btc_idr).".into())
+                    } else {
+                        Some("Check the command arguments and ensure they meet the requirements.".into())
+                    }
+                },
+                ErrorCategory::Connection => Some("Check your internet connection and verify that Indodax API is reachable.".into()),
+                _ => None,
+            },
+            IndodaxError::Config(_) => Some("Run 'indodax setup' (planned) or manually edit the config file.".into()),
+            IndodaxError::Parse(_) => Some("Ensure the input format is correct. Use 'indodax --help' for usage details.".into()),
+            _ => None,
+        }
+    }
+
+    pub fn docs_url(&self) -> Option<String> {
+        let base = "https://github.com/ibidathoillah/indodax-cli/blob/main/docs/errors.md";
+        match self {
+            IndodaxError::Api { category, .. } => Some(format!("{}#{}", base, category.to_string().replace('_', "-"))),
+            IndodaxError::Http(_) => Some(format!("{}#connection-error", base)),
+            IndodaxError::Config(_) => Some(format!("{}#config-error", base)),
+            _ => Some(base.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

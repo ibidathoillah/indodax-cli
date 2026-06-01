@@ -24,6 +24,12 @@ Unofficial Rust CLI for Indodax.
 [![MCP](https://img.shields.io/badge/MCP-ready-7c3aed)](#mcp-server)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+<br/>
+<p align="center">
+  <img src="docs/demo.svg" alt="Indodax CLI Demo" width="800">
+</p>
+<br/>
+
 ## Highlights
 
 - Public market data: server time, pairs, ticker, all tickers, summaries, order book, trades, OHLC, and price increments.
@@ -433,6 +439,22 @@ Coverage is maintained across `auth`, `client`, `config`, `errors`, `commands`, 
 - Prefer read-only API keys for account inspection and WebSocket monitoring.
 - Use least-privilege exchange API keys for MCP and automation.
 - Never commit real API keys, secrets, callback tokens, or listen keys.
+
+## Verifying Binaries
+
+Release binaries are signed with `minisign` to ensure their authenticity. You can verify them using the following public key:
+
+`RWRk1W8...` (You should replace this with the actual public key when generated)
+
+1. Download the binary, `checksums.txt`, and `checksums.txt.minisig` from the releases page.
+2. Verify the signature of the checksums file:
+   ```bash
+   minisign -Vm checksums.txt -P <PUBLIC_KEY>
+   ```
+3. Verify the checksum of the binary:
+   ```bash
+   sha256sum -c checksums.txt --ignore-missing
+   ```
 
 ## Development
 

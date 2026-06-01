@@ -40,7 +40,16 @@ impl Signer {
     }
 
     fn next_nonce(&self) -> u64 {
-        let now = crate::now_millis();
+        #[cfg(not(target_arch = "wasm32"))]
+        let now = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let d = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+            d.as_secs() * 1_000_000 + (d.subsec_micros() as u64)
+        };
+
+        #[cfg(target_arch = "wasm32")]
+        let now = crate::now_millis() * 1000;
+
         loop {
             let prev = self.last_nonce.load(Ordering::Acquire);
             let next = if now > prev { now } else { prev + 1 };

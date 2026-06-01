@@ -220,6 +220,25 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: Generate Checksums
+        run: |
+          sha256sum indodax-* > checksums.txt
+
+      - name: Sign Checksums
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          if [ -n "$MINISIGN_PRIVATE_KEY" ]; then
+            sudo apt-get install -y minisign
+            echo "$MINISIGN_PRIVATE_KEY" > minisign.key
+            echo "$MINISIGN_PASSWORD" | minisign -S -s minisign.key -m checksums.txt
+            rm minisign.key
+          else
+            echo "Skipping signature generation, MINISIGN_PRIVATE_KEY is not set."
+            touch checksums.txt.minisig
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -230,6 +249,8 @@ jobs:
             indodax-macos-x86_64
             indodax-macos-aarch64
             indodax-windows-x86_64.exe
+            checksums.txt
+            checksums.txt.minisig
           body_path: RELEASE_NOTES.md
           fail_on_unmatched_files: false
         env:

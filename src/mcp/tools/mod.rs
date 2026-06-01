@@ -522,8 +522,42 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
                 self.handle_ohlc(&symbol, &timeframe, from, to).await
             }
             "price_increments" => self.handle_price_increments().await,
+            "orderbook_grouped" => {
+                let pair = helpers::normalize_pair(
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()),
+                );
+                let grouping = Self::get_num(&args, "grouping");
+                let depth = Self::get_num(&args, "depth");
+                self.handle_orderbook_grouped(&pair, grouping, depth).await
+            }
+            "spreads" => {
+                let pair = helpers::normalize_pair(
+                    &Self::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()),
+                );
+                self.handle_spreads(&pair).await
+            }
 
             // Trade
+            "buy_preview" => {
+                let pair = helpers::normalize_pair(&Self::get_str(&args, "pair").unwrap_or_default());
+                let idr = Self::get_num(&args, "idr").unwrap_or(0.0);
+                let price = Self::get_num(&args, "price");
+                let stop_price = Self::get_num(&args, "stop_price");
+                let client_order_id = Self::get_str(&args, "client_order_id");
+                self.handle_buy_preview(&pair, idr, price, stop_price, client_order_id.as_deref()).await
+            }
+            "sell_preview" => {
+                let pair = helpers::normalize_pair(&Self::get_str(&args, "pair").unwrap_or_default());
+                let price = Self::get_num(&args, "price");
+                let stop_price = Self::get_num(&args, "stop_price");
+                let client_order_id = Self::get_str(&args, "client_order_id");
+                let amount = match Self::get_num(&args, "amount") {
+                    Some(v) if v > 0.0 => v,
+                    Some(v) => return Ok(Self::validation_error_result(format!("Amount must be positive, got {}", v))),
+                    None => return Ok(Self::validation_error_result("Missing required parameter: amount".into())),
+                };
+                self.handle_sell_preview(&pair, price, amount, stop_price, client_order_id.as_deref()).await
+            }
             "buy_order" => {
                 let acknowledged = Self::get_bool(&args, "acknowledged");
                 if let Err(msg) = self
@@ -594,6 +628,8 @@ impl rmcp::handler::server::ServerHandler for IndodaxMcp {
 
             // Account
             "account_info" => self.handle_account_info().await,
+            "portfolio_summary" => self.handle_portfolio_summary().await,
+            "portfolio_allocation" => self.handle_portfolio_allocation().await,
             "balance" => self.handle_balance().await,
             "equity_snap" => self.handle_equity_snap().await,
             "equity_history" => {

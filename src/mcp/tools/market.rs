@@ -75,6 +75,24 @@ pub fn market_tools() -> Vec<Tool> {
             serde_json::json!({}),
             vec![],
         ),
+        IndodaxMcp::tool_def(
+            "orderbook_grouped",
+            "[PUBLIC READ-ONLY] Fetch the order book and group price levels by a specified interval. This is useful for identifying significant support and resistance zones (walls) without being distracted by granular noise. Returns total volume per clustered price bracket.",
+            serde_json::json!({
+                "pair": IndodaxMcp::str_param("The trading pair to query (e.g., 'btc_idr').", true, Some("btc_idr")),
+                "grouping": IndodaxMcp::num_param("The price interval to group by (e.g., 100000 for 100k IDR steps).", false),
+                "depth": IndodaxMcp::num_param("The number of grouped levels to show per side. Default is 10.", false)
+            }),
+            vec!["pair"],
+        ),
+        IndodaxMcp::tool_def(
+            "spreads",
+            "[PUBLIC READ-ONLY] Calculate the current bid/ask spread for a trading pair. Returns absolute spread value and percentage. High spreads indicate low liquidity or high volatility.",
+            serde_json::json!({
+                "pair": IndodaxMcp::str_param("The trading pair to query (e.g., 'btc_idr').", true, Some("btc_idr"))
+            }),
+            vec!["pair"],
+        ),
     ]
 }
 
@@ -183,6 +201,22 @@ impl IndodaxMcp {
         {
             Ok(data) => Self::json_result(data),
             Err(e) => Self::error_from_indodax(&e),
+        }
+    }
+
+    pub async fn handle_orderbook_grouped(&self, pair: &str, grouping: Option<f64>, depth: Option<f64>) -> CallToolResult {
+        let grouping = grouping.unwrap_or(100000.0);
+        let depth = depth.unwrap_or(10.0) as usize;
+        match crate::commands::market::orderbook_grouped(&self.client, pair, grouping, depth).await {
+            Ok(output) => Self::json_result(output.data),
+            Err(e) => Self::error_result(format!("Failed to get grouped orderbook: {}", e)),
+        }
+    }
+
+    pub async fn handle_spreads(&self, pair: &str) -> CallToolResult {
+        match crate::commands::market::spreads(&self.client, pair).await {
+            Ok(output) => Self::json_result(output.data),
+            Err(e) => Self::error_result(format!("Failed to calculate spreads: {}", e)),
         }
     }
 }

@@ -55,11 +55,10 @@ pub struct Cli {
     #[arg(
         short = 'o',
         long = "output",
-        default_value = "table",
         help = "Output format: table or json",
         global = true
     )]
-    pub output: OutputFormat,
+    pub output: Option<OutputFormat>,
 
     #[arg(
         long = "api-key",
@@ -83,6 +82,13 @@ pub struct Cli {
     pub api_secret_stdin: bool,
 
     #[arg(
+        long = "api-secret-file",
+        help = "Read API secret from a file (more secure than --api-secret)",
+        global = true
+    )]
+    pub api_secret_file: Option<String>,
+
+    #[arg(
         short = 'v',
         long = "verbose",
         help = "Enable verbose output",
@@ -102,34 +108,77 @@ pub struct Cli {
 #[cfg(feature = "cli")]
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    // === Legacy Hidden Commands for Backward Compatibility ===
-    #[command(hide = true)]
+    /// Market data and information
     #[command(subcommand)]
     Market(commands::market::MarketCommand),
-    #[command(hide = true)]
+
+    /// Account balances and history
     #[command(subcommand)]
     Account(commands::account::AccountCommand),
+
+    /// Place and manage orders
+    #[command(subcommand)]
+    Order(commands::trade::TradeCommand),
+
+    /// Funding, deposits, and withdrawals
+    #[command(subcommand)]
+    Funding(commands::funding::FundingCommand),
+
+    /// WebSocket streaming
+    #[command(subcommand)]
+    Ws(commands::websocket::WebSocketCommand),
+
+    /// Manage API credentials and connectivity
+    #[command(subcommand)]
+    Auth(commands::auth::AuthCommand),
+
+    /// Price alert management
+    #[command(subcommand)]
+    Alert(commands::alert::AlertCommand),
+
+    /// Portfolio summary and allocation
+    #[command(subcommand)]
+    Portfolio(commands::account::AccountCommand),
+
+    /// Export history to CSV/JSON
+    #[command(subcommand)]
+    Export(commands::export::ExportCommand),
+
+    /// Paper trading (simulated)
+    #[command(subcommand)]
+    Paper(commands::paper::PaperCommand),
+
+    /// Interactive setup wizard
+    Setup,
+
+    /// Check system and API reachability status
+    Status,
+
+    /// Start interactive REPL
+    Shell,
+
+    // === Legacy Hidden Commands for Backward Compatibility ===
     #[command(hide = true)]
     #[command(subcommand)]
     Trade(commands::trade::TradeCommand),
     #[command(hide = true)]
     #[command(subcommand)]
-    Funding(commands::funding::FundingCommand),
+    Withdrawal(WithdrawalSubcommand),
 
     // === Flat Public Market Commands (originally nested under Market) ===
-    /// Get server time
+    #[command(hide = true)]
     ServerTime,
 
-    /// List available trading pairs
+    #[command(hide = true)]
     Pairs,
 
-    /// Get ticker for a pair
+    #[command(hide = true)]
     Ticker {
         #[arg(default_value = "btc_idr")]
         pair: String,
     },
 
-    /// Get OHLCV history for a pair
+    #[command(hide = true)]
     History {
         #[arg(default_value = "btc_idr")]
         pair: String,
@@ -141,13 +190,13 @@ pub enum Command {
         to: Option<u64>,
     },
 
-    /// Get tickers for all pairs
+    #[command(hide = true)]
     TickerAll,
 
-    /// Get 24h and 7d summaries for all pairs
+    #[command(hide = true)]
     Summaries,
 
-    /// Get order book for a pair
+    #[command(hide = true)]
     Orderbook {
         #[arg(default_value = "btc_idr")]
         pair: String,
@@ -155,13 +204,13 @@ pub enum Command {
         count: usize,
     },
 
-    /// Get recent trades for a pair
+    #[command(hide = true)]
     Trades {
         #[arg(default_value = "btc_idr")]
         pair: String,
     },
 
-    /// Get OHLCV candle data (default --from is 24h ago)
+    #[command(hide = true)]
     Ohlc {
         #[arg(short, long, default_value = "btc_idr")]
         pair: String,
@@ -173,46 +222,46 @@ pub enum Command {
         to: Option<u64>,
     },
 
-    /// Get market webdata for a pair
+    #[command(hide = true)]
     Webdata {
         #[arg(default_value = "btc_idr")]
         pair: String,
     },
 
-    /// Get chatroom history
+    #[command(hide = true)]
     ChatHistory,
 
-    /// Get detailed pairs info (V2)
+    #[command(hide = true)]
     PairsV2 {
         #[arg(short, long)]
         pair: Option<String>,
     },
 
-    /// Search markets (TradingView Search V2)
+    #[command(hide = true)]
     SearchV2,
 
-    /// Get terminal trading data
+    #[command(hide = true)]
     TerminalTrade {
         #[arg(default_value = "btc_idr")]
         pair: String,
     },
 
-    /// Get terminal market data
+    #[command(hide = true)]
     TerminalMarket {
         #[arg(default_value = "btc_idr")]
         pair: String,
     },
 
-    /// Get terminal market categories
+    #[command(hide = true)]
     TerminalCategories,
 
-    /// Get onramp config for a pair
+    #[command(hide = true)]
     OnrampConfig {
         #[arg(default_value = "usdt_idr")]
         pair: String,
     },
 
-    /// Get news for an asset
+    #[command(hide = true)]
     News {
         #[arg(default_value = "btc")]
         asset: String,
@@ -220,20 +269,20 @@ pub enum Command {
         page: u32,
     },
 
-    /// Get price increments (tick sizes)
+    #[command(hide = true)]
     PriceIncrements,
 
     // === Flat Private Account Commands (originally nested under Account) ===
-    /// Get current account information (balances, permissions, etc.)
+    #[command(hide = true)]
     AccountInfo,
 
-    /// Get non-zero account balances
+    #[command(hide = true)]
     Balance,
 
-    /// Get your deposit/withdrawal transactions
+    #[command(hide = true)]
     Transactions,
 
-    /// Get your trade history for a specific symbol
+    #[command(hide = true)]
     TradesHistory {
         /// Trading pair symbol (e.g., btc_idr)
         pair: String,
@@ -247,13 +296,8 @@ pub enum Command {
         from_id: Option<u64>,
     },
 
-    // === Flat Trading Command (originally nested under Trade) ===
-    /// Place and manage orders
-    #[command(subcommand)]
-    Order(commands::trade::TradeCommand),
-
     // === Flat Funding / Withdrawal Commands (originally nested under Funding) ===
-    /// Withdraw cryptocurrency
+    #[command(hide = true)]
     Withdraw {
         #[arg(short, long)]
         asset: String,
@@ -273,37 +317,6 @@ pub enum Command {
         #[arg(long, help = "Callback URL for withdrawal confirmation")]
         callback_url: Option<String>,
     },
-
-    /// Manage withdrawal fees and servers
-    #[command(subcommand)]
-    Withdrawal(WithdrawalSubcommand),
-
-    // === Flat WebSocket streaming ===
-    /// WebSocket streaming
-    #[command(subcommand)]
-    Ws(commands::websocket::WebSocketCommand),
-
-    // === Flat Paper Trading ===
-    /// Paper trading (simulated)
-    #[command(subcommand)]
-    Paper(commands::paper::PaperCommand),
-
-    // === Flat API Credentials ===
-    /// Manage API credentials
-    #[command(subcommand)]
-    Auth(commands::auth::AuthCommand),
-
-    // === Flat Price Alert Management ===
-    /// Price alert management
-    #[command(subcommand)]
-    Alert(commands::alert::AlertCommand),
-
-    // === Direct Tools ===
-    /// Interactive setup wizard
-    Setup,
-
-    /// Start interactive REPL
-    Shell,
 
     /// Start MCP stdio server for AI agent integration
     #[cfg(feature = "mcp")]
@@ -363,23 +376,77 @@ pub async fn dispatch(
     cli: Cli,
     client: &IndodaxClient,
     config: &mut config::IndodaxConfig,
+    output_format: OutputFormat,
 ) -> Result<CommandOutput, IndodaxError> {
     let output = match cli.command {
-        // === Legacy Hidden Commands ===
+        // === Primary Grouped Commands ===
         Command::Market(ref cmd) => commands::market::execute(client, cmd)
             .await
             .map_err(map_anyhow_error)?,
         Command::Account(ref cmd) => commands::account::execute(client, cmd)
             .await
             .map_err(map_anyhow_error)?,
-        Command::Trade(ref cmd) => commands::trade::execute(client, cmd, cli.yes)
+        Command::Order(ref cmd) => commands::trade::execute(client, cmd, cli.yes)
             .await
             .map_err(map_anyhow_error)?,
-        Command::Funding(ref cmd) => commands::funding::execute(client, config, cmd, cli.output)
+        Command::Funding(ref cmd) => commands::funding::execute(client, config, cmd, output_format)
+            .await
+            .map_err(map_anyhow_error)?,
+        Command::Ws(ref cmd) => commands::websocket::execute(client, cmd, output_format)
+            .await
+            .map_err(map_anyhow_error)?,
+        Command::Auth(ref cmd) => commands::auth::execute(client, config, cmd)
+            .await
+            .map_err(map_anyhow_error)?,
+        Command::Alert(ref cmd) => commands::alert::execute(client, &None, cmd)
+            .await
+            .map_err(map_anyhow_error)?,
+        Command::Paper(ref cmd) => commands::paper::execute(client, config, cmd)
+            .await
+            .map_err(map_anyhow_error)?,
+        Command::Portfolio(ref cmd) => commands::account::execute(client, cmd)
+            .await
+            .map_err(map_anyhow_error)?,
+        Command::Export(ref cmd) => commands::export::execute(client, cmd)
             .await
             .map_err(map_anyhow_error)?,
 
-        // === Public Market Commands ===
+        // === Utility Commands (Handled in main.rs) ===
+        Command::Setup | Command::Status | Command::Shell => {
+            return Err(IndodaxError::Other(
+                "This command is handled separately and cannot be run here".into(),
+            ));
+        }
+
+        // === Legacy Hidden Commands ===
+        Command::Trade(ref cmd) => commands::trade::execute(client, cmd, cli.yes)
+            .await
+            .map_err(map_anyhow_error)?,
+        Command::Withdrawal(ref sub) => {
+            let funding_cmd = match sub {
+                WithdrawalSubcommand::Fee { asset, network } => {
+                    commands::funding::FundingCommand::WithdrawFee {
+                        currency: asset.clone(),
+                        network: network.clone(),
+                    }
+                }
+                #[cfg(feature = "server")]
+                WithdrawalSubcommand::ServeCallback {
+                    port,
+                    auto_ok,
+                    listen,
+                } => commands::funding::FundingCommand::ServeCallback {
+                    port: *port,
+                    auto_ok: *auto_ok,
+                    listen: listen.clone(),
+                },
+            };
+            commands::funding::execute(client, config, &funding_cmd, output_format)
+                .await
+                .map_err(map_anyhow_error)?
+        }
+
+        // === Flat Public Market Commands (Hidden) ===
         Command::ServerTime => {
             commands::market::execute(client, &commands::market::MarketCommand::ServerTime)
                 .await
@@ -506,7 +573,7 @@ pub async fn dispatch(
                 .map_err(map_anyhow_error)?
         }
 
-        // === Account & Balances Commands ===
+        // === Flat Private Account Commands (Hidden) ===
         Command::AccountInfo => {
             commands::account::execute(client, &commands::account::AccountCommand::Info)
                 .await
@@ -536,12 +603,7 @@ pub async fn dispatch(
         .await
         .map_err(map_anyhow_error)?,
 
-        // === Order Execution ===
-        Command::Order(ref cmd) => commands::trade::execute(client, cmd, cli.yes)
-            .await
-            .map_err(map_anyhow_error)?,
-
-        // === Funding / Withdrawal Operations ===
+        // === Flat Funding / Withdrawal Operations (Hidden) ===
         Command::Withdraw {
             asset,
             volume,
@@ -560,53 +622,11 @@ pub async fn dispatch(
                 network,
                 callback_url,
             };
-            commands::funding::execute(client, config, &funding_cmd, cli.output)
-                .await
-                .map_err(map_anyhow_error)?
-        }
-        Command::Withdrawal(ref sub) => {
-            let funding_cmd = match sub {
-                WithdrawalSubcommand::Fee { asset, network } => {
-                    commands::funding::FundingCommand::WithdrawFee {
-                        currency: asset.clone(),
-                        network: network.clone(),
-                    }
-                }
-                #[cfg(feature = "server")]
-                WithdrawalSubcommand::ServeCallback {
-                    port,
-                    auto_ok,
-                    listen,
-                } => commands::funding::FundingCommand::ServeCallback {
-                    port: *port,
-                    auto_ok: *auto_ok,
-                    listen: listen.clone(),
-                },
-            };
-            commands::funding::execute(client, config, &funding_cmd, cli.output)
+            commands::funding::execute(client, config, &funding_cmd, output_format)
                 .await
                 .map_err(map_anyhow_error)?
         }
 
-        // === WS, Paper, Auth, Alert ===
-        Command::Ws(ref cmd) => commands::websocket::execute(client, cmd, cli.output)
-            .await
-            .map_err(map_anyhow_error)?,
-        Command::Paper(ref cmd) => commands::paper::execute(client, config, cmd)
-            .await
-            .map_err(map_anyhow_error)?,
-        Command::Auth(ref cmd) => commands::auth::execute(client, config, cmd)
-            .await
-            .map_err(map_anyhow_error)?,
-        Command::Alert(ref cmd) => commands::alert::execute(client, &None, cmd)
-            .await
-            .map_err(map_anyhow_error)?,
-
-        Command::Setup | Command::Shell => {
-            return Err(IndodaxError::Other(
-                "This command is handled separately".into(),
-            ));
-        }
         #[cfg(feature = "mcp")]
         Command::Mcp { .. } => {
             return Err(IndodaxError::Other(
@@ -615,7 +635,7 @@ pub async fn dispatch(
         }
     };
 
-    Ok(output.with_format(cli.output))
+    Ok(output.with_format(output_format))
 }
 
 #[cfg(feature = "cli")]
@@ -644,7 +664,7 @@ mod tests {
     fn test_cli_parse_output_json() {
         let args = vec!["indodax", "-o", "json", "ticker"];
         let cli = Cli::try_parse_from(args).unwrap();
-        assert_eq!(cli.output, OutputFormat::Json);
+        assert_eq!(cli.output, Some(OutputFormat::Json));
     }
 
     #[test]
@@ -704,14 +724,14 @@ mod tests {
     fn test_output_format_clap() {
         let args = vec!["indodax", "-o", "table", "ticker"];
         let cli = Cli::try_parse_from(args).unwrap();
-        assert_eq!(cli.output, OutputFormat::Table);
+        assert_eq!(cli.output, Some(OutputFormat::Table));
     }
 
     #[test]
     fn test_cli_parse_default_output() {
         let args = vec!["indodax", "ticker"];
         let cli = Cli::try_parse_from(args).unwrap();
-        assert_eq!(cli.output, OutputFormat::Table);
+        assert_eq!(cli.output, None);
     }
 
     #[test]

@@ -149,10 +149,22 @@ pub async fn handle_http_call(
         "summaries" => mcp.handle_summaries().await,
         "server_time" => mcp.handle_server_time().await,
         "price_increments" => mcp.handle_price_increments().await,
+        "orderbook_grouped" => {
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()));
+            let grouping = IndodaxMcp::get_num(&args, "grouping");
+            let depth = IndodaxMcp::get_num(&args, "depth");
+            mcp.handle_orderbook_grouped(&pair, grouping, depth).await
+        },
+        "spreads" => {
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_else(|| "btc_idr".into()));
+            mcp.handle_spreads(&pair).await
+        },
         
         // --- Account & Balance ---
         "balance" => mcp.handle_balance().await,
         "account_info" => mcp.handle_account_info().await,
+        "portfolio_summary" => mcp.handle_portfolio_summary().await,
+        "portfolio_allocation" => mcp.handle_portfolio_allocation().await,
         "open_orders" => {
             let pair = IndodaxMcp::get_str(&args, "pair").map(|p| crate::commands::helpers::normalize_pair(&p));
             mcp.handle_open_orders(pair.as_deref()).await
@@ -189,6 +201,22 @@ pub async fn handle_http_call(
         },
         
         // --- Trading ---
+        "buy_preview" => {
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
+            let idr = IndodaxMcp::get_num(&args, "idr").unwrap_or(0.0);
+            let price = IndodaxMcp::get_num(&args, "price");
+            let stop_price = IndodaxMcp::get_num(&args, "stop_price");
+            let client_order_id = IndodaxMcp::get_str(&args, "client_order_id");
+            mcp.handle_buy_preview(&pair, idr, price, stop_price, client_order_id.as_deref()).await
+        },
+        "sell_preview" => {
+            let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
+            let price = IndodaxMcp::get_num(&args, "price");
+            let amount = IndodaxMcp::get_num(&args, "amount").unwrap_or(0.0);
+            let stop_price = IndodaxMcp::get_num(&args, "stop_price");
+            let client_order_id = IndodaxMcp::get_str(&args, "client_order_id");
+            mcp.handle_sell_preview(&pair, price, amount, stop_price, client_order_id.as_deref()).await
+        },
         "buy_order" => {
             let pair = crate::commands::helpers::normalize_pair(&IndodaxMcp::get_str(&args, "pair").unwrap_or_default());
             let idr = IndodaxMcp::get_num(&args, "idr").unwrap_or(0.0);

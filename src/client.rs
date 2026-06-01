@@ -450,6 +450,68 @@ impl IndodaxClient {
         self.handle_v1_response(resp).await
     }
 
+    pub async fn private_post_v2<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &HashMap<String, String>,
+    ) -> Result<T, IndodaxError> {
+        let signer = self.signer.as_ref().ok_or_else(|| {
+            IndodaxError::Config("API credentials required for private endpoints".into())
+        })?;
+
+        let mut qs_parts: Vec<String> =
+            params.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        let timestamp = crate::now_millis();
+        qs_parts.push(format!("timestamp={}", timestamp));
+        qs_parts.push("recvWindow=5000".to_string());
+        qs_parts.sort();
+        let query_string = qs_parts.join("&");
+
+        let signature = signer.sign_v2(&query_string)?;
+        let url = format!("{}{}?{}", PRIVATE_V2_BASE, path, query_string);
+
+        let req = self
+            .http
+            .post(&url)
+            .header("X-APIKEY", signer.api_key())
+            .header("Sign", &signature)
+            .header("Accept", "application/json");
+
+        let resp = self.retry_request(req).await?;
+        self.handle_v2_response(resp).await
+    }
+
+    pub async fn private_delete_v2<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &HashMap<String, String>,
+    ) -> Result<T, IndodaxError> {
+        let signer = self.signer.as_ref().ok_or_else(|| {
+            IndodaxError::Config("API credentials required for private endpoints".into())
+        })?;
+
+        let mut qs_parts: Vec<String> =
+            params.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        let timestamp = crate::now_millis();
+        qs_parts.push(format!("timestamp={}", timestamp));
+        qs_parts.push("recvWindow=5000".to_string());
+        qs_parts.sort();
+        let query_string = qs_parts.join("&");
+
+        let signature = signer.sign_v2(&query_string)?;
+        let url = format!("{}{}?{}", PRIVATE_V2_BASE, path, query_string);
+
+        let req = self
+            .http
+            .delete(&url)
+            .header("X-APIKEY", signer.api_key())
+            .header("Sign", &signature)
+            .header("Accept", "application/json");
+
+        let resp = self.retry_request(req).await?;
+        self.handle_v2_response(resp).await
+    }
+
     pub async fn private_get_v2<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -496,6 +558,72 @@ impl IndodaxClient {
         }
     }
 
+    async fn retry_request(&self, req: RequestBuilder) -> Result<Response, IndodaxError> {
+        let mut retries = 0;
+        let mut delay_ms = 500;
+
+        loop {
+            self.rate_limiter.acquire().await;
+            
+            // reqwest::RequestBuilder consumes itself on `send()`, so we must clone it for retries.
+            // Note: RequestBuilder is only cloneable if the body is clonable or empty.
+            let request = req.try_clone().ok_or_else(|| {
+                IndodaxError::Other("Cannot clone request for retry".to_string())
+            })?;
+
+            match request.send().await {
+                Ok(resp) => {
+                    if resp.status() == StatusCode::TOO_MANY_REQUESTS {
+                        if retries >= MAX_RETRIES {
+                            return Err(IndodaxError::api(
+                                "Rate limit exceeded",
+                                ErrorCategory::RateLimit,
+                                Some("rate_limit".into()),
+                            ));
+                        }
+                        retries += 1;
+                        sleep(Duration::from_millis(delay_ms)).await;
+                        delay_ms *= 2;
+                        continue;
+                    }
+                    return Ok(resp);
+                }
+                Err(e) => {
+                    if e.is_timeout() || e.is_connect() {
+                        if retries >= MAX_RETRIES {
+                            return Err(IndodaxError::Http(e));
+                        }
+                        retries += 1;
+                        sleep(Duration::from_millis(delay_ms)).await;
+                        delay_ms *= 2;
+                        continue;
+                    }
+                    return Err(IndodaxError::Http(e));
+                }
+            }
+        }
+    }
+
+    async fn handle_v2_response<T: DeserializeOwned>(
+        &self,
+        resp: Response,
+    ) -> Result<T, IndodaxError> {
+        let body_text = resp.text().await?;
+        let envelope: IndodaxV2Response<T> = serde_json::from_str(&body_text).map_err(|e| {
+            IndodaxError::Parse(format!(
+                "Failed to parse v2 response: {} (body: {})",
+                e, body_text
+            ))
+        })?;
+
+        if let Some(data) = envelope.data {
+            Ok(data)
+        } else if let Some(error) = envelope.error {
+            Err(IndodaxError::api(error, ErrorCategory::Unknown, None))
+        } else {
+            Ok(serde_json::from_str(&body_text)?)
+        }
+    }
     async fn retry_get(&self, url: &str) -> Result<Response, IndodaxError> {
         let req = self.http.get(url);
         self.send_with_retry(req).await

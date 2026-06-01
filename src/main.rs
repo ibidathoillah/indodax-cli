@@ -42,18 +42,29 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    // Capture output format before cli is consumed by dispatch
-    let output_format = cli.output;
-
     let mut config = match IndodaxConfig::load() {
         Ok(c) => c,
         Err(e) => {
-            report_error(&IndodaxError::Other(e.to_string()), output_format);
+            eprintln!("Error loading config: {}", e);
             process::exit(1);
         }
     };
 
-    // Handle --api-secret-stdin: read secret from stdin (more secure than CLI args)
+    // Resolve output format: CLI > Config > Default(Table)
+    let output_format = cli
+        .output
+        .or_else(|| {
+            config.default_output.as_ref().and_then(|s| {
+                match s.as_str() {
+                    "json" => Some(OutputFormat::Json),
+                    "table" => Some(OutputFormat::Table),
+                    _ => None,
+                }
+            })
+        })
+        .unwrap_or(OutputFormat::Table);
+
+    // Handle --api-secret-stdin or --api-secret-file: read secret from stdin or file (more secure than CLI args)
     let api_secret = if cli.api_secret_stdin {
         let mut secret = String::new();
         if let Err(e) = std::io::stdin().lock().read_line(&mut secret) {
@@ -69,6 +80,17 @@ async fn main() {
             cli.api_secret.clone()
         } else {
             Some(trimmed)
+        }
+    } else if let Some(path) = &cli.api_secret_file {
+        match std::fs::read_to_string(path) {
+            Ok(s) => Some(s.trim().to_string()),
+            Err(e) => {
+                report_error(
+                    &IndodaxError::Other(format!("Failed to read API secret from file {}: {}", path, e)),
+                    output_format,
+                );
+                process::exit(1);
+            }
         }
     } else {
         cli.api_secret.clone()
@@ -134,13 +156,16 @@ async fn main() {
     }
 
     let result: Result<CommandOutput, IndodaxError> = match &cli.command {
-        Command::Setup => utility_execute(&client, &creds, &UtilityCommand::Setup)
+        Command::Setup => utility_execute(&client, &creds, &UtilityCommand::Setup, output_format)
             .await
             .map_err(map_anyhow_error),
-        Command::Shell => utility_execute(&client, &creds, &UtilityCommand::Shell)
+        Command::Status => utility_execute(&client, &creds, &UtilityCommand::Status, output_format)
             .await
             .map_err(map_anyhow_error),
-        _ => dispatch(cli, &client, &mut config).await,
+        Command::Shell => utility_execute(&client, &creds, &UtilityCommand::Shell, output_format)
+            .await
+            .map_err(map_anyhow_error),
+        _ => dispatch(cli, &client, &mut config, output_format).await,
     };
 
     match result {
@@ -169,6 +194,8 @@ fn report_error(err: &IndodaxError, format: OutputFormat) {
             "message": err.to_string(),
             "error_type": err.category(),
             "retryable": err.is_retryable(),
+            "suggestion": err.suggestion(),
+            "docs_url": err.docs_url(),
         });
         match serde_json::to_string_pretty(&envelope) {
             Ok(s) => println!("{}", s),

@@ -1,0 +1,75 @@
+[
+  {
+    "name": "market_ticker",
+    "command": "indodax ticker",
+    "group": "market",
+    "auth_required": false,
+    "dangerous": false,
+    "description": "Get real-time ticker data for a trading pair.",
+    "parameters": {
+      "pair": {
+        "type": "string",
+        "description": "Trading pair symbol (e.g., btc_idr)",
+        "required": true
+      }
+    }
+  },
+  {
+    "name": "account_balance",
+    "command": "indodax balance",
+    "group": "account",
+    "auth_required": true,
+    "dangerous": false,
+    "description": "Get non-zero account balances.",
+    "parameters": {}
+  },
+  {
+    "name": "order_buy",
+    "command": "indodax buy",
+    "group": "trade",
+    "auth_required": true,
+    "dangerous": true,
+    "requires_acknowledgement": true,
+    "description": "Place a buy order.",
+    "parameters": {
+      "pair": {
+        "type": "string",
+        "description": "Trading pair (e.g., btc_idr)",
+        "required": true
+      },
+      "idr": {
+        "type": "number",
+        "description": "Amount of IDR to spend",
+        "required": true
+      },
+      "price": {
+        "type": "number",
+        "description": "Limit price (optional, market order if omitted)"
+      }
+    }
+  },
+  {
+    "name": "paper_init",
+    "command": "indodax paper init",
+    "group": "paper",
+    "auth_required": false,
+    "dangerous": false,
+    "description": "Initialize paper trading state with default balances.",
+    "parameters": {}
+  },
+  {
+    "name": "websocket_ticker",
+    "command": "indodax ws ticker",
+    "group": "websocket",
+    "auth_required": false,
+    "dangerous": false,
+    "description": "Stream real-time ticker updates.",
+    "parameters": {
+      "pair": {
+        "type": "string",
+        "description": "Trading pair(s), comma-separated",
+        "required": true
+      }
+    }
+  }
+]

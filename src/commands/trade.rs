@@ -27,6 +27,8 @@ pub enum TradeCommand {
         stop_price: Option<f64>,
         #[arg(long, help = "Optional: Custom client order ID for tracking.")]
         client_id: Option<String>,
+        #[arg(long, help = "Validate order without executing (dry-run).")]
+        validate: bool,
     },
 
     #[command(name = "sell", about = "Place a sell order")]
@@ -47,6 +49,44 @@ pub enum TradeCommand {
         stop_price: Option<f64>,
         #[arg(long, help = "Optional: Custom client order ID for tracking.")]
         client_id: Option<String>,
+        #[arg(long, help = "Validate order without executing (dry-run).")]
+        validate: bool,
+    },
+
+    #[command(name = "open", about = "List open orders")]
+    Open {
+        #[arg(short, long, help = "Filter by trading pair")]
+        pair: Option<String>,
+    },
+
+    #[command(name = "closed", about = "List closed orders (history)")]
+    Closed {
+        #[arg(short, long, default_value = "btc_idr")]
+        pair: String,
+        #[arg(short, long, default_value = "100")]
+        limit: u32,
+    },
+
+    #[command(name = "history", about = "Get order history")]
+    History {
+        #[arg(short, long, default_value = "btc_idr")]
+        pair: String,
+        #[arg(short, long, default_value = "100")]
+        limit: u32,
+    },
+
+    #[command(name = "get", about = "Get order details by order ID")]
+    Get {
+        #[arg(long)]
+        order_id: u64,
+        #[arg(long)]
+        pair: String,
+    },
+
+    #[command(name = "get-by-client-id", about = "Get order details by client order ID")]
+    GetByClientId {
+        #[arg(long)]
+        client_order_id: String,
     },
 
     #[command(name = "cancel", about = "Cancel an order by ID")]
@@ -69,6 +109,19 @@ pub enum TradeCommand {
     },
 
     #[command(
+        name = "cancel-batch",
+        about = "Cancel multiple orders by ID"
+    )]
+    CancelBatch {
+        #[arg(short = 'p', long)]
+        pair: String,
+        #[arg(short = 'i', long, help = "Comma-separated order IDs")]
+        order_ids: String,
+        #[arg(short = 't', long, help = "Order side for ALL IDs: buy or sell")]
+        order_type: String,
+    },
+
+    #[command(
         name = "cancel-all",
         about = "Cancel all open orders, optionally filtered by pair"
     )]
@@ -81,6 +134,20 @@ pub enum TradeCommand {
         pair: Option<String>,
     },
 
+    #[command(name = "edit", about = "Edit an existing order (Cancel + Replace)")]
+    Edit {
+        #[arg(long)]
+        order_id: u64,
+        #[arg(long)]
+        pair: String,
+        #[arg(long, help = "Order side: buy or sell")]
+        order_type: String,
+        #[arg(long, help = "New limit price")]
+        price: f64,
+        #[arg(long, help = "New amount (base for sell, IDR for buy)")]
+        amount: f64,
+    },
+
     #[command(name = "countdown", about = "Start deadman switch countdown")]
     CountdownCancelAll {
         #[arg(short, long)]
@@ -90,6 +157,7 @@ pub enum TradeCommand {
     },
 
     #[command(
+        hide = true,
         name = "get-order-by-client-id",
         about = "Get order details by client order ID"
     )]
@@ -112,6 +180,7 @@ pub async fn execute(
             order_type,
             stop_price,
             client_id,
+            validate,
         } => {
             let pair = helpers::normalize_pair(pair);
             place_buy_order(
@@ -122,6 +191,7 @@ pub async fn execute(
                 order_type.as_deref(),
                 *stop_price,
                 client_id.as_deref(),
+                *validate,
             )
             .await
         }
@@ -132,6 +202,7 @@ pub async fn execute(
             order_type,
             stop_price,
             client_id,
+            validate,
         } => {
             let pair = helpers::normalize_pair(pair);
             place_sell_order(
@@ -142,8 +213,24 @@ pub async fn execute(
                 order_type.as_deref(),
                 *stop_price,
                 client_id.as_deref(),
+                *validate,
             )
             .await
+        }
+        TradeCommand::Open { pair } => {
+            let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
+            super::account::open_orders(client, pair.as_deref()).await
+        }
+        TradeCommand::Closed { pair, limit } | TradeCommand::History { pair, limit } => {
+            let pair = helpers::normalize_pair(pair);
+            super::account::order_history(client, &pair, *limit).await
+        }
+        TradeCommand::Get { order_id, pair } => {
+            let pair = helpers::normalize_pair(pair);
+            super::account::get_order(client, *order_id, &pair).await
+        }
+        TradeCommand::GetByClientId { client_order_id } | TradeCommand::GetOrderByClientId { client_order_id } => {
+            get_order_by_client_id(client, client_order_id).await
         }
         TradeCommand::Cancel {
             order_id,
@@ -156,9 +243,17 @@ pub async fn execute(
         TradeCommand::CancelByClientId { client_order_id } => {
             cancel_by_client_id(client, client_order_id).await
         }
+        TradeCommand::CancelBatch { pair, order_ids, order_type } => {
+            let pair = helpers::normalize_pair(pair);
+            cancel_batch(client, &pair, order_ids, order_type).await
+        }
         TradeCommand::CancelAll { pair } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
             cancel_all_orders(client, pair.as_deref(), yes).await
+        }
+        TradeCommand::Edit { order_id, pair, order_type, price, amount } => {
+            let pair = helpers::normalize_pair(pair);
+            edit_order(client, *order_id, &pair, order_type, *price, *amount).await
         }
         TradeCommand::CountdownCancelAll {
             pair,
@@ -166,9 +261,6 @@ pub async fn execute(
         } => {
             let pair = pair.as_ref().map(|p| helpers::normalize_pair(p));
             countdown_cancel_all(client, pair.as_deref(), *countdown_time).await
-        }
-        TradeCommand::GetOrderByClientId { client_order_id } => {
-            get_order_by_client_id(client, client_order_id).await
         }
     }
 }
@@ -188,7 +280,7 @@ async fn get_order_by_client_id(
     Ok(CommandOutput::new(data, headers, rows))
 }
 
-async fn place_buy_order(
+pub(crate) async fn place_buy_order(
     client: &IndodaxClient,
     pair: &str,
     idr_amount: f64,
@@ -196,6 +288,7 @@ async fn place_buy_order(
     explicit_type: Option<&str>,
     stop_price: Option<f64>,
     client_id: Option<&str>,
+    validate: bool,
 ) -> Result<CommandOutput> {
     let info = get_account_info(client).await?;
 
@@ -285,6 +378,32 @@ async fn place_buy_order(
         "market"
     };
 
+    if validate {
+        let headers = vec!["Field".into(), "Value".into()];
+        let mut rows = vec![
+            vec!["Status".into(), "PREVIEW (Not executed)".into()],
+            vec!["Side".into(), "BUY".into()],
+            vec!["Pair".into(), pair.to_uppercase()],
+            vec!["Type".into(), order_type_str.to_uppercase()],
+            vec!["Amount (IDR)".into(), format!("{:.0}", idr_amount)],
+        ];
+        if let Some(p) = params.get("price") {
+            rows.push(vec!["Limit Price".into(), p.clone()]);
+        }
+        if let Some(sp) = params.get("stop_price") {
+            rows.push(vec!["Stop Price".into(), sp.clone()]);
+        }
+        if let Some(cid) = client_id {
+            rows.push(vec!["Client ID".into(), cid.to_string()]);
+        }
+        
+        let mut output = CommandOutput::new(serde_json::json!(params), headers, rows);
+        for w in warnings {
+            output = output.with_warning(w);
+        }
+        return Ok(output);
+    }
+
     let data: serde_json::Value = client.private_post_v1("trade", &params).await?;
 
     let headers = vec!["Field".into(), "Value".into()];
@@ -305,7 +424,7 @@ async fn place_buy_order(
     Ok(output)
 }
 
-async fn place_sell_order(
+pub(crate) async fn place_sell_order(
     client: &IndodaxClient,
     pair: &str,
     price: Option<f64>,
@@ -313,6 +432,7 @@ async fn place_sell_order(
     explicit_type: Option<&str>,
     stop_price: Option<f64>,
     client_id: Option<&str>,
+    validate: bool,
 ) -> Result<CommandOutput> {
     let base_currency = pair.split('_').next().unwrap_or_default();
     if base_currency.is_empty() {
@@ -403,6 +523,32 @@ async fn place_sell_order(
         "market"
     };
 
+    if validate {
+        let headers = vec!["Field".into(), "Value".into()];
+        let mut rows = vec![
+            vec!["Status".into(), "PREVIEW (Not executed)".into()],
+            vec!["Side".into(), "SELL".into()],
+            vec!["Pair".into(), pair.to_uppercase()],
+            vec!["Type".into(), order_type.to_uppercase()],
+            vec!["Amount (Base)".into(), format!("{:.8}", amount)],
+        ];
+        if let Some(p) = params.get("price") {
+            rows.push(vec!["Limit Price".into(), p.clone()]);
+        }
+        if let Some(sp) = params.get("stop_price") {
+            rows.push(vec!["Stop Price".into(), sp.clone()]);
+        }
+        if let Some(cid) = client_id {
+            rows.push(vec!["Client ID".into(), cid.to_string()]);
+        }
+        
+        let mut output = CommandOutput::new(serde_json::json!(params), headers, rows);
+        for w in warnings {
+            output = output.with_warning(w);
+        }
+        return Ok(output);
+    }
+
     let data: serde_json::Value = client.private_post_v1("trade", &params).await?;
 
     let headers = vec!["Field".into(), "Value".into()];
@@ -450,11 +596,10 @@ async fn cancel_order(
     }
 
     let mut params = HashMap::new();
-    params.insert("order_id".into(), order_id.to_string());
-    params.insert("pair".into(), pair.to_string());
-    params.insert("type".into(), normalized);
+    params.insert("symbol".into(), helpers::normalize_pair_v2(pair));
 
-    let data: serde_json::Value = client.private_post_v1("cancelOrder", &params).await?;
+    let path = format!("/api/v2/order/{}", order_id);
+    let data: serde_json::Value = client.private_delete_v2(&path, &params).await?;
 
     let headers = vec!["Field".into(), "Value".into()];
     let mut rows: Vec<Vec<String>> = Vec::new();
@@ -555,8 +700,82 @@ async fn cancel_all_orders(
         )
     };
 
-    Ok(CommandOutput::new(data, headers, rows).with_addendum(addendum))
-}
+    Ok(
+        CommandOutput::new(data, headers, rows).with_addendum(addendum)
+    )
+    }
+
+    async fn cancel_batch(
+        client: &IndodaxClient,
+        pair: &str,
+        order_ids: &str,
+        _order_type: &str,
+    ) -> Result<CommandOutput> {
+        let ids: Vec<&str> = order_ids.split(',').map(|s| s.trim()).collect();
+        let mut results = Vec::new();
+        let mut success_ids = Vec::new();
+        let mut fail_ids = Vec::new();
+
+        for id in ids {
+            if let Ok(order_id) = id.parse::<u64>() {
+                let mut params = HashMap::new();
+                params.insert("symbol".into(), helpers::normalize_pair_v2(pair));
+
+                let path = format!("/api/v2/order/{}", order_id);
+                match client.private_delete_v2::<serde_json::Value>(&path, &params).await {
+                    Ok(_) => {
+                        success_ids.push(id.to_string());
+                    }
+                    Err(e) => {
+                        fail_ids.push(format!("{}: {}", id, e));
+                    }
+                }
+            } else {
+                fail_ids.push(format!("{}: invalid_id", id));
+            }
+        }
+
+        let data = serde_json::json!({
+            "success_ids": success_ids,
+            "fail_ids": fail_ids,
+        });
+
+        let headers = vec!["Status".into(), "Count".into(), "IDs/Details".into()];
+        results.push(vec!["Success".into(), success_ids.len().to_string(), success_ids.join(", ")]);
+        results.push(vec!["Failed".into(), fail_ids.len().to_string(), fail_ids.join(", ")]);
+
+        Ok(CommandOutput::new(data, headers, results).with_addendum(format!(
+            "Batch cancel completed: {} success, {} failed",
+            success_ids.len(), fail_ids.len()
+        )))
+    }
+
+    async fn edit_order(
+        client: &IndodaxClient,
+        order_id: u64,
+        pair: &str,
+        order_type: &str,
+        new_price: f64,
+        new_amount: f64,
+    ) -> Result<CommandOutput> {
+        eprintln!("Editing order {}: Cancelling old order...", order_id);
+
+        // 1. Cancel old order
+        let mut cancel_params = HashMap::new();
+        cancel_params.insert("symbol".into(), helpers::normalize_pair_v2(pair));
+
+        let path = format!("/api/v2/order/{}", order_id);
+        client.private_delete_v2::<serde_json::Value>(&path, &cancel_params).await?;
+
+        eprintln!("Old order cancelled. Placing new order...");
+
+        // 2. Place new order
+        if order_type.to_lowercase() == "buy" {
+            place_buy_order(client, pair, new_amount, Some(new_price), None, None, None, false).await
+        } else {
+            place_sell_order(client, pair, Some(new_price), new_amount, None, None, None, false).await
+        }
+    }
 
 async fn countdown_cancel_all(
     client: &IndodaxClient,

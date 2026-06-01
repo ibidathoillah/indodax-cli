@@ -316,23 +316,16 @@ pub async fn cancel_all_open_orders(
             let order_pair = value_to_string(
                 order_val
                     .get("pair")
-                    .or_else(|| order_val.get("market"))
                     .or_else(|| order_val.get("symbol"))
                     .unwrap_or(&serde_json::Value::Null),
             );
-            let order_type = order_val
-                .get("type")
-                .or_else(|| order_val.get("order_type"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
 
             let mut cancel_params = HashMap::new();
-            cancel_params.insert("order_id".to_string(), order_id.clone());
-            cancel_params.insert("pair".to_string(), order_pair);
-            cancel_params.insert("type".to_string(), order_type);
+            cancel_params.insert("symbol".to_string(), normalize_pair_v2(&order_pair));
+            
+            let path = format!("/api/v2/order/{}", order_id);
             match client
-                .private_post_v1::<serde_json::Value>("cancelOrder", &cancel_params)
+                .private_delete_v2::<serde_json::Value>(&path, &cancel_params)
                 .await
             {
                 Ok(_) => cancelled_ids.push(order_id.clone()),

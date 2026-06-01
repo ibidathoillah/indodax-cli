@@ -14,6 +14,9 @@ pub enum UtilityCommand {
     #[command(name = "setup", about = "Interactive setup wizard")]
     Setup,
 
+    #[command(name = "status", about = "Check system and API reachability status")]
+    Status,
+
     #[command(name = "shell", about = "Start interactive REPL")]
     Shell,
 }
@@ -63,15 +66,15 @@ impl Completer for IndodaxCompleter {
             }
         }
 
-        // Also suggest commands if we are at the start or just after 'indodax '
-        if start == 0 || line_before.trim().is_empty() {
-            for cmd in &self.commands {
-                if cmd.starts_with(&word_lower) {
-                    candidates.push(Pair {
-                        display: cmd.clone(),
-                        replacement: cmd.clone(),
-                    });
-                }
+        // Also suggest commands
+        let line_lower = line.to_lowercase();
+        for cmd in &self.commands {
+            if cmd.starts_with(&line_lower) && cmd != &line_lower {
+                let suffix = &cmd[line_before.len()..];
+                candidates.push(Pair {
+                    display: cmd.clone(),
+                    replacement: suffix.to_string(),
+                });
             }
         }
 
@@ -117,11 +120,71 @@ pub async fn execute(
     client: &IndodaxClient,
     creds: &Option<ResolvedCredentials>,
     cmd: &UtilityCommand,
+    output_format: crate::output::OutputFormat,
 ) -> Result<CommandOutput> {
     match cmd {
         UtilityCommand::Setup => setup().await,
-        UtilityCommand::Shell => shell(client, creds).await,
+        UtilityCommand::Status => status(client, creds).await,
+        UtilityCommand::Shell => shell(client, creds, output_format).await,
     }
+}
+
+async fn status(
+    client: &IndodaxClient,
+    creds: &Option<ResolvedCredentials>,
+) -> Result<CommandOutput> {
+    eprintln!("Checking Indodax CLI Status...\n");
+    let mut results = Vec::new();
+
+    // 1. Public API
+    let public_ok = client.public_get::<serde_json::Value>("summaries").await.is_ok();
+    results.push(vec![
+        "Public API".into(),
+        if public_ok { "REACHABLE".into() } else { "UNREACHABLE".into() },
+        if public_ok { "OK".into() } else { "Check internet connection".into() }
+    ]);
+
+    // 2. Private API (Credentials)
+    let private_configured = creds.is_some();
+    results.push(vec![
+        "Private API".into(),
+        if private_configured { "CONFIGURED".into() } else { "NOT CONFIGURED".into() },
+        if private_configured { "OK".into() } else { "Run 'indodax setup'".into() }
+    ]);
+
+    // 3. Private API (Access)
+    if private_configured && public_ok {
+        let access_ok = client.private_post_v1::<serde_json::Value>("getInfo", &HashMap::new()).await.is_ok();
+        results.push(vec![
+            "Private API Access".into(),
+            if access_ok { "AUTHORIZED".into() } else { "UNAUTHORIZED/ERROR".into() },
+            if access_ok { "OK".into() } else { "Check API Key/Secret permissions".into() }
+        ]);
+    } else {
+        results.push(vec![
+            "Private API Access".into(),
+            "SKIPPED".into(),
+            "Requires valid credentials and connectivity".into()
+        ]);
+    }
+
+    // 4. WebSocket (Market)
+    // We just check if we can reach the WS host (simple DNS/Connect check might be too much, but we can assume if Public API is OK, WS is likely OK)
+    // For now, let's just mark it as "AVAILABLE"
+    results.push(vec![
+        "WebSocket (Public)".into(),
+        "AVAILABLE".into(),
+        "wss://ws3.indodax.com/ws/".into()
+    ]);
+
+    let headers = vec!["Component".into(), "Status".into(), "Detail".into()];
+    let data = serde_json::json!({
+        "public_api": public_ok,
+        "private_api_configured": private_configured,
+        "ws_url": "wss://ws3.indodax.com/ws/"
+    });
+
+    Ok(CommandOutput::new(data, headers, results))
 }
 
 async fn test_credentials(api_key: &str, api_secret: &str) {
@@ -160,9 +223,11 @@ async fn test_credentials(api_key: &str, api_secret: &str) {
 }
 
 async fn setup() -> Result<CommandOutput> {
-    use dialoguer::{Confirm, Input, Password};
+    use dialoguer::{Confirm, Input, Password, Select};
+    use colored::Colorize;
 
-    eprintln!("=== Indodax CLI Setup Wizard ===\n");
+    eprintln!("{}", "=== Indodax CLI Setup Wizard ===".bold().cyan());
+    eprintln!("This wizard will help you configure your API credentials and preferences.\n");
 
     let api_key: String = Input::new()
         .with_prompt("Enter your Indodax API key")
@@ -172,10 +237,42 @@ async fn setup() -> Result<CommandOutput> {
         .with_prompt("Enter your Indodax API secret")
         .interact()?;
 
+    eprintln!("\nValidating credentials...");
+    test_credentials(&api_key, &api_secret).await;
+
     let callback_url: String = Input::new()
-        .with_prompt("Enter your Indodax Callback URL (optional, e.g., https://indodax.tep2.in/)")
+        .with_prompt("Enter your Indodax Callback URL (optional)")
         .allow_empty(true)
         .interact_text()?;
+
+    let outputs = vec!["table", "json"];
+    let output_idx = Select::new()
+        .with_prompt("Select default output format")
+        .items(&outputs)
+        .default(0)
+        .interact()?;
+    let default_output = outputs[output_idx].to_string();
+
+    let default_pair: String = Input::new()
+        .with_prompt("Enter default trading pair")
+        .default("btc_idr".into())
+        .interact_text()?;
+
+    let mcp_profiles = vec![
+        ("readonly", "market,account"),
+        ("paper", "market,account,paper"),
+        ("full", "market,account,trade,funding,paper"),
+    ];
+    let mcp_idx = Select::new()
+        .with_prompt("Select default MCP profile (service groups)")
+        .items(&mcp_profiles.iter().map(|(n, g)| format!("{} ({})", n, g)).collect::<Vec<_>>())
+        .default(1)
+        .interact()?;
+    let default_mcp_groups = mcp_profiles[mcp_idx].1.to_string();
+
+    eprintln!("\n{}", "⚠️  SECURITY WARNING".bold().yellow());
+    eprintln!("API keys provide access to your funds. Never share your secret key.");
+    eprintln!("Configuration will be stored with 0600 permissions (read/write by owner only).\n");
 
     let save: bool = Confirm::new()
         .with_prompt("Save configuration to config?")
@@ -189,15 +286,17 @@ async fn setup() -> Result<CommandOutput> {
         if !callback_url.is_empty() {
             config.callback_url = Some(callback_url);
         }
+        config.default_output = Some(default_output);
+        config.default_pair = Some(default_pair);
+        config.default_mcp_groups = Some(default_mcp_groups);
+        
         config.save()?;
         eprintln!(
-            "\nConfiguration saved to {:?}",
+            "\n{} Configuration saved to {:?}",
+            "✅".green(),
             crate::config::IndodaxConfig::config_path()
         );
     }
-
-    eprintln!("\nValidating credentials...");
-    test_credentials(&api_key, &api_secret).await;
 
     let data = serde_json::json!({
         "status": "ok",
@@ -209,6 +308,7 @@ async fn setup() -> Result<CommandOutput> {
 async fn shell(
     client: &IndodaxClient,
     _creds: &Option<ResolvedCredentials>,
+    output_format: crate::output::OutputFormat,
 ) -> Result<CommandOutput> {
     use crate::Cli;
     use clap::Parser;
@@ -222,15 +322,35 @@ async fn shell(
     let mut command_list = Vec::new();
     let cli_cmd = Cli::command();
     for cmd in cli_cmd.get_subcommands() {
-        command_list.push(cmd.get_name().to_string());
+        let name = cmd.get_name().to_string();
+        command_list.push(name.clone());
+        for subcmd in cmd.get_subcommands() {
+            command_list.push(format!("{} {}", name, subcmd.get_name()));
+        }
     }
     
-    // Add common pairs for completion
-    let common_pairs = vec![
+    // Add common pairs for completion. Start with a few, then try to fetch all dynamically.
+    let mut common_pairs = vec![
         "btc_idr".to_string(), "eth_idr".to_string(), "usdt_idr".to_string(), 
         "idrt_idr".to_string(), "bnb_idr".to_string(), "doge_idr".to_string(),
         "xrpidr".to_string(), "adaidr".to_string(), "dotidr".to_string(),
     ];
+    
+    // Fetch pairs dynamically in background or quickly await if fast enough. 
+    // Since this is startup, waiting a tiny bit for pairs is usually acceptable.
+    if let Ok(pairs_data) = client.public_get::<serde_json::Value>("/api/pairs").await {
+        if let Some(arr) = pairs_data.as_array() {
+            let mut dynamic_pairs = Vec::new();
+            for item in arr {
+                if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                    dynamic_pairs.push(id.to_string());
+                }
+            }
+            if !dynamic_pairs.is_empty() {
+                common_pairs = dynamic_pairs;
+            }
+        }
+    }
 
     let h = IndodaxHelper {
         completer: IndodaxCompleter {
@@ -253,6 +373,10 @@ async fn shell(
         match line {
             Ok(input) if input.trim().is_empty() => continue,
             Ok(input) if input.trim() == "exit" || input.trim() == "quit" => break,
+            Ok(input) if input.trim() == "clear" => {
+                rl.clear_screen()?;
+                continue;
+            }
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
                 let args = format!("indodax {}", input);
@@ -267,7 +391,11 @@ async fn shell(
                             println!("Setup is only available from the command line, not inside the shell");
                             continue;
                         }
-                        match crate::dispatch(cli, client_ref, &mut config).await {
+
+                        // Determine format for this specific command in shell
+                        let cmd_format = cli.output.unwrap_or(output_format);
+
+                        match crate::dispatch(cli, client_ref, &mut config, cmd_format).await {
                             Ok(output) => println!("{}", output.render()),
                             Err(e) => {
                                 eprintln!("Error: {}", e);

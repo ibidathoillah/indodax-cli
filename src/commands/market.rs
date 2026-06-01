@@ -32,6 +32,22 @@ pub enum MarketCommand {
         levels: usize,
     },
 
+    #[command(name = "orderbook-grouped", about = "Get grouped order book for a pair")]
+    OrderbookGrouped {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+        #[arg(long, default_value = "100000", help = "Price grouping interval")]
+        grouping: f64,
+        #[arg(long, default_value = "10", help = "Number of grouped levels to show")]
+        depth: usize,
+    },
+
+    #[command(name = "spreads", about = "Get current bid/ask spread for a pair")]
+    Spreads {
+        #[arg(default_value = "btc_idr")]
+        pair: String,
+    },
+
     #[command(name = "trades", about = "Get recent trades for a pair")]
     Trades {
         #[arg(default_value = "btc_idr")]
@@ -114,9 +130,17 @@ pub async fn execute(client: &IndodaxClient, cmd: &MarketCommand) -> Result<Comm
         }
         MarketCommand::TickerAll => ticker_all(client).await,
         MarketCommand::Summaries => summaries(client).await,
-        MarketCommand::Orderbook { pair: p, levels } => {
-            let pair = helpers::normalize_pair(p);
+        MarketCommand::Orderbook { pair, levels } => {
+            let pair = helpers::normalize_pair(pair);
             orderbook(client, &pair, *levels).await
+        }
+        MarketCommand::OrderbookGrouped { pair, grouping, depth } => {
+            let pair = helpers::normalize_pair(pair);
+            orderbook_grouped(client, &pair, *grouping, *depth).await
+        }
+        MarketCommand::Spreads { pair } => {
+            let pair = helpers::normalize_pair(pair);
+            spreads(client, &pair).await
         }
         MarketCommand::Trades { pair: p } => {
             let pair = helpers::normalize_pair(p);
@@ -287,6 +311,102 @@ async fn orderbook(client: &IndodaxClient, pair: &str, levels: usize) -> Result<
     let level_count = rows.len() / 2;
     Ok(CommandOutput::new(data, headers, rows)
         .with_addendum(format!("Showing {} bid/ask levels", level_count)))
+}
+
+pub(crate) async fn orderbook_grouped(
+    client: &IndodaxClient,
+    pair: &str,
+    grouping: f64,
+    depth: usize,
+) -> Result<CommandOutput> {
+    let data: Value = client.public_get(&format!("/api/depth/{}", pair)).await?;
+    let headers = vec!["Side".into(), "Price (Group)".into(), "Total Amount".into()];
+    let mut rows: Vec<Vec<String>> = Vec::new();
+
+    let mut buy_groups: std::collections::BTreeMap<i64, f64> = std::collections::BTreeMap::new();
+    let mut sell_groups: std::collections::BTreeMap<i64, f64> = std::collections::BTreeMap::new();
+
+    if let Some(buys) = data["buy"].as_array() {
+        for entry in buys {
+            if let Some(row_arr) = entry.as_array().filter(|a| a.len() >= 2) {
+                let price = row_arr[0].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                let amount = row_arr[1].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                let group = (price / grouping).floor() as i64;
+                *buy_groups.entry(group).or_insert(0.0) += amount;
+            }
+        }
+    }
+
+    if let Some(sells) = data["sell"].as_array() {
+        for entry in sells {
+            if let Some(row_arr) = entry.as_array().filter(|a| a.len() >= 2) {
+                let price = row_arr[0].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                let amount = row_arr[1].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                let group = (price / grouping).ceil() as i64;
+                *sell_groups.entry(group).or_insert(0.0) += amount;
+            }
+        }
+    }
+
+    // Process buys (highest group first)
+    for (&group, &amount) in buy_groups.iter().rev().take(depth) {
+        rows.push(vec![
+            "BUY".into(),
+            format!("{:.0}", group as f64 * grouping),
+            format!("{:.8}", amount),
+        ]);
+    }
+
+    // Process sells (lowest group first)
+    for (&group, &amount) in sell_groups.iter().take(depth) {
+        rows.push(vec![
+            "SELL".into(),
+            format!("{:.0}", group as f64 * grouping),
+            format!("{:.8}", amount),
+        ]);
+    }
+
+    Ok(CommandOutput::new(data, headers, rows).with_addendum(format!(
+        "Grouped by {} units, showing top {} levels per side",
+        grouping, depth
+    )))
+}
+
+pub(crate) async fn spreads(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {
+    let data: Value = client.public_get(&format!("/api/ticker/{}", pair)).await?;
+    let ticker = &data["ticker"];
+
+    let last = ticker["last"].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+    let buy = ticker["buy"].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+    let sell = ticker["sell"].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+
+    let spread_abs = (sell - buy).abs();
+    let spread_pct = if buy > 0.0 {
+        (spread_abs / buy) * 100.0
+    } else {
+        0.0
+    };
+
+    let headers = vec!["Field".into(), "Value".into()];
+    let rows = vec![
+        vec!["Pair".into(), pair.to_uppercase()],
+        vec!["Last Price".into(), format!("{:.0}", last)],
+        vec!["Best Bid (Buy)".into(), format!("{:.0}", buy)],
+        vec!["Best Ask (Sell)".into(), format!("{:.0}", sell)],
+        vec!["Spread (Absolute)".into(), format!("{:.0}", spread_abs)],
+        vec!["Spread (%)".into(), format!("{:.4}%", spread_pct)],
+    ];
+
+    let json_data = serde_json::json!({
+        "pair": pair,
+        "last": last,
+        "buy": buy,
+        "sell": sell,
+        "spread_abs": spread_abs,
+        "spread_pct": spread_pct,
+    });
+
+    Ok(CommandOutput::new(json_data, headers, rows))
 }
 
 async fn trades(client: &IndodaxClient, pair: &str) -> Result<CommandOutput> {

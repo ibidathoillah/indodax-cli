@@ -61,6 +61,9 @@ pub struct IndodaxConfig {
     pub ws_token: Option<SecretValue>,
     pub callback_url: Option<String>,
     pub paper_balances: Option<serde_json::Value>,
+    pub default_output: Option<String>,
+    pub default_pair: Option<String>,
+    pub default_mcp_groups: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -273,9 +276,8 @@ mod tests {
         let config = IndodaxConfig {
             api_key: Some(SecretValue::new("test_key")),
             api_secret: Some(SecretValue::new("test_secret")),
-            ws_token: None,
             callback_url: Some("http://callback.test".into()),
-            paper_balances: None,
+            ..Default::default()
         };
 
         let config_path = IndodaxConfig::config_path();
@@ -331,11 +333,9 @@ mod tests {
         env::remove_var("INDODAX_API_SECRET");
 
         let config = IndodaxConfig {
-            api_key: Some(SecretValue::new("config_key")),
-            api_secret: Some(SecretValue::new("config_secret")),
-            ws_token: None,
-            callback_url: None,
-            paper_balances: None,
+            api_key: Some(SecretValue::new("test_key")),
+            api_secret: Some(SecretValue::new("test_secret")),
+            ..Default::default()
         };
 
         let result = config
@@ -381,11 +381,9 @@ mod tests {
         env::set_var("INDODAX_API_SECRET", "env_secret");
 
         let config = IndodaxConfig {
-            api_key: Some(SecretValue::new("config_key")),
-            api_secret: Some(SecretValue::new("config_secret")),
-            ws_token: None,
-            callback_url: None,
-            paper_balances: None,
+            api_key: Some(SecretValue::new("test_key")),
+            api_secret: Some(SecretValue::new("test_secret")),
+            ..Default::default()
         };
 
         let result = config.resolve_credentials(None, None).unwrap();
@@ -453,9 +451,7 @@ mod tests {
         let config = IndodaxConfig {
             api_key: Some(SecretValue::new("key_only")),
             api_secret: None,
-            ws_token: None,
-            callback_url: None,
-            paper_balances: None,
+            ..Default::default()
         };
 
         let result = config.resolve_credentials(None, None).unwrap();

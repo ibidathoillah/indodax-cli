@@ -1,0 +1,14 @@
+{
+  "name": "Indodax CLI",
+  "description": "AI-native command-line interface for Indodax exchange",
+  "version": "0.1.57",
+  "entrypoint": "indodax mcp",
+  "capabilities": {
+    "mcp": true,
+    "interactive_shell": true
+  },
+  "auth": {
+    "type": "api_key",
+    "env_vars": ["INDODAX_API_KEY", "INDODAX_API_SECRET"]
+  }
+}

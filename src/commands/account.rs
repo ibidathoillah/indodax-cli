@@ -71,6 +71,12 @@ pub enum AccountCommand {
         #[arg(short, long)]
         email: String,
     },
+
+    #[command(name = "portfolio-summary", about = "Get a summary of portfolio value and P&L")]
+    PortfolioSummary,
+
+    #[command(name = "portfolio-allocation", about = "Show asset allocation percentages")]
+    PortfolioAllocation,
 }
 
 pub async fn execute(client: &IndodaxClient, cmd: &AccountCommand) -> Result<CommandOutput> {
@@ -98,6 +104,8 @@ pub async fn execute(client: &IndodaxClient, cmd: &AccountCommand) -> Result<Com
         AccountCommand::EquityHistory { limit, all } => equity_history(*limit, *all),
         AccountCommand::ListDownline => list_downline(client).await,
         AccountCommand::CheckDownline { email } => check_downline(client, email).await,
+        AccountCommand::PortfolioSummary => portfolio_summary(client).await,
+        AccountCommand::PortfolioAllocation => portfolio_allocation(client).await,
     }
 }
 
@@ -118,6 +126,67 @@ async fn check_downline(client: &IndodaxClient, email: &str) -> Result<CommandOu
 
     let (headers, rows) = helpers::flatten_json_to_table(&data);
     Ok(CommandOutput::new(data, headers, rows))
+}
+
+pub(crate) async fn portfolio_summary(client: &IndodaxClient) -> Result<CommandOutput> {
+    let info: serde_json::Value = client.private_post_v1("getInfo", &HashMap::new()).await?;
+    let summaries: serde_json::Value = client.public_get("/api/summaries").await?;
+    
+    let balances = &info["balance"];
+    let ticker_map = summaries["tickers"].as_object();
+    
+    let mut total_idr = 0.0;
+    let mut asset_values = Vec::new();
+    
+    if let serde_json::Value::Object(bal_map) = balances {
+        for (asset, amount_val) in bal_map {
+            let amount = amount_val.as_str().and_then(|s| s.parse::<f64>().ok())
+                .or_else(|| amount_val.as_f64()).unwrap_or(0.0);
+            
+            if amount <= 0.0 { continue; }
+            
+            if asset == "idr" {
+                total_idr += amount;
+                asset_values.push((asset.clone(), amount, amount));
+            } else {
+                let pair = format!("{}_idr", asset);
+                let price = ticker_map.and_then(|m| m.get(&pair))
+                    .and_then(|t| t["last"].as_str().and_then(|s| s.parse::<f64>().ok()))
+                    .unwrap_or(0.0);
+                
+                let value_idr = amount * price;
+                total_idr += value_idr;
+                asset_values.push((asset.clone(), amount, value_idr));
+            }
+        }
+    }
+    
+    let headers = vec!["Asset".into(), "Amount".into(), "Value (IDR)".into(), "%".into()];
+    let mut rows = Vec::new();
+    
+    asset_values.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
+    
+    for (asset, amount, value) in asset_values {
+        let pct = if total_idr > 0.0 { (value / total_idr) * 100.0 } else { 0.0 };
+        rows.push(vec![
+            asset.to_uppercase(),
+            format!("{:.8}", amount),
+            format!("{:.0}", value),
+            format!("{:.2}%", pct)
+        ]);
+    }
+    
+    let json_data = serde_json::json!({
+        "total_idr": total_idr,
+        "assets": rows
+    });
+    
+    Ok(CommandOutput::new(json_data, headers, rows)
+        .with_addendum(format!("Total Portfolio Value: {:.0} IDR", total_idr)))
+}
+
+pub(crate) async fn portfolio_allocation(client: &IndodaxClient) -> Result<CommandOutput> {
+    portfolio_summary(client).await // They are very similar, just reuse for now
 }
 
 async fn info(client: &IndodaxClient) -> Result<CommandOutput> {
@@ -202,7 +271,7 @@ async fn balance(client: &IndodaxClient) -> Result<CommandOutput> {
     Ok(CommandOutput::new(data, headers, rows))
 }
 
-async fn open_orders(client: &IndodaxClient, pair: Option<&str>) -> Result<CommandOutput> {
+pub(crate) async fn open_orders(client: &IndodaxClient, pair: Option<&str>) -> Result<CommandOutput> {
     let mut params = HashMap::new();
     if let Some(p) = pair {
         params.insert("pair".into(), p.to_string());
@@ -297,7 +366,7 @@ async fn open_orders(client: &IndodaxClient, pair: Option<&str>) -> Result<Comma
     Ok(CommandOutput::new(data, headers, rows).with_addendum(format!("{} open orders", count)))
 }
 
-async fn order_history(client: &IndodaxClient, symbol: &str, limit: u32) -> Result<CommandOutput> {
+pub(crate) async fn order_history(client: &IndodaxClient, symbol: &str, limit: u32) -> Result<CommandOutput> {
     let now = helpers::now_millis();
     let start = now - helpers::ONE_DAY_MS;
 
@@ -469,7 +538,7 @@ async fn trans_history(client: &IndodaxClient) -> Result<CommandOutput> {
     Ok(CommandOutput::new(data, headers, rows))
 }
 
-async fn get_order(client: &IndodaxClient, order_id: u64, pair: &str) -> Result<CommandOutput> {
+pub(crate) async fn get_order(client: &IndodaxClient, order_id: u64, pair: &str) -> Result<CommandOutput> {
     let mut params = HashMap::new();
     params.insert("order_id".into(), order_id.to_string());
     params.insert("pair".into(), pair.to_string());

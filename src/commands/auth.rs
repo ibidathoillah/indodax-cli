@@ -26,6 +26,9 @@ pub enum AuthCommand {
 
     #[command(name = "reset", about = "Remove stored API credentials")]
     Reset,
+
+    #[command(name = "doctor", about = "Perform a comprehensive diagnostic check of API credentials")]
+    Doctor,
 }
 
 pub async fn execute(
@@ -156,6 +159,82 @@ pub async fn execute(
                 "message": "API credentials removed"
             });
             Ok(CommandOutput::json(data))
+        }
+
+        AuthCommand::Doctor => {
+            eprintln!("=== Indodax Auth Doctor ===\n");
+            let mut results = Vec::new();
+
+            // 1. Config file check
+            let config_path = IndodaxConfig::config_path();
+            let config_exists = config_path.exists();
+            results.push(vec![
+                "Config File".into(),
+                if config_exists { "EXISTS".into() } else { "MISSING".into() },
+                if config_exists { "OK".into() } else { "Run 'indodax setup'".into() }
+            ]);
+
+            // 2. API Key check
+            let has_key = config.api_key.is_some();
+            results.push(vec![
+                "API Key".into(),
+                if has_key { "CONFIGURED".into() } else { "NOT SET".into() },
+                if has_key { "OK".into() } else { "Run 'indodax auth set --api-key ...'".into() }
+            ]);
+
+            // 3. API Secret check
+            let has_secret = config.api_secret.is_some();
+            results.push(vec![
+                "API Secret".into(),
+                if has_secret { "CONFIGURED".into() } else { "NOT SET".into() },
+                if has_secret { "OK".into() } else { "Run 'indodax auth set --api-secret ...'".into() }
+            ]);
+
+            // 4. Connectivity Check
+            eprintln!("Checking API connectivity...");
+            let conn_ok = client.public_get::<serde_json::Value>("summaries").await.is_ok();
+            results.push(vec![
+                "API Connectivity".into(),
+                if conn_ok { "REACHABLE".into() } else { "UNREACHABLE".into() },
+                if conn_ok { "OK".into() } else { "Check internet connection".into() }
+            ]);
+
+            // 5. Permission/Info Check
+            if has_key && has_secret && conn_ok {
+                eprintln!("Checking API permissions...");
+                match client.private_post_v1::<serde_json::Value>("getInfo", &std::collections::HashMap::new()).await {
+                    Ok(info) => {
+                        results.push(vec![
+                            "API Permissions".into(),
+                            "VALID".into(),
+                            format!("Logged in as {}", info.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"))
+                        ]);
+                    },
+                    Err(e) => {
+                        results.push(vec![
+                            "API Permissions".into(),
+                            "INVALID".into(),
+                            e.to_string()
+                        ]);
+                    }
+                }
+            } else {
+                results.push(vec![
+                    "API Permissions".into(),
+                    "SKIPPED".into(),
+                    "Requires valid credentials and connectivity".into()
+                ]);
+            }
+
+            let headers = vec!["Check".into(), "Status".into(), "Detail/Suggestion".into()];
+            let data = serde_json::json!({
+                "config_exists": config_exists,
+                "has_key": has_key,
+                "has_secret": has_secret,
+                "connectivity_ok": conn_ok,
+            });
+
+            Ok(CommandOutput::new(data, headers, results))
         }
     }
 }

@@ -14,13 +14,39 @@
 - [x] **Backward Compatibility** — Added hidden `market`, `account`, `trade`, `funding` commands to `lib.rs` for v0.1.x script compatibility.
 
 ### High Priority (Planned)
-- [ ] **Reliability Upgrades** — Client-side rate-limit tracking and high-precision nonce generation [#9].
-- [ ] **Extended TradeAPI-2** — Map more endpoints to the new V2 REST API where available.
+- [x] **AI-Native Foundation (Kraken-Style Phase 1)**
+  - [x] Add `AGENTS.md`, `CONTEXT.md`, `CLAUDE.md`, and `llms.txt`.
+  - [x] Create `agents/tool-catalog.json` and `agents/error-catalog.json`.
+  - [x] Implement Workflow Skills in `skills/*/SKILL.md` (Safe Order Preview, Portfolio Review, etc.).
+  - [x] Enriched JSON error envelope (category, retryable, suggestion, docs_url).
+- [x] **Safety & Onboarding (Kraken-Style Phase 2)**
+  - [x] Implement `indodax setup` interactive wizard.
+  - [x] Implement `indodax status` and `indodax auth doctor`.
+  - [x] Add `indodax auth reset`.
+  - [x] Support `--api-secret-file`.
+  - [x] Signed release verification (checksums + minisign).
+  - [x] Add `DISCLAIMER.md` and `CONTRIBUTING.md`.
+- [x] **Trading Polish (Kraken-Style Phase 3)**
+  - [x] Order preview/validate (`indodax order preview buy --dry-run`).
+  - [x] Portfolio summary and allocation (`indodax portfolio summary`).
+  - [x] Orderbook grouping (`indodax market orderbook-grouped`).
+  - [x] Spreads calculation (`indodax market spreads`).
+  - [x] Transactions/Trades export (`indodax export transactions --format csv`).
+  - [x] WebSocket private balances (`indodax ws balances`).
+  - [x] Order cancel-batch and order edit (cancel+replace).
+- [x] **Kraken-Style Command Structure (Aliases)**
+  - [x] `indodax market <subcommand>` (time, pairs, ticker, tickers, summaries, orderbook, trades, ohlc, history).
+  - [x] `indodax account <subcommand>` (info, balance, transactions, trades-history, ledger).
+  - [x] `indodax funding <subcommand>` (deposit-address, withdraw-fee, withdraw, withdraw-callback).
+  - [x] `indodax order <subcommand>` (preview, validate, open, closed, get, history, cancel-batch, edit).
+- [x] **Reliability Upgrades** — Client-side rate-limit tracking and high-precision nonce generation [#9].
+- [x] **Extended TradeAPI-2** — Map more endpoints to the new V2 REST API where available.
+- [x] **Plugin Ecosystem** — Add `.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`, and `gemini-extension.json`.
 ### Medium Priority
-- [ ] **Affiliate Commands** — `listDownline` and `checkDownline` support [#20, #8].
-- [ ] **Auto-completion** — Pair and command completion for the interactive shell [#16].
-- [ ] **Shell Improvements** — REPL-specific enhancements and stability fixes.
-- [ ] **Visual Documentation** — Add demo GIFs/SVGs to README [#13].
+- [x] **Affiliate Commands** — `listDownline` and `checkDownline` support [#20, #8].
+- [x] **Auto-completion** — Pair and command completion for the interactive shell [#16].
+- [x] **Shell Improvements** — REPL-specific enhancements and stability fixes.
+- [x] **Visual Documentation** — Add demo GIFs/SVGs to README [#13].
 
 ### Low Priority
 - [ ] **Voucher Commands** — `createVoucher` support (partner-only) [#22, #8].
