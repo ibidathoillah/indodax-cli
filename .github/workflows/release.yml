@@ -64,9 +64,13 @@ jobs:
         run: |
           if [ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]; then
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+            cargo build --release --all-features --target ${{ matrix.target }}
+          elif [ "${{ matrix.target }}" == "aarch64-linux-android" ]; then
+            cargo install cargo-ndk
+            cargo ndk -t aarch64-linux-android build --release --all-features
+          else
+            cargo build --release --all-features --target ${{ matrix.target }}
           fi
-          
-          cargo build --release --all-features --target ${{ matrix.target }}
           
           BIN_DIR="target/${{ matrix.target }}/release"
           cp "$BIN_DIR/indodax-cli${{ matrix.binary_extension }}" "${{ matrix.artifact_name }}${{ matrix.binary_extension }}"
