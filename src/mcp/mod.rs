@@ -307,7 +307,6 @@ pub async fn handle_http_call(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[tokio::test]
     async fn test_service_group_parsing() {

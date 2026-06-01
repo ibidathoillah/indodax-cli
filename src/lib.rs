@@ -699,6 +699,7 @@ mod tests {
             order_type: None,
             stop_price: None,
             client_id: None,
+            validate: false,
         });
         let _cmd4 = Command::Withdrawal(WithdrawalSubcommand::Fee {
             asset: "btc".into(),
