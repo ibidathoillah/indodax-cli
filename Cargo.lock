@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "indodax-cli"
-version = "0.1.57"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
