@@ -62,11 +62,22 @@ impl IndodaxMcp {
         }
         if above.is_none() && below.is_none() && percent_up.is_none() && percent_down.is_none() {
             return Self::validation_error_result(
-                "Must provide at least one trigger: above, below, percent_up, or percent_down".into()
+                "Must provide at least one trigger: above, below, percent_up, or percent_down"
+                    .into(),
             );
         }
         let pair = crate::commands::helpers::normalize_pair(pair);
-        match alert::alert_add(&pair, above, below, percent_up, percent_down, note, &self.client).await {
+        match alert::alert_add(
+            &pair,
+            above,
+            below,
+            percent_up,
+            percent_down,
+            note,
+            &self.client,
+        )
+        .await
+        {
             Ok(output) => Self::json_result(output.data),
             Err(e) => Self::error_result(e.to_string()),
         }
@@ -85,7 +96,10 @@ impl IndodaxMcp {
         }
         if let Some(v) = id {
             if v.fract() != 0.0 {
-                return Self::validation_error_result(format!("alert ID must be a whole number, got {}", v));
+                return Self::validation_error_result(format!(
+                    "alert ID must be a whole number, got {}",
+                    v
+                ));
             }
         }
         let id = id.map(|v| v as u64);
@@ -102,11 +116,16 @@ impl IndodaxMcp {
     ) -> CallToolResult {
         if let Some(v) = id {
             if v.fract() != 0.0 {
-                return Self::validation_error_result(format!("alert ID must be a whole number, got {}", v));
+                return Self::validation_error_result(format!(
+                    "alert ID must be a whole number, got {}",
+                    v
+                ));
             }
         }
         let id = id.map(|v| v as u64);
-        let pair = pair.as_deref().map(|p| crate::commands::helpers::normalize_pair(p));
+        let pair = pair
+            .as_deref()
+            .map(|p| crate::commands::helpers::normalize_pair(p));
         match alert::alert_check(&self.client, id, pair.as_deref()).await {
             Ok(output) => Self::json_result(output.data),
             Err(e) => Self::error_result(e.to_string()),

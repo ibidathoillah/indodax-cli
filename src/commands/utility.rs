@@ -4,9 +4,9 @@ use crate::output::CommandOutput;
 use anyhow::Result;
 use rustyline::completion::{Completer, Pair};
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
-use rustyline::hint::{HistoryHinter};
+use rustyline::hint::HistoryHinter;
 use rustyline::validate::MatchingBracketValidator;
-use rustyline::{Helper};
+use rustyline::Helper;
 use std::collections::HashMap;
 
 #[derive(Debug, clap::Subcommand)]
@@ -39,18 +39,19 @@ impl Completer for IndodaxCompleter {
         pos: usize,
         _ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
-        let (start, word) = rustyline::completion::extract_word(line, pos, None, |c: char| c == ' ' || c == '/');
+        let (start, word) =
+            rustyline::completion::extract_word(line, pos, None, |c: char| c == ' ' || c == '/');
         let word_lower = word.to_lowercase();
 
         let mut candidates = Vec::new();
 
         // If it looks like we are typing a pair (e.g. after a space or --pair)
         let line_before = &line[..start];
-        let is_pair_context = line_before.contains("ticker") || 
-                             line_before.contains("book") || 
-                             line_before.contains("trades") ||
-                             line_before.contains("--pair") ||
-                             line_before.contains("-p");
+        let is_pair_context = line_before.contains("ticker")
+            || line_before.contains("book")
+            || line_before.contains("trades")
+            || line_before.contains("--pair")
+            || line_before.contains("-p");
 
         if is_pair_context {
             for pair in &self.pairs {
@@ -96,7 +97,10 @@ impl rustyline::hint::Hinter for IndodaxHelper {
 }
 
 impl rustyline::validate::Validator for IndodaxHelper {
-    fn validate(&self, ctx: &mut rustyline::validate::ValidationContext<'_>) -> rustyline::Result<rustyline::validate::ValidationResult> {
+    fn validate(
+        &self,
+        ctx: &mut rustyline::validate::ValidationContext<'_>,
+    ) -> rustyline::Result<rustyline::validate::ValidationResult> {
         self.validator.validate(ctx)
     }
     fn validate_while_typing(&self) -> bool {
@@ -106,7 +110,12 @@ impl rustyline::validate::Validator for IndodaxHelper {
 
 impl Completer for IndodaxHelper {
     type Candidate = Pair;
-    fn complete(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> rustyline::Result<(usize, Vec<Pair>)> {
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
         self.completer.complete(line, pos, ctx)
     }
 }
@@ -211,8 +220,8 @@ async fn shell(
     _creds: &Option<ResolvedCredentials>,
 ) -> Result<CommandOutput> {
     use crate::Cli;
-    use clap::Parser;
     use clap::CommandFactory;
+    use clap::Parser;
 
     println!("Indodax CLI interactive shell");
     println!("Type commands without 'indodax' prefix (e.g. 'ticker btc/idr')");
@@ -224,12 +233,18 @@ async fn shell(
     for cmd in cli_cmd.get_subcommands() {
         command_list.push(cmd.get_name().to_string());
     }
-    
+
     // Add common pairs for completion
     let common_pairs = vec![
-        "btc_idr".to_string(), "eth_idr".to_string(), "usdt_idr".to_string(), 
-        "idrt_idr".to_string(), "bnb_idr".to_string(), "doge_idr".to_string(),
-        "xrpidr".to_string(), "adaidr".to_string(), "dotidr".to_string(),
+        "btc_idr".to_string(),
+        "eth_idr".to_string(),
+        "usdt_idr".to_string(),
+        "idrt_idr".to_string(),
+        "bnb_idr".to_string(),
+        "doge_idr".to_string(),
+        "xrpidr".to_string(),
+        "adaidr".to_string(),
+        "dotidr".to_string(),
     ];
 
     let h = IndodaxHelper {
@@ -244,7 +259,7 @@ async fn shell(
 
     let mut rl = rustyline::Editor::<IndodaxHelper, rustyline::history::DefaultHistory>::new()?;
     rl.set_helper(Some(h));
-    
+
     let mut config = crate::config::IndodaxConfig::load()?;
     let client_ref = client;
 

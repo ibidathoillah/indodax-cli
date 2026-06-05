@@ -2,10 +2,10 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use tower::ServiceExt; // untuk oneshot
-use indodax_cli::mcp::{AppState, handle_http_call};
 use axum::{routing::post, Router};
+use indodax_cli::mcp::{handle_http_call, AppState};
 use serde_json::json;
+use tower::ServiceExt; // untuk oneshot
 
 #[cfg(feature = "server")]
 #[tokio::test]

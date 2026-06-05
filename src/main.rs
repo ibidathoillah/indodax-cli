@@ -117,7 +117,10 @@ async fn main() {
                 #[cfg(not(feature = "server"))]
                 {
                     report_error(
-                        &IndodaxError::Other("HTTP server feature not enabled. Rebuild with --features server".into()),
+                        &IndodaxError::Other(
+                            "HTTP server feature not enabled. Rebuild with --features server"
+                                .into(),
+                        ),
                         output_format,
                     );
                     process::exit(1);

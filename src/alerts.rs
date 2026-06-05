@@ -74,9 +74,8 @@ pub fn load_alerts() -> Result<Vec<PriceAlert>, IndodaxError> {
     if content.trim().is_empty() {
         return Ok(Vec::new());
     }
-    serde_json::from_str::<Vec<PriceAlert>>(&content).map_err(|e| {
-        IndodaxError::Config(format!("Failed to parse alerts: {}", e))
-    })
+    serde_json::from_str::<Vec<PriceAlert>>(&content)
+        .map_err(|e| IndodaxError::Config(format!("Failed to parse alerts: {}", e)))
 }
 
 pub fn save_alerts(alerts: &[PriceAlert]) -> Result<(), IndodaxError> {

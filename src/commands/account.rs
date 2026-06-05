@@ -66,7 +66,10 @@ pub enum AccountCommand {
     #[command(name = "list-downline", about = "List all downline users")]
     ListDownline,
 
-    #[command(name = "check-downline", about = "Check if an email is in your downline")]
+    #[command(
+        name = "check-downline",
+        about = "Check if an email is in your downline"
+    )]
     CheckDownline {
         #[arg(short, long)]
         email: String,

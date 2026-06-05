@@ -50,13 +50,13 @@ function getReleaseBinaryUrl() {
 }
 
 function getSourceBinaryPath() {
-    return path.join(__dirname, '..', 'target', 'release', platform === 'win32' ? 'indodax.exe' : 'indodax');
+    return path.join(__dirname, '..', 'target', 'release', platform === 'win32' ? 'indodax-cli.exe' : 'indodax-cli');
 }
 
 function buildFromSource() {
     console.log('Building indodax-cli from source for Android/Termux...');
 
-    const result = spawnSync('cargo', ['build', '--release'], {
+    const result = spawnSync('cargo', ['build', '--release', '--features', 'cli,mcp,server'], {
         cwd: path.join(__dirname, '..'),
         stdio: 'inherit',
     });

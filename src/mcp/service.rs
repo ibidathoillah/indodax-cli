@@ -29,7 +29,12 @@ impl ServiceGroup {
 
     /// Default service groups (safe operations, no auth required for some).
     pub fn default_groups() -> Vec<ServiceGroup> {
-        vec![ServiceGroup::Market, ServiceGroup::Account, ServiceGroup::Paper, ServiceGroup::Alert]
+        vec![
+            ServiceGroup::Market,
+            ServiceGroup::Account,
+            ServiceGroup::Paper,
+            ServiceGroup::Alert,
+        ]
     }
 
     /// Whether this group contains dangerous operations (trade, funding).
@@ -202,9 +207,15 @@ mod tests {
     fn test_all_contains_all() {
         let all = ServiceGroup::all();
         assert_eq!(all.len(), 7);
-        for group in &[ServiceGroup::Market, ServiceGroup::Account, ServiceGroup::Trade,
-                       ServiceGroup::Funding, ServiceGroup::Paper, ServiceGroup::Auth,
-                       ServiceGroup::Alert] {
+        for group in &[
+            ServiceGroup::Market,
+            ServiceGroup::Account,
+            ServiceGroup::Trade,
+            ServiceGroup::Funding,
+            ServiceGroup::Paper,
+            ServiceGroup::Auth,
+            ServiceGroup::Alert,
+        ] {
             assert!(all.contains(group));
         }
     }
