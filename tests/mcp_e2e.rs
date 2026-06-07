@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use axum::{routing::post, Router};
-use indodax_cli::mcp::{handle_http_call, AppState};
+use indodax_cli::mcp::{handle_http_call, oauth, AppState};
 use serde_json::json;
 use tower::ServiceExt; // untuk oneshot
 
@@ -15,6 +15,8 @@ async fn test_http_bridge_unauthorized_without_secret() {
         groups: "market".into(),
         allow_dangerous: false,
         bridge_secret: Some("top-secret".into()),
+        public_base_url: "http://localhost:8000".into(),
+        oauth: oauth::OAuthState::default(),
     };
 
     // Buat router minimal untuk tes
@@ -46,6 +48,8 @@ async fn test_http_bridge_health_simple() {
         groups: "market".into(),
         allow_dangerous: false,
         bridge_secret: None,
+        public_base_url: "http://localhost:8000".into(),
+        oauth: oauth::OAuthState::default(),
     };
     assert_eq!(state.groups, "market");
 }
