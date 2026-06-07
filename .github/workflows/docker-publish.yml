@@ -47,3 +47,57 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Trigger Glama redeploy
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          GLAMA_API_KEY: ${{ secrets.GLAMA_API_KEY }}
+          GLAMA_REDEPLOY_WEBHOOK_URL: ${{ secrets.GLAMA_REDEPLOY_WEBHOOK_URL }}
+          GLAMA_API_BASE_URL: ${{ secrets.GLAMA_API_BASE_URL }}
+          GLAMA_ORGANIZATION_ID: ${{ secrets.GLAMA_ORGANIZATION_ID }}
+          GLAMA_SERVER_ID: ${{ secrets.GLAMA_SERVER_ID }}
+          IMAGE_REF: ghcr.io/${{ github.repository }}:latest
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GLAMA_API_KEY:-}" ]; then
+            echo "GLAMA_API_KEY is not configured. Docker image was pushed, but Glama redeploy was skipped."
+            exit 0
+          fi
+
+          payload=$(jq -nc \
+            --arg image "${IMAGE_REF}" \
+            --arg commit "${GITHUB_SHA}" \
+            --arg branch "${GITHUB_REF_NAME}" \
+            '{image:$image, commit:$commit, branch:$branch}')
+
+          if [ -n "${GLAMA_REDEPLOY_WEBHOOK_URL:-}" ]; then
+            echo "Triggering Glama redeploy via webhook..."
+            curl --fail --show-error --silent \
+              --request POST \
+              --header "Authorization: Bearer ${GLAMA_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data "${payload}" \
+              "${GLAMA_REDEPLOY_WEBHOOK_URL}"
+            echo "Glama redeploy webhook triggered."
+            exit 0
+          fi
+
+          if [ -n "${GLAMA_ORGANIZATION_ID:-}" ] && [ -n "${GLAMA_SERVER_ID:-}" ]; then
+            api_base="${GLAMA_API_BASE_URL:-https://api.glama.ai}"
+            echo "Triggering Glama redeploy via API..."
+            curl --fail --show-error --silent \
+              --request POST \
+              --header "Authorization: Bearer ${GLAMA_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data "${payload}" \
+              "${api_base}/organizations/${GLAMA_ORGANIZATION_ID}/servers/${GLAMA_SERVER_ID}/deploy"
+            echo "Glama API redeploy triggered."
+            exit 0
+          fi
+
+          echo "GLAMA_API_KEY exists, but no Glama target is configured."
+          echo "Set one of these secret sets:"
+          echo "1) GLAMA_REDEPLOY_WEBHOOK_URL"
+          echo "2) GLAMA_ORGANIZATION_ID + GLAMA_SERVER_ID, optional GLAMA_API_BASE_URL"
+          exit 0
