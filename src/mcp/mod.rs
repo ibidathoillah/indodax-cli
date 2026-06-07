@@ -1,3 +1,4 @@
+pub mod oauth;
 pub mod safety;
 pub mod service;
 pub mod tools;
@@ -54,6 +55,8 @@ pub struct AppState {
     pub groups: String,
     pub allow_dangerous: bool,
     pub bridge_secret: Option<String>,
+    pub public_base_url: String,
+    pub oauth: oauth::OAuthState,
 }
 
 #[cfg(feature = "server")]
@@ -62,13 +65,19 @@ pub async fn run_http(
     groups_str: &str,
     allow_dangerous: bool,
 ) -> Result<(), IndodaxError> {
-    // Load optional bridge secret for extra security
+    // Load optional bridge secret for extra security.
     let bridge_secret = std::env::var("BRIDGE_SECRET").ok();
+    let public_base_url = std::env::var("MCP_PUBLIC_BASE_URL")
+        .unwrap_or_else(|_| format!("http://localhost:{}", port))
+        .trim_end_matches('/')
+        .to_string();
 
     let state = AppState {
         groups: groups_str.to_string(),
         allow_dangerous,
         bridge_secret,
+        public_base_url,
+        oauth: oauth::OAuthState::default(),
     };
 
     let cors = CorsLayer::new()
@@ -79,6 +88,20 @@ pub async fn run_http(
     let app = Router::new()
         .route("/health", get(|| async { "OK" }))
         .route("/call/:tool_name", post(handle_http_call))
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(oauth::protected_resource_metadata),
+        )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(oauth::authorization_server_metadata),
+        )
+        .route(
+            "/oauth/authorize",
+            get(oauth::authorize_page).post(oauth::authorize_submit),
+        )
+        .route("/oauth/token", post(oauth::token))
+        .route("/oauth/register", post(oauth::register_client))
         .layer(cors)
         .with_state(state.clone());
 
@@ -88,6 +111,10 @@ pub async fn run_http(
         .map_err(|e| IndodaxError::Other(format!("Failed to bind port: {}", e)))?;
 
     tracing::info!("🚀 MCP HTTP Isolated Server started on http://{}", addr);
+    tracing::info!(
+        "🔐 MCP OAuth discovery enabled at {}/.well-known/oauth-protected-resource",
+        state.public_base_url
+    );
     if state.bridge_secret.is_some() {
         tracing::info!("🔒 Bridge Security Enabled: X-Bridge-Auth header required.");
     }
@@ -104,29 +131,24 @@ pub async fn handle_http_call(
     Path(tool_name): Path<String>,
     headers: HeaderMap,
     Json(arguments): Json<Value>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, oauth::HttpError> {
     // 1. Security Check: Bridge Secret
     if let Some(secret) = &state.bridge_secret {
         let auth_header = headers.get("x-bridge-auth").and_then(|h| h.to_str().ok());
         if auth_header != Some(secret) {
-            return Err((
+            return Err(oauth::json_error(
                 StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({
-                    "error": true,
-                    "message": "Unauthorized: Invalid or missing X-Bridge-Auth header."
-                })),
+                "Unauthorized: Invalid or missing X-Bridge-Auth header.",
             ));
         }
     }
 
-    // 2. Extract User Credentials
-    let api_key = headers.get("x-api-key").and_then(|h| h.to_str().ok());
-    let api_secret = headers.get("x-api-secret").and_then(|h| h.to_str().ok());
-
-    let signer = match (api_key, api_secret) {
-        (Some(k), Some(s)) => Some(crate::auth::Signer::new(k, s)),
-        _ => None,
-    };
+    // 2. Extract legacy x-api-key/x-api-secret credentials, or OAuth bearer token credentials.
+    let signer = oauth::resolve_signer(
+        &state,
+        &headers,
+        oauth::required_scope_for_tool(&tool_name),
+    )?;
 
     let client = crate::client::IndodaxClient::new(signer).unwrap();
     let config = crate::config::IndodaxConfig::default();
@@ -347,7 +369,6 @@ pub async fn handle_http_call(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[tokio::test]
     async fn test_service_group_parsing() {
@@ -363,6 +384,8 @@ mod tests {
             groups: "all".into(),
             allow_dangerous: true,
             bridge_secret: Some("secret".into()),
+            public_base_url: "http://localhost:8000".into(),
+            oauth: oauth::OAuthState::default(),
         };
         let cloned = state.clone();
         assert_eq!(cloned.groups, "all");
