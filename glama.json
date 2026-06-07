@@ -5,18 +5,30 @@
     "ibidathoillah"
   ],
   "mcpName": "io.github.ibidathoillah/indodax-cli",
-  "description": "Professional-grade MCP server and CLI for the Indodax cryptocurrency exchange. Provides comprehensive access to real-time market data, secure account management, spot trading, paper trading, and WebSocket event streams. Supports STDIO for desktop apps (Claude) and HTTP Bridge for mobile/cloud (ChatGPT/Glama) with multi-user isolation.",
+  "description": "Professional-grade MCP server and CLI for the Indodax cryptocurrency exchange. Provides real-time market data, secure OAuth-wrapped account access, spot trading, paper trading, and WebSocket event streams. Supports STDIO for desktop apps and HTTP Bridge for ChatGPT/Glama with multi-user isolation.",
   "environmentVariables": [
     {
-      "name": "INDODAX_API_KEY",
-      "description": "Your Indodax API Key. Required for private operations.",
+      "name": "MCP_PUBLIC_BASE_URL",
+      "description": "Public HTTPS base URL of this MCP server. For the current Glama endpoint use https://glama.ai/endpoints/g5g5v8xtgn/mcp so OAuth discovery returns the correct Auth URL, Token URL, Registration URL, and Resource.",
       "required": true,
+      "isSecret": false
+    },
+    {
+      "name": "INDODAX_API_KEY",
+      "description": "Optional fallback Indodax API Key for legacy header/env auth. OAuth users enter their own key during authorization instead.",
+      "required": false,
       "isSecret": true
     },
     {
       "name": "INDODAX_API_SECRET",
-      "description": "Your Indodax API Secret. Required for private operations.",
-      "required": true,
+      "description": "Optional fallback Indodax API Secret for legacy header/env auth. OAuth users enter their own secret during authorization instead.",
+      "required": false,
+      "isSecret": true
+    },
+    {
+      "name": "BRIDGE_SECRET",
+      "description": "Optional extra bridge header secret for non-ChatGPT clients. Leave unset for ChatGPT OAuth connectors because ChatGPT will authenticate with Bearer tokens.",
+      "required": false,
       "isSecret": true
     }
   ],
@@ -32,7 +44,21 @@
     },
     "http": {
       "supported": true,
-      "auth": "Header (x-api-key, x-api-secret)",
+      "auth": "OAuth 2.1 Authorization Code + PKCE. Legacy x-api-key/x-api-secret headers are still supported.",
+      "oauth": {
+        "protectedResourceMetadata": "/.well-known/oauth-protected-resource",
+        "authorizationServerMetadata": "/.well-known/oauth-authorization-server",
+        "authorizationEndpoint": "/oauth/authorize",
+        "tokenEndpoint": "/oauth/token",
+        "registrationEndpoint": "/oauth/register",
+        "tokenEndpointAuthMethod": "none",
+        "scopes": [
+          "indodax:market",
+          "indodax:account",
+          "indodax:trade",
+          "indodax:funding"
+        ]
+      },
       "endpoints": {
         "call": "/call/{tool_name}",
         "health": "/health"
@@ -44,6 +70,7 @@
     "crypto",
     "trading",
     "mcp",
+    "oauth",
     "rust",
     "bitcoin",
     "market-data",
