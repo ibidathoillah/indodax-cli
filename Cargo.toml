@@ -35,6 +35,8 @@ thiserror = "2"
 dirs = "6"
 tracing = "0.1"
 web-time = "1.1"
+base64 = "0.22"
+rand = "0.8"
 colored = { version = "2", optional = true }
 dialoguer = { version = "0.10", optional = true }
 rustyline = { version = "12", optional = true }
