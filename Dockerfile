@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/
 WORKDIR /app
 COPY --from=builder /usr/src/app/target/release/indodax-cli /usr/local/bin/indodax-cli
 
+# Public URL used by OAuth discovery. Override this env for non-Glama deployments.
+ENV MCP_PUBLIC_BASE_URL="https://glama.ai/endpoints/g5g5v8xtgn/mcp"
+
 # Port default untuk HTTP Bridge
 EXPOSE 8000
 
