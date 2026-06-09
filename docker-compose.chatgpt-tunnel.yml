@@ -1,0 +1,33 @@
+services:
+  indodax-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: indodax-cli:chatgpt-tunnel
+    restart: unless-stopped
+    environment:
+      # Public HTTPS origin that ChatGPT will see through Cloudflare Tunnel.
+      # Example: https://indodax-mcp.example.com
+      MCP_PUBLIC_BASE_URL: ${MCP_PUBLIC_BASE_URL:?set MCP_PUBLIC_BASE_URL to your public HTTPS tunnel URL}
+      RUST_LOG: ${RUST_LOG:-indodax_cli=info,tower_http=info}
+      # Optional: only enable for non-ChatGPT custom clients that can send X-Bridge-Auth.
+      # ChatGPT OAuth calls normally cannot add this custom header, so leave it unset.
+      BRIDGE_SECRET: ${BRIDGE_SECRET:-}
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8000}:8000"
+    command:
+      - mcp
+      - --http
+      - --port
+      - "8000"
+      - --groups
+      - ${MCP_GROUPS:-market,account,paper,auth}
+      # Keep live trading/funding disabled by default for ChatGPT.
+      # Change MCP_GROUPS and add --allow-dangerous only after you intentionally want that risk.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - indodax-mcp
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
