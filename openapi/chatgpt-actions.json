@@ -1,0 +1,209 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Indodax MCP ChatGPT Bridge",
+    "version": "1.0.0",
+    "description": "ChatGPT Actions schema for the Indodax MCP HTTP bridge with OAuth bearer-token authentication. Replace the server URL with your MCP_PUBLIC_BASE_URL."
+  },
+  "servers": [
+    {
+      "url": "https://indodax-mcp.example.com",
+      "description": "Replace with MCP_PUBLIC_BASE_URL"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "OAuth2": {
+        "type": "oauth2",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://indodax-mcp.example.com/oauth/authorize",
+            "tokenUrl": "https://indodax-mcp.example.com/oauth/token",
+            "scopes": {
+              "indodax:market": "Read public market data",
+              "indodax:account": "Read private account and balance data",
+              "indodax:paper": "Use paper trading tools",
+              "indodax:trade": "Place and cancel live orders",
+              "indodax:funding": "Access funding and withdrawal tools"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "PairRequest": {
+        "type": "object",
+        "properties": {
+          "pair": {
+            "type": "string",
+            "description": "Trading pair, e.g. btc_idr or btc/idr",
+            "default": "btc_idr"
+          }
+        }
+      },
+      "OrderbookRequest": {
+        "type": "object",
+        "properties": {
+          "pair": { "type": "string", "default": "btc_idr" },
+          "levels": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+        }
+      },
+      "OhlcRequest": {
+        "type": "object",
+        "properties": {
+          "symbol": { "type": "string", "default": "btc_idr" },
+          "timeframe": { "type": "string", "default": "60" },
+          "from": { "type": "number" },
+          "to": { "type": "number" }
+        }
+      },
+      "PaperTradeRequest": {
+        "type": "object",
+        "properties": {
+          "pair": { "type": "string", "default": "btc_idr" },
+          "price": { "type": "number" },
+          "amount": { "type": "number" },
+          "idr": { "type": "number" }
+        }
+      },
+      "ToolResult": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  },
+  "security": [
+    {
+      "OAuth2": [
+        "indodax:market",
+        "indodax:account",
+        "indodax:paper"
+      ]
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Health check",
+        "security": [],
+        "responses": {
+          "200": { "description": "OK" }
+        }
+      }
+    },
+    "/call/ticker": {
+      "post": {
+        "operationId": "ticker",
+        "summary": "Get ticker for a trading pair",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PairRequest" } }
+          }
+        },
+        "responses": { "200": { "description": "Ticker result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/orderbook": {
+      "post": {
+        "operationId": "orderbook",
+        "summary": "Get order book depth for a trading pair",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderbookRequest" } } } },
+        "responses": { "200": { "description": "Order book result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/trades": {
+      "post": {
+        "operationId": "trades",
+        "summary": "Get recent trades for a trading pair",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PairRequest" } } } },
+        "responses": { "200": { "description": "Trades result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/ohlc": {
+      "post": {
+        "operationId": "ohlc",
+        "summary": "Get OHLC candle data",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OhlcRequest" } } } },
+        "responses": { "200": { "description": "OHLC result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/pairs": {
+      "post": {
+        "operationId": "pairs",
+        "summary": "List trading pairs",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Pairs result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/summaries": {
+      "post": {
+        "operationId": "summaries",
+        "summary": "Get market summaries",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Summaries result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/balance": {
+      "post": {
+        "operationId": "balance",
+        "summary": "Get private account balances",
+        "security": [{ "OAuth2": ["indodax:account"] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Balance result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/account_info": {
+      "post": {
+        "operationId": "account_info",
+        "summary": "Get private account info",
+        "security": [{ "OAuth2": ["indodax:account"] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Account result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/paper_init": {
+      "post": {
+        "operationId": "paper_init",
+        "summary": "Initialize paper trading account",
+        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "idr": { "type": "number" }, "btc": { "type": "number" } } } } } },
+        "responses": { "200": { "description": "Paper init result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/paper_balance": {
+      "post": {
+        "operationId": "paper_balance",
+        "summary": "Get paper trading balance",
+        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Paper balance result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/paper_buy": {
+      "post": {
+        "operationId": "paper_buy",
+        "summary": "Place simulated paper buy order",
+        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaperTradeRequest" } } } },
+        "responses": { "200": { "description": "Paper buy result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    },
+    "/call/paper_sell": {
+      "post": {
+        "operationId": "paper_sell",
+        "summary": "Place simulated paper sell order",
+        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaperTradeRequest" } } } },
+        "responses": { "200": { "description": "Paper sell result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
+      }
+    }
+  }
+}
