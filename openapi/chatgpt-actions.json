@@ -20,9 +20,8 @@
             "authorizationUrl": "https://indodax-mcp.example.com/oauth/authorize",
             "tokenUrl": "https://indodax-mcp.example.com/oauth/token",
             "scopes": {
-              "indodax:market": "Read public market data",
+              "indodax:market": "Read public market data and use local paper-trading tools",
               "indodax:account": "Read private account and balance data",
-              "indodax:paper": "Use paper trading tools",
               "indodax:trade": "Place and cancel live orders",
               "indodax:funding": "Access funding and withdrawal tools"
             }
@@ -76,8 +75,7 @@
     {
       "OAuth2": [
         "indodax:market",
-        "indodax:account",
-        "indodax:paper"
+        "indodax:account"
       ]
     }
   ],
@@ -173,7 +171,7 @@
       "post": {
         "operationId": "paper_init",
         "summary": "Initialize paper trading account",
-        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "security": [{ "OAuth2": ["indodax:market"] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "idr": { "type": "number" }, "btc": { "type": "number" } } } } } },
         "responses": { "200": { "description": "Paper init result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
       }
@@ -182,7 +180,7 @@
       "post": {
         "operationId": "paper_balance",
         "summary": "Get paper trading balance",
-        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "security": [{ "OAuth2": ["indodax:market"] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
         "responses": { "200": { "description": "Paper balance result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
       }
@@ -191,7 +189,7 @@
       "post": {
         "operationId": "paper_buy",
         "summary": "Place simulated paper buy order",
-        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "security": [{ "OAuth2": ["indodax:market"] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaperTradeRequest" } } } },
         "responses": { "200": { "description": "Paper buy result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
       }
@@ -200,7 +198,7 @@
       "post": {
         "operationId": "paper_sell",
         "summary": "Place simulated paper sell order",
-        "security": [{ "OAuth2": ["indodax:paper"] }],
+        "security": [{ "OAuth2": ["indodax:market"] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaperTradeRequest" } } } },
         "responses": { "200": { "description": "Paper sell result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ToolResult" } } } } }
       }
