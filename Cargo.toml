@@ -1,3 +1,9 @@
+[workspace]
+members = [
+    ".",
+    "gate",
+]
+
 [package]
 name = "indodax-cli"
 version = "0.2.1"
